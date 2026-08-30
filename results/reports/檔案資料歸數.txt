@@ -1,0 +1,42 @@
+📁 MARI_Quant_System/ 
+│
+├── 📁 configs/ 
+│   └── Config.m                # 全域超參數管理 (包含 BO 最佳化數值與大宇宙清單)
+│
+├── 📁 data/ 
+│   ├── 📁 crawlers/ 
+│   │   ├── requirements.txt    # 執行環境依賴管理
+│   │   ├── us_universe.csv     # 歷史大宇宙成分股名單
+│   │   └── hybrid_crawler.py   # True PiT 混合資料爬蟲微服務
+│   │
+│   ├── 📁 data_lake/           # 存放經對齊後的 .parquet 歷史長表
+│   │
+│   ├── DataFetcher.m           # 數據湖矩陣映射、SPY日曆錨定、流動性物理斷言
+│   ├── FeatureEngineer.m       # 3D 面板張量萃取、DyGAT 動態圖譜、標準化引擎
+│   └── 📁 cache/               # 存放 features_denoised.mat (3D 降噪張量)
+│
+├── 📁 envs/ 
+│   └── HRLEnvironment.m        # （不參與執行流程）向量化 RL 模擬環境、動態滑價、Sortino 二次方懲罰
+│
+├── 📁 models/ 
+│   ├── EMAQuantizer.m          # VQ-VAE 字典 EMA 更新與死向量平滑喚醒(附屬於VQVAEAgent.m)
+│   ├── FeatureEvaluator.m      # 動態特徵信心權重 (IC 導向)
+│   ├── BuildDecoupledExtractors.m # 時間層特徵擷取 (LSTM + Transformer)
+│   ├── GraphSpatialFusionLayer.m  # 動態圖卷積空間融合層 (ASTGCN)(附屬於BuildDecoupledExtractors.m)
+│   └── vqvaeLoss.m             # VQ-VAE 損失函數與 STE 梯度穿透機制(附屬於VQVAEAgent.m)
+│
+├── 📁 agents/ 
+│   ├── VQVAEAgent.m            # 向量量化降噪代理人
+│   ├── GBDTExpertAgent.m       # RUSBoost 專家網路與 SHAP 壓力測試器
+│   ├── HRLManagerAgent.m       # （不參與執行流程）總管基礎類別定義
+│   └── Agent_PPO.m             # 連續動作空間 PPO 代理人
+│
+├── 📁 scripts/ 
+│   ├── 1_Run_Data_and_Features.m   # 資料湖建構 -> 特徵工程 -> VQ-VAE 降噪
+│   ├── 2_Run_Extractor_Pretrain.m  # 深度學習特徵擷取
+│   ├── 3_Run_GBDT_and_SHAP.m       # GBDT訓練、SHAP 歸因
+│   ├── 4_Run_BO_Hyperparameter.m   # 貝氏最佳化
+│   ├── 5_Run_CIO_Awakening.m       # 強化學習集成訓練
+│   └── 6_Run_WalkForward_Backtest.m# 回測
+│
+└── 📁 results/                 # 存放所有模型權重、機率矩陣與績效圖表

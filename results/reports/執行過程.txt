@@ -1,0 +1,391 @@
+=================================================================
+🚀 [Phase 14.4] 啟動 MARI 數據湖對齊、特徵萃取與零洩漏降噪管線
+=================================================================
+ 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 875 檔純 Equity 標的)
+--- 步驟 1：啟動外部 Python 爬蟲與 Pandas 關聯引擎 ---
+⏳ 正在執行 Python 爬蟲微服務 (歷史大宇宙構建中)...
+✅ Python 爬蟲與 Pandas 關聯引擎執行完畢！
+ 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
+--- 步驟 2：載入 Data Lake 並執行極速矩陣映射 ---
+--- 啟動 Data Lake 面板資料載入與極速矩陣映射 ---
+ -> 建立基準時間軸 (以 SPY 作為絕對交易日曆)...
+ -> 執行極速矩陣映射 (Bypassing Unstack 效能優化)...
+ -> 啟動多核心 parfor 執行極速矩陣映射 (記憶體防爆版)...
+--- 執行大宇宙數據邊界與品質斷言檢查 ---
+⚠️ 攔截到 9050 筆異常 (報價異常: 1, 真實停牌枯竭: 9049，已排除 Macro 指數)，已強制物理損毀交由下游 omitnan 濾除。
+💾 成功以 SPY 基準時間軸對齊大宇宙資料 (共 504 檔標的，8453 個真實交易日)。
+--- 步驟 3：特徵工程與 DyGAT 有向圖譜萃取 (防禦 Look-ahead Bias) ---
+ ⚙️ [FeatureEngineer] 初始化。準備產出 3D 面板資料 [Days, 22, 504]
+ 🚀 啟動機構級大宇宙特徵工程 (True PiT 橫截面無洩漏版)...
+ -> 構建 True PiT 流動性濾網 (排除 IPO前/停牌/非成分股/雞蛋水餃股)...
+ -> 計算 15 維微觀特徵與 3 維相對大盤特徵...
+ -> 計算 4 維宏觀總經特徵...
+ -> 組合特徵為 3D 面板資料...
+ -> 執行特徵標準化 (Cross-Sectional Z-Score + Macro 保留絕對水位)...
+ -> 構建 DyGAT 時變圖譜矩陣 (啟動 12 執行緒平行運算與進度追蹤)...
+ -> 預計計算 1679 個圖譜錨點，任務已發配至運算池...
+  [系統總控] 成功回收訊號：已確實完成 50 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 100 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 150 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 200 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 250 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 300 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 350 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 400 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 450 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 500 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 550 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 600 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 650 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 700 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 750 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 800 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 850 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 900 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 950 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 1000 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 1050 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 1100 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 1150 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 1200 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 1250 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 1300 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 1350 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 1400 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 1450 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 1500 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 1550 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 1600 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 1650 / 1679 個時變圖譜...
+  [系統總控] 成功回收訊號：已確實完成 1679 / 1679 個時變圖譜...
+ -> 錨點運算全數完成，正在進行時間平移與 3D 矩陣對齊...
+✅ 3D 特徵面板與共整合圖譜提取完畢！維度與物理意義已絕對對齊。
+--- 步驟 4：嚴格 In-Sample 預訓練 VQ-VAE 降噪器 ---
+ 🔒 物理隔絕啟動：VQ-VAE 僅允許在 In-Sample 區間 (4028 天) 進行降噪字典學習。
+--- 啟動 VQ-VAE 降噪器預訓練 (STE 梯度與 EMA 字典聯合更新) ---
+ -> 提取高頻動能特徵完畢。有效樣本數: 1788865 筆。
+ 🌟 [EMAQuantizer] 首次 Forward 攔截：執行真實資料依賴抽樣初始化...
+  -> Epoch  1/30 | Recon Loss: 0.2295 | Commit Loss: 0.0842
+  -> Epoch 10/30 | Recon Loss: 0.0565 | Commit Loss: 0.0467
+  -> Epoch 20/30 | Recon Loss: 0.0549 | Commit Loss: 0.0480
+  -> Epoch 30/30 | Recon Loss: 0.0554 | Commit Loss: 0.0487
+✅ VQ-VAE 降噪器訓練與 EMA 字典收斂完成。
+ 🔄 啟動全域盲測降噪 (Out-of-Sample Denoising)...
+--- 執行全域特徵解耦前向推論 (VRAM Safe Vectorized Inference) ---
+ -> 啟動記憶體分塊推論 (Chunk Size: 200000, 總筆數: 4260312)...
+✅ 高頻動能降噪與平滑趨勢拼裝完畢 (VRAM Safe & 零雜訊外洩)！
+--- 步驟 6：降噪特徵 3D 張量快取落地 ---
+💾 全域 3D 特徵快取已安全落地至: /home/andy/Documents/MARI_Quant_System/data/cache/features_denoised.mat
+=================================================================
+🎯 [Phase 1] 完美完成。資料維度與物理邊界防護已 100% 驗證，請進入 Phase 2！
+=================================================================
+>> 
+
+=================================================================
+🚀 [Phase 14.6] 啟動 DL 雙軌特徵萃取器預訓練管線 (橫截面選股對齊版)
+=================================================================
+ 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
+--- 步驟 1：載入淨化 3D 特徵面板與時間軸嚴格對齊 ---
+--- 步驟 1.5：計算橫截面特徵 IC 信心權重 (統計先驗注入) ---
+ ⚙️ [FeatureEvaluator] 初始化完成。準備執行橫截面 IC 檢定與信心注意力生成。
+--- 啟動極速多核心橫截面特徵信心評估 (Cross-Sectional Spearman IC) ---
+  -> 啟動 Parpool 平行運算，評估 22 維特徵的橫截面預測力 (動態門檻: 25 檔)...
+  -> 執行時間平移與滾動平滑 (生成無未來函數之 IC 強度)...
+  -> 執行 Softmax 注意力縮放 (Z-Score 標準化防呆版)...
+✅ 橫截面 Spearman IC 評估與 Softmax 權重生成完畢！
+ -> 執行特徵注意力遮罩融合 (Feature Attention Gate)...
+✅ 動態特徵信心權重融合完畢，已成功為深度學習模型加上統計護城河！
+--- 步驟 2：構建無洩漏之橫截面預測標籤 (Beat the Median) ---
+--- 步驟 3：切分樣本時間軸 (引入 OOS 驗證監控) ---
+✅ 資料對齊成功！總天數: 8393 | 訓練樣本: 4028 筆 | OOS 盲測驗證樣本: 1167 筆
+--- 步驟 4：初始化雙軌特徵萃取網路與輔助預測頭 ---
+ ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠...
+  -> 預期輸入設定：
+     [時序專家] 單一節點特徵: 22 維 | 序列長度: 60 (Time-Distributed 共享權重)
+     [空間專家] 展平特徵維度: 11088 | 展平圖譜維度: 254016 (Late Fusion 拓樸)
+✅ 時序專家網路拓樸 (Transformer-LSTM Hybrid) 構建完畢。
+✅ 空間專家網路拓樸 (DyGAT) 構建完畢 (雙輸入，展平 2D 輸出)。
+🎮 成功捕獲圖形加速卡：【NVIDIA GeForce RTX 4060 Laptop GPU】，開啟深度學習預訓練路徑。
+--- 步驟 5：執行雙軌萃取器預訓練 (引入梯度累積 Gradient Accumulation) ---
+ -> Epoch  1/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6932, S: 0.6931)
+ -> Epoch  2/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6931, S: 0.6931)
+ -> Epoch  3/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6931, S: 0.6931)
+ -> Epoch  4/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6930, S: 0.6931)
+ -> Epoch  5/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6933, S: 0.6931)
+ -> Epoch  6/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6932, S: 0.6931)
+ -> Epoch  7/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6930, S: 0.6931)
+ -> Epoch  8/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6933, S: 0.6931)
+ -> Epoch  9/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6930, S: 0.6931)
+ -> Epoch 10/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6928, S: 0.6931)
+ -> Epoch 11/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6932, S: 0.6931)
+ -> Epoch 12/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6929, S: 0.6931)
+ -> Epoch 13/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6935, S: 0.6931)
+ -> Epoch 14/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6930, S: 0.6931)
+ -> Epoch 15/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6929, S: 0.6931)
+ -> Epoch 16/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6930, S: 0.6931)
+ -> Epoch 17/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6934, S: 0.6931)
+ -> Epoch 18/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6928, S: 0.6931)
+ -> Epoch 19/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6936, S: 0.6931)
+ -> Epoch 20/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6933, S: 0.6931)
+ -> Epoch 21/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6938, S: 0.6931)
+ -> Epoch 22/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6930, S: 0.6931)
+ -> Epoch 23/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6930, S: 0.6931)
+ -> Epoch 24/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6940, S: 0.6931)
+ -> Epoch 25/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6937, S: 0.6931)
+ -> Epoch 26/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6938, S: 0.6931)
+ -> Epoch 27/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6927, S: 0.6931)
+ -> Epoch 28/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6929, S: 0.6931)
+ -> Epoch 29/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6935, S: 0.6931)
+ -> Epoch 30/30 | Train (T: 0.6931, S: 0.6931) | Val OOS (T: 0.6934, S: 0.6931)
+⚙️ 萃取器輔助任務預訓練收斂完成。
+--- 步驟 6：全歷史強固特徵表徵提煉與落地 (提取 3D 張量) ---
+  -> 正在提煉全歷史節點級別表徵 (共 8393 筆有效天數)...
+--- 步驟 7：產出 Loss 曲線與 GCN 靜態圖譜視覺化報表 ---
+IdleTimeout has been reached.
+Parallel pool using the 'Processes' profile is shutting down.
+ 📊 Loss 曲線已儲存至: /home/andy/Documents/MARI_Quant_System/results/models/Phase2_Loss_Curve.png
+ 🕸️ GCN 靜態關聯圖譜矩陣已儲存至: /home/andy/Documents/MARI_Quant_System/results/models/Phase2_GCN_Adjacency_Matrix.png
+💾 雙軌 DL 萃取器預訓練完畢！[Days, 64, Tickers] 節點表徵已存至: /home/andy/Documents/MARI_Quant_System/results/models/DL_Extractors.mat
+=================================================================
+🎯 [Phase 2] 完美完成。個股身分與物理維度 100% 銜接對齊，請執行 Phase 3。
+=================================================================
+>> 
+
+=================================================================
+🚀 [Phase 14.9] 啟動 GBDT 專家網路訓練與 SHAP 歸因分析管線
+=================================================================
+ 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
+ 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
+--- 步驟 1：載入 3D 特徵面板與 DL 節點級別 Embedding ---
+--- 步驟 2：構建橫截面與時序預測標籤 (Zero-Leakage Labels) ---
+--- 步驟 3：嚴格切分 IS 訓練集與 OOS 盲測集張量 ---
+  -> 訓練集 (IS): 4028 天 | 盲測集 (OOS): 1168 天
+--- 步驟 4：實例化 GBDT 專家並啟動 Block K-Fold 訓練管線 ---
+ ⚙️ [GBDTExpertAgent] 實例化完成。已啟動時序防洩漏 OOF 與極限 RAM 防護。
+--- 啟動 GBDT 雙軌橫截面專家訓練 (嚴格區塊時序 OOF 防洩漏) ---
+  -> 總有效橫截面樣本數: 1788865 筆
+  -> 啟動手動 5-Fold 區塊時序 (Expanding Window) 交叉驗證...
+     - 正在訓練時間區塊 Fold 2/5 (嚴格防洩漏) ... 完成！
+     - 正在訓練時間區塊 Fold 3/5 (嚴格防洩漏) ... 完成！
+     - 正在訓練時間區塊 Fold 4/5 (嚴格防洩漏) ... 完成！
+     - 正在訓練時間區塊 Fold 5/5 (嚴格防洩漏) ... 完成！
+  -> 訓練最終全域橫截面模型 (時間衰減加權抽樣版)...
+✅ 個股橫截面 GBDT 訓練與 OOF 機率重組完畢！
+--- 啟動崩盤護欄 GBDT 訓練 (Block 時序 OOF 與 RUSBoost 不平衡防護) ---
+✅ 崩盤護欄 GBDT 訓練 (RUSBoost) 與 OOF 機率產出完畢！
+--- 步驟 5：執行 OOS 區間純淨推論 (Zero-Leakage Inference) ---
+--- 步驟 6：無縫拼接 IS(OOF) 與 OOS 機率矩陣 ---
+--- 步驟 7：資料降維預處理與 SHAP 歸因分析啟動 ---
+  -> 產生時序選股專家 SHAP 分析圖表...
+--- 啟動 TIME 專家 SHAP 歸因分析 (K-Means 加速) ---
+  -> 執行 K-Means 壓縮背景樣本至 100 個質心...
+Starting parallel pool (parpool) using the 'Processes' profile ...
+Connected to parallel pool with 12 workers.
+✅ SHAP 圖表已生成！
+  -> 產生 2022 崩盤護欄 (Crash Guard) SHAP 分析圖表...
+--- 啟動 CRASH 專家 SHAP 歸因分析 (K-Means 加速) ---
+  -> 執行 K-Means 壓縮背景樣本至 100 個質心...
+✅ SHAP 圖表已生成！
+--- 步驟 8：儲存 GBDT_Guards.mat 快取 ---
+💾 GBDT 模型與機率矩陣已存至: /home/andy/Documents/MARI_Quant_System/results/models/GBDT_Guards.mat
+=================================================================
+🎯 [Phase 3] 完美完成。OOF 防護與選股矩陣已就緒，請接著進入 HRL 強化學習！
+=================================================================
+>> 
+
+=================================================================
+🧠 啟動 MARI 系統：CIO 總管動態路由貝氏超參數尋優 (物理鐵律版)
+=================================================================
+ 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
+--- 步驟 1：載入快取與時間軸嚴格對齊 (引入 Opens 矩陣) ---
+--- 啟動 Data Lake 面板資料載入與極速矩陣映射 ---
+ -> 建立基準時間軸 (以 SPY 作為絕對交易日曆)...
+ -> 執行極速矩陣映射 (Bypassing Unstack 效能優化)...
+ -> 啟動多核心 parfor 執行極速矩陣映射 (記憶體防爆版)...
+--- 執行大宇宙數據邊界與品質斷言檢查 ---
+⚠️ 攔截到 9050 筆異常 (報價異常: 1, 真實停牌枯竭: 9049，已排除 Macro 指數)，已強制物理損毀交由下游 omitnan 濾除。
+💾 成功以 SPY 基準時間軸對齊大宇宙資料 (共 504 檔標的，8453 個真實交易日)。
+--- 步驟 2：切分 In-Sample 訓練區間 ---
+--- 步驟 3：定義貝氏最佳化超參數空間 (邊界安全加固版) ---
+  -> 護欄動態邊界鎖定：[0.5302, 0.5802]
+--- 步驟 4：啟動 BayesOpt 尋優引擎 (無假設微型實境模擬器 - i5多核全開) ---
+Copying objective function to workers...
+Done copying objective function to workers.
+|==============================================================================================================================|
+| Iter | Active  | Eval   | Objective   | Objective   | BestSoFar   | BestSoFar   | Guardrail_Cr-| Expert_Time_-| Top_K_Assets |
+|      | workers | result |             | runtime     | (observed)  | (estim.)    | ashProb      | Weight       |              |
+|==============================================================================================================================|
+|    1 |      12 | Best   |      14.383 |     0.49941 |      14.383 |      14.383 |      0.56527 |      0.26561 |           27 |
+|    2 |       2 | Accept |      12.763 |      1.1292 |      9.8463 |       9.873 |      0.54092 |      0.12775 |           18 |
+|    3 |       2 | Accept |      10.336 |     0.94306 |      9.8463 |       9.873 |       0.5678 |      0.81687 |           24 |
+|    4 |       2 | Accept |      10.609 |      1.0933 |      9.8463 |       9.873 |      0.54478 |      0.60545 |           13 |
+|    5 |       2 | Accept |      14.399 |     0.94656 |      9.8463 |       9.873 |      0.57503 |      0.23646 |           23 |
+|    6 |       2 | Accept |      14.637 |      1.0015 |      9.8463 |       9.873 |      0.58011 |      0.16401 |           22 |
+|    7 |       2 | Accept |      14.408 |     0.87391 |      9.8463 |       9.873 |      0.55563 |      0.18183 |           38 |
+|    8 |       2 | Accept |      14.414 |     0.96987 |      9.8463 |       9.873 |       0.5638 |      0.27304 |           36 |
+|    9 |       2 | Accept |      14.175 |     0.81614 |      9.8463 |       9.873 |      0.57488 |      0.16545 |           13 |
+|   10 |       2 | Accept |      11.736 |      1.0265 |      9.8463 |       9.873 |      0.57975 |      0.72257 |           39 |
+|   11 |       2 | Accept |      11.084 |     0.85095 |      9.8463 |       9.873 |      0.56572 |       0.6344 |           13 |
+|   12 |       2 | Best   |      9.8463 |     0.97255 |      9.8463 |       9.873 |      0.56377 |      0.89909 |           35 |
+|   13 |      12 | Accept |      14.318 |     0.20339 |      9.8463 |      9.8466 |      0.55901 |      0.26031 |           22 |
+|   14 |      11 | Best   |      6.1172 |     0.30301 |      6.1172 |      6.1221 |       0.5306 |      0.89982 |           10 |
+|   15 |      11 | Accept |      12.693 |     0.29418 |      6.1172 |      6.1221 |      0.54289 |      0.16003 |           13 |
+|   16 |       4 | Accept |      10.996 |     0.41164 |      6.1172 |      6.1119 |       0.5523 |       0.6728 |           18 |
+|   17 |       4 | Accept |      10.997 |     0.33641 |      6.1172 |      6.1119 |      0.56115 |      0.69646 |           17 |
+|   18 |       4 | Accept |      13.027 |     0.35303 |      6.1172 |      6.1119 |      0.57191 |      0.54074 |           33 |
+|   19 |       4 | Accept |       11.13 |     0.50662 |      6.1172 |      6.1119 |      0.53287 |        0.307 |           17 |
+|   20 |       4 | Accept |      9.7531 |     0.33933 |      6.1172 |      6.1119 |      0.53404 |      0.70499 |           34 |
+|==============================================================================================================================|
+| Iter | Active  | Eval   | Objective   | Objective   | BestSoFar   | BestSoFar   | Guardrail_Cr-| Expert_Time_-| Top_K_Assets |
+|      | workers | result |             | runtime     | (observed)  | (estim.)    | ashProb      | Weight       |              |
+|==============================================================================================================================|
+|   21 |       4 | Accept |      14.197 |     0.45917 |      6.1172 |      6.1119 |      0.56347 |      0.18524 |           14 |
+|   22 |       4 | Accept |      7.5783 |     0.40852 |      6.1172 |      6.1119 |      0.54087 |      0.88931 |           16 |
+|   23 |       4 | Accept |      11.203 |     0.33554 |      6.1172 |      6.1119 |      0.57659 |      0.57519 |           10 |
+|   24 |      11 | Accept |      11.661 |     0.52806 |      6.1172 |      6.1099 |       0.5478 |      0.49719 |           13 |
+|   25 |      11 | Accept |      6.7162 |     0.24328 |      6.1172 |      6.1099 |      0.53035 |      0.89913 |           39 |
+
+__________________________________________________________
+Optimization completed.
+MaxObjectiveEvaluations of 25 reached.
+Total function evaluations: 25
+Total elapsed time: 4.2776 seconds
+Total objective function evaluation time: 15.8453
+
+Best observed feasible point:
+    Guardrail_CrashProb    Expert_Time_Weight    Top_K_Assets
+    ___________________    __________________    ____________
+
+          0.5306                0.89982               10     
+
+Observed objective function value = 6.1172
+Estimated objective function value = 6.1099
+Function evaluation time = 0.30301
+
+Best estimated feasible point (according to models):
+    Guardrail_CrashProb    Expert_Time_Weight    Top_K_Assets
+    ___________________    __________________    ____________
+
+          0.5306                0.89982               10     
+
+Estimated objective function value = 6.1099
+Estimated function evaluation time = 0.55468
+
+--- 步驟 5：提取最佳架構參數並存檔 ---
+
+🏆 【貝氏最佳化尋優結果】 🏆
+  > 最佳 崩盤護欄閥值 (Guardrail) : 0.5306
+  > 最佳 時序專家權重 (Time_W)  : 0.8998
+  > 最佳 集中度標的數 (Top_K)   : 10
+✅ Phase 4 完成！3D 空間超參數已鎖定，請接著執行 Phase 5。
+>> 
+
+=========================================================
+🚀 [Phase 14.20] 啟動 CIO 三軌訓練 (12核心 CPU 極速並列架構)
+=========================================================
+ 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
+ ⚡ [Config] 成功注入 Phase 4 BO 最佳化參數：
+    - 崩盤護欄硬熔斷閾值 : 0.5306
+    - 時序專家權重 (Time_W): 0.8998
+    - 集中度標的數 (Top_K) : 10
+--- 步驟 1：載入全域資料庫與專家選股矩陣 ---
+--- 步驟 2：預計算 CIO 5 維宏觀狀態空間 ---
+--- 步驟 3：實例化三位具備獨立風險偏好的 RL 代理人 ---
+ 🧠 [Agent_PPO] 實例化完成。已鎖定純 CPU 運算模式，準備釋放多核算力。
+ 🧠 [Agent_PPO] 實例化完成。已鎖定純 CPU 運算模式，準備釋放多核算力。
+ 🧠 [Agent_PPO] 實例化完成。已鎖定純 CPU 運算模式，準備釋放多核算力。
+--- 步驟 4：啟動三軌並行強化學習全域訓練 (CPU 多核 Parfor 極速版) ---
+ 📡 SPY 傳感器暖機完成，真實訓練區間：03-Jan-2006 至 31-Dec-2021
+Ep   1 | Aggressive R: -1.78 | Balanced R: -1.36 | Conservative R: -0.44
+Ep  10 | Aggressive R: -2.00 | Balanced R: -1.43 | Conservative R: -0.53
+Ep  20 | Aggressive R: -1.77 | Balanced R: -1.22 | Conservative R: -0.50
+Ep  30 | Aggressive R: -1.35 | Balanced R: -1.16 | Conservative R: -0.43
+Ep  40 | Aggressive R: -1.02 | Balanced R: -0.92 | Conservative R: -0.36
+Ep  50 | Aggressive R: -1.11 | Balanced R: -1.00 | Conservative R: -0.37
+Ep  60 | Aggressive R: -1.19 | Balanced R: -1.01 | Conservative R: -0.44
+Ep  70 | Aggressive R: -0.96 | Balanced R: -0.82 | Conservative R: -0.23
+Ep  80 | Aggressive R: -1.06 | Balanced R: -0.92 | Conservative R: -0.37
+Ep  90 | Aggressive R: -1.03 | Balanced R: -0.88 | Conservative R: -0.35
+Ep 100 | Aggressive R: -1.06 | Balanced R: -1.00 | Conservative R: -0.33
+Ep 110 | Aggressive R: -1.00 | Balanced R: -0.84 | Conservative R: -0.28
+Ep 120 | Aggressive R: -1.25 | Balanced R: -0.98 | Conservative R: -0.41
+Ep 130 | Aggressive R: -1.13 | Balanced R: -0.85 | Conservative R: -0.34
+Ep 140 | Aggressive R: -1.15 | Balanced R: -1.07 | Conservative R: -0.41
+Ep 150 | Aggressive R: -1.17 | Balanced R: -1.01 | Conservative R: -0.46
+Ep 160 | Aggressive R: -0.88 | Balanced R: -0.71 | Conservative R: -0.25
+Ep 170 | Aggressive R: -1.31 | Balanced R: -1.10 | Conservative R: -0.50
+Ep 180 | Aggressive R: -1.21 | Balanced R: -0.90 | Conservative R: -0.46
+Ep 190 | Aggressive R: -0.79 | Balanced R: -0.61 | Conservative R: -0.17
+Ep 200 | Aggressive R: -1.05 | Balanced R: -0.88 | Conservative R: -0.36
+Ep 210 | Aggressive R: -1.02 | Balanced R: -0.89 | Conservative R: -0.38
+Ep 220 | Aggressive R: -0.90 | Balanced R: -0.77 | Conservative R: -0.30
+Ep 230 | Aggressive R: -0.84 | Balanced R: -0.72 | Conservative R: -0.29
+Ep 240 | Aggressive R: -1.00 | Balanced R: -0.78 | Conservative R: -0.30
+Ep 250 | Aggressive R: -1.11 | Balanced R: -0.79 | Conservative R: -0.30
+Ep 260 | Aggressive R: -0.84 | Balanced R: -0.68 | Conservative R: -0.33
+Ep 270 | Aggressive R: -0.99 | Balanced R: -0.81 | Conservative R: -0.41
+Ep 280 | Aggressive R: -1.07 | Balanced R: -0.83 | Conservative R: -0.35
+Ep 290 | Aggressive R: -1.00 | Balanced R: -0.78 | Conservative R: -0.41
+Ep 300 | Aggressive R: -1.28 | Balanced R: -0.90 | Conservative R: -0.38
+Ep 310 | Aggressive R: -0.90 | Balanced R: -0.70 | Conservative R: -0.27
+Ep 320 | Aggressive R: -1.18 | Balanced R: -0.92 | Conservative R: -0.36
+Ep 330 | Aggressive R: -1.00 | Balanced R: -0.72 | Conservative R: -0.31
+Ep 340 | Aggressive R: -0.94 | Balanced R: -0.76 | Conservative R: -0.37
+Ep 350 | Aggressive R: -0.85 | Balanced R: -0.66 | Conservative R: -0.40
+Ep 360 | Aggressive R: -1.00 | Balanced R: -0.73 | Conservative R: -0.35
+Ep 370 | Aggressive R: -1.09 | Balanced R: -0.89 | Conservative R: -0.41
+Ep 380 | Aggressive R: -0.90 | Balanced R: -0.69 | Conservative R: -0.33
+Ep 390 | Aggressive R: -1.43 | Balanced R: -1.06 | Conservative R: -0.49
+Ep 400 | Aggressive R: -1.10 | Balanced R: -0.81 | Conservative R: -0.44
+Ep 410 | Aggressive R: -1.20 | Balanced R: -0.89 | Conservative R: -0.43
+Ep 420 | Aggressive R: -1.14 | Balanced R: -0.77 | Conservative R: -0.33
+Ep 430 | Aggressive R: -1.11 | Balanced R: -0.83 | Conservative R: -0.36
+Ep 440 | Aggressive R: -0.88 | Balanced R: -0.62 | Conservative R: -0.24
+Ep 450 | Aggressive R: -1.43 | Balanced R: -1.03 | Conservative R: -0.44
+Ep 460 | Aggressive R: -1.04 | Balanced R: -0.83 | Conservative R: -0.50
+Ep 470 | Aggressive R: -1.25 | Balanced R: -0.96 | Conservative R: -0.44
+Ep 480 | Aggressive R: -0.83 | Balanced R: -0.64 | Conservative R: -0.24
+Ep 490 | Aggressive R: -1.20 | Balanced R: -0.84 | Conservative R: -0.46
+Ep 500 | Aggressive R: -1.12 | Balanced R: -0.79 | Conservative R: -0.42
+--- 步驟 5：儲存覺醒完成的三軌 CIO 大腦 ---
+✅ Phase 5 訓練完成！大腦已具備真實市場認知。
+>> 
+
+=================================================================
+🚀 [Phase 14.20] 啟動 MARI 嚴格前向滾動回測與動態體制集成引擎
+=================================================================
+ 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
+ ⚡ [Config] 成功注入 Phase 4 BO 最佳化參數：
+    - 崩盤護欄硬熔斷閾值 : 0.5306
+    - 時序專家權重 (Time_W): 0.8998
+    - 集中度標的數 (Top_K) : 10
+--- 步驟 1：載入全域快取與多軌預訓練大腦 ---
+--- 步驟 2：預計算 CIO 5 維狀態空間 (MLP 對齊版) ---
+--- 步驟 3：初始化連續淨值回測沙盒 (無縫模式) ---
+--- 步驟 4：啟動逐日推論與 X光級交易監控 ---
+ 📡 回測正式起點：03-Jan-2006
+[26-Apr-2006] SPY: +0.02% | MARI: +0.00% | 現金: 100.0% | 持股:  0 檔 | 累計淨值: 1.00
+[27-Apr-2007] SPY: -0.08% | MARI: +0.00% | 現金: 100.0% | 持股:  0 檔 | 累計淨值: 1.00
+[28-Apr-2008] SPY: +0.02% | MARI: +0.00% | 現金: 100.0% | 持股:  0 檔 | 累計淨值: 1.00
+[28-Apr-2009] SPY: -0.31% | MARI: -1.48% | 現金:  50.2% | 持股: 10 檔 | 累計淨值: 0.60
+[28-Apr-2010] SPY: +0.76% | MARI: +0.00% | 現金: 100.0% | 持股:  0 檔 | 累計淨值: 0.24
+[27-Apr-2011] SPY: +0.65% | MARI: -0.14% | 現金:  50.0% | 持股: 10 檔 | 累計淨值: 0.19
+[26-Apr-2012] SPY: +0.70% | MARI: +0.00% | 現金: 100.0% | 持股:  0 檔 | 累計淨值: 0.14
+[30-Apr-2013] SPY: +0.24% | MARI: -0.44% | 現金:  50.1% | 持股: 10 檔 | 累計淨值: 0.05
+
+🚨 [03-Jan-2022] 跨越時間邊界，正式進入 Out-of-Sample 盲測區間！
+--- 步驟 5：嚴格 IS / OOS 績效分離結算 ---
+
+=======================================================
+📊 MARI Quant System 嚴格分離盲測報告
+=======================================================
+[In-Sample: 03-Jan-2006 to 31-Dec-2021]
+  > MARI : 總報酬   -95.03% | MDD  -95.03% | 夏普 -2.99
+  > SPY  : 總報酬   413.67% | MDD  -55.19% | 夏普  0.62
+-------------------------------------------------------
+[Out-of-Sample: 03-Jan-2022 to 28-Aug-2026] ☢️ 真實盲測
+  > MARI : 總報酬     0.00% | MDD    0.00% | 夏普  0.00
+  > SPY  : 總報酬    71.55% | MDD  -24.50% | 夏普  0.76
+=======================================================
+--- 步驟 6：生成機構級視覺化報表 ---
+>> 
