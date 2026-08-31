@@ -1,12 +1,12 @@
 classdef Config < handle
     % =========================================================================
     % 類別: Config (系統全域超參數與路徑配置中心)
-    % 升級: Phase 14.20 (★ 統一交易衝擊成本模型、新增全域隨機種子與單一真理來源)
+    % 升級: Phase 14.25 (★ 10維宏觀特徵、P2升級15維微觀特徵、28維全域特徵總數校驗)
     % 職責: 作為 MARI 量化系統的超參數與組態單一真理來源 (Single Source of Truth)
     % =========================================================================
     
     % ---------------------------------------------------------
-    % 系統路徑 (設定為對外唯讀 SetAccess = private，防止腳本意外覆寫導致崩潰)
+    % 系統路徑 (設定為對外唯讀 SetAccess = private，防止腳本意外覆寫)
     % ---------------------------------------------------------
     properties (SetAccess = private)
         ProjectRoot      % 專案根目錄路徑
@@ -31,50 +31,55 @@ classdef Config < handle
     % ---------------------------------------------------------
     properties
         % --- 1. 特徵工程與雙軌萃取器 (Phase 1 & 2) ---
-        NumMacroFeatures = 4     % 宏觀特徵維度 (VIX_Proxy, R20, R60, Breadth)
-        NumMicroFeatures = 15    % 微觀特徵維度 (動能、價量、技術指標)
+        % ★ Phase 14.25 修正：擴充至 10 維 (4項SPY衍生 + 6項FRED宏觀總經指標)
+        NumMacroFeatures = 10    % 宏觀特徵維度 (VIX_Proxy, R20, R60, Breadth, Real_VIX, VRP, T10Y2Y, HY, DGS10, UNRATE)
+        NumMicroFeatures = 15    % 微觀特徵維度 (含特質波動度、Amihud流動性、52週新高、MACD柱狀圖)
         NumCointFeatures = 3     % 協整相對特徵 (Beta, Corr, Relative Strength)
-        % 總節點特徵數 = 4 + 15 + 3 = 22 維
+        % 總節點特徵數 = 10 + 15 + 3 = 28 維
         
         SeqLen = 60              % LSTM 時序專家回溯視窗長度 (對齊一季 60 個交易日)
         Lookback = 60            % 相關性圖譜與 IC 檢定的歷史滾動視窗
         
+        % 雙軌萃取器正則化超參數
+        DL_DropoutRate = 0.2     % Transformer-LSTM Dropout 機率 (抑制過擬合)
+        DL_L2_Regularization = 1e-4 % 權重衰減係數 (Weight Decay)
+        DL_EarlyStoppingPatience = 5 % 早停容忍輪數
+        
         % --- 2. VQ-VAE 向量量化降噪器 (Phase 2) ---
-        % ★ 核心修復：修正維度反轉，擴充編碼簿容量以對應樣本空間
-        VQ_DLatent = 3           % 潛在空間維度 (對齊輸入特徵的真實資訊量，杜絕維度浪費)
-        VQ_KCodebook = 256       % 編碼簿大小 (擴充至 256，精細切割市場的微觀動能狀態)
-        VQ_Gamma = 0.99          % EMA 衰減率 (控制編碼簿更新的平滑度)
-        VQ_DHidden = 128         % VQ-VAE 隱藏層神經元數量 (增加非線性映射寬度)
+        VQ_DLatent = 3           % 潛在空間維度
+        VQ_KCodebook = 256       % 編碼簿大小
+        VQ_Gamma = 0.99          % EMA 衰減率
+        VQ_DHidden = 128         % 隱藏層神經元數量
         
         % --- 3. 顯性風險預測流 (GBDT Experts - Phase 3) ---
-        GBDT_NumCycles = 50      % 決策樹森林的基學習器數量 (對齊 5-Fold OOF 訓練設定)
+        GBDT_NumCycles = 50      % 決策樹森林基學習器數量
         GBDT_LearnRate = 0.1     % LogitBoost 學習率
-        GBDT_MaxDepth = 5        % 單一決策樹的最大深度 (限制過度擬合)
+        GBDT_MaxDepth = 5        % 單一決策樹最大深度
         
         % --- 4. HRL 總管狀態與決策空間 (Phase 5) ---
-        CIO_SeqLen = 10          % 總管大腦的歷史記憶長度 (LSTM 輸入的 T 維度)
+        CIO_SeqLen = 10          % 總管大腦的歷史記憶長度
         CIO_StateDim = 5         % 總管宏觀狀態維度 [P_crash, SPY_Ret20, Vol20, MDD252, PrevCash]
         CIO_ActionDim = 3        % 總管動作輸出維度 [w_time, w_space, target_cash]
         
         % --- 5. 交易摩擦與護欄閾值 (實盤物理環境) ---
-        HRL_LR = 0.0005          % 強化學習大腦的基礎學習率 (A2C/PPO/DDPG 基準)
-        MoE_FrictionMask = 0.005 % 固定機構級慣性摩擦力 0.5% (微小權重變動將被環境遮罩忽略)
+        HRL_LR = 0.0005          % 強化學習大腦的基礎學習率
+        MoE_FrictionMask = 0.005 % 固定機構級慣性摩擦力 0.5%
         
-        % ★ 計畫書修正 (問題 8-2 🟠 P1)：全域統一交易成本模型係數 (集中定義真理來源)
+        % 全域統一交易成本模型係數
         BaseFrictionFee = 0.0005 % 基礎固定手續費 0.05%
-        SlippageVolCoeff = 0.10  % 波動率動態衝擊成本係數 (統一 BO、RL 訓練與回測假設)
+        SlippageVolCoeff = 0.10  % 波動率動態衝擊成本係數
         
-        % ★ BO 最佳化超參數 (預設值，將在腳本初始化時被 loadBOParams 動態覆寫)
+        % BO 最佳化超參數 (將在腳本初始化時被 loadBOParams 動態覆寫)
         Guardrail_CrashProb = 0.85 
         Expert_Time_Weight = 0.50  % 預設時序專家權重 50%
         Top_K_Assets = 20          % 預設持股集中度 20 檔
         
         % --- 6. 強化學習演算法 (RL Hyperparameters) ---
-        HRL_Epochs = 500         % 強化學習平行滾動訓練的總 Epoch 數
+        HRL_Epochs = 500         % 強化學習平行滾動訓練總 Epoch 數
         HRL_Gamma = 0.96
         
-        % --- 7. 工程衛生與隨機種子 (問題 P3-1 ⚪ P3) ---
-        RNG_Seed = 42            % 全域隨機種子 (確保隨機抽樣、RL 訓練與回測可重現)
+        % --- 7. 工程衛生與隨機種子 ---
+        RNG_Seed = 42            % 全域隨機種子 (確保實驗可重現)
     end
     
     methods
@@ -82,12 +87,10 @@ classdef Config < handle
         % 建構子：初始化路徑、建立目錄、載入宇宙與超參數
         % =========================================================
         function obj = Config()
-            % 取得當下腳本路徑，向上推導出專案根目錄
             currentPath = fileparts(mfilename('fullpath'));
             if isempty(currentPath), currentPath = pwd; end
             obj.ProjectRoot = fileparts(currentPath);
             
-            % 防呆機制：確保 ProjectRoot 永遠精準指向專案根目錄 (判斷是否存在 data 資料夾)
             if ~exist(fullfile(obj.ProjectRoot, 'data'), 'dir')
                 obj.ProjectRoot = fullfile(obj.ProjectRoot, '..');
             end
@@ -99,13 +102,13 @@ classdef Config < handle
             obj.ModelDir    = fullfile(obj.ProjectRoot, 'results', 'models');
             obj.ResultDir   = fullfile(obj.ProjectRoot, 'results', 'reports');
             
-            % 自動創建遺失的基礎目錄，確保 I/O 寫入不報錯
+            % 自動創建目錄
             folders = {obj.DataDir, obj.CacheDir, obj.DataLakeDir, obj.ModelDir, obj.ResultDir};
             for i = 1:length(folders)
                 if ~exist(folders{i}, 'dir'), mkdir(folders{i}); end
             end
             
-            % 啟動初始化程序：載入大宇宙清單與外部最佳化參數
+            % 啟動初始化程序
             obj.loadUniverse();
             obj.loadBOParams();
         end
@@ -114,21 +117,17 @@ classdef Config < handle
         % 函數：loadUniverse (動態大宇宙解析器)
         % =========================================================
         function loadUniverse(obj)
-            % 指向由 Python 爬蟲維基百科生成的動態宇宙 CSV
             universePath = fullfile(obj.DataDir, 'crawlers', 'us_universe.csv');
             
             if isfile(universePath)
-                % 自動偵測 CSV 匯入格式
                 opts = detectImportOptions(universePath);
                 
-                % 強制將 'Type' 欄位轉為字元陣列，避免 Categorical 處理錯誤
                 if ismember('Type', opts.VariableNames)
                     opts = setvartype(opts, 'Type', 'char');
                 end
                 
                 universeTable = readtable(universePath, opts);
                 
-                % ★ 核心修復：精準過濾 Type 為 'Equity' 的純股票
                 if ismember('Type', universeTable.Properties.VariableNames)
                     valid_mask = strcmp(strtrim(universeTable.Type), 'Equity');
                     microTable = universeTable(valid_mask, :);
@@ -136,14 +135,12 @@ classdef Config < handle
                     microTable = universeTable(~contains(universeTable.Ticker, {'^VIX', 'CL=F', '^TNX', 'TLT', 'GLD', 'IEF'}), :);
                 end
                 
-                % 寫入屬性
                 obj.IdxTickers = strtrim(microTable.Ticker');
                 obj.IdxNames   = strtrim(microTable.Ticker');
                 obj.NumTickers = length(obj.IdxTickers);
                 
                 fprintf(' 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 %d 檔純 Equity 標的)\n', obj.NumTickers);
             else
-                % 萬一爬蟲失敗，啟動系統防呆預設名單
                 warning('⚠️ 找不到 us_universe.csv，系統退回預設防呆五星宇宙。');
                 obj.IdxNames   = {'SOXX', 'QQQ', 'SPY', 'DIA', 'IEF'};
                 obj.IdxTickers = {'SOXX', 'QQQ', 'SPY', 'DIA', 'IEF'};
@@ -153,7 +150,6 @@ classdef Config < handle
         
         % =================================================================
         % 函數：loadBOParams (貝氏尋優參數熱更新)
-        % 職責：從 Phase 4 讀取最佳化的崩盤護欄閾值，實現參數閉環
         % =================================================================
         function loadBOParams(obj)
             boPath = fullfile(obj.ModelDir, 'BO_Hyperparameters.mat');
