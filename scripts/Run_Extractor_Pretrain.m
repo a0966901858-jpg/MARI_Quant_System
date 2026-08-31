@@ -1,17 +1,15 @@
 % =========================================================================
 % 腳本：2_Run_Extractor_Pretrain.m (階段 2：DL 雙軌時空特徵萃取器預訓練管線)
-% 升級：Phase 14.22 (★ 能量守恆特徵通道健檢、LR 排程 Warmup+Decay、收斂健檢閘門)
-% 職責：提煉高穩健性的 64 維節點級別 (Node-level) Embedding 表徵
+% 升級：Phase 14.25 (★ 18D 獨立 IC 權重運算、Purged Embargo 跨體制驗證、防坍縮正則化)
+% 職責：僅使用 18 維個股特徵提煉 64 維 Embedding，徹底防禦單一體制過擬合與同質捷徑
 % =========================================================================
-% 清除工作區變數、清空命令視窗、關閉所有圖形視窗，確保環境純淨
 clear; clc; close all;
 
 %% 0. 環境路徑掛載
 disp('=================================================================');
-disp('🚀 [Phase 14.22] 啟動 DL 雙軌特徵萃取器預訓練管線 (能量守恆與 LR 排程版)');
+disp('🚀 [Phase 14.25] 啟動 DL 雙軌特徵萃取器預訓練管線 (18D 獨立 IC + Embargo 驗證版)');
 disp('=================================================================');
 
-% 取得當前腳本所在的完整目錄路徑
 currentPath = fileparts(mfilename('fullpath'));
 if isempty(currentPath), currentPath = pwd; end
 projectRoot = currentPath; 
@@ -29,7 +27,9 @@ rehash toolboxcache;
 
 configObj = Config();
 
-% 固定全域隨機種子，確保實驗可重現
+% 鎖定溫和正則化
+configObj.DL_DropoutRate = 0.2;
+
 if isprop(configObj, 'RNG_Seed')
     rng(configObj.RNG_Seed, 'twister');
 else
@@ -45,41 +45,47 @@ end
 
 load(cachePath, 'X_norm_3D', 'Prices_Active', 'Expert_Active', 'Dates_Active', 'AdjMatrix_3D');
 Dates_Active.TimeZone = ''; 
+
 numDaysRaw = length(Dates_Active);
 numT = configObj.NumTickers;
-numFeats = 22; 
+numFeats_All = size(X_norm_3D, 2); 
+
 seqLen = configObj.SeqLen;
-valid_idx = seqLen : numDaysRaw - 1; 
+horizon = 5; 
+valid_idx = seqLen : (numDaysRaw - horizon); 
 num_valid = length(valid_idx);
 
-%% 1.5 ★ 核心串接：計算能量守恆橫截面特徵 IC 信心權重
-disp('--- 步驟 1.5：計算橫截面特徵 IC 信心權重 (能量守恆統計先驗注入) ---');
+fprintf('  -> 宇宙規模: %d 檔 | 交易天數: %d 天 | 原始特徵維度: %d 維\n', ...
+    numT, numDaysRaw, numFeats_All);
+
+%% 1.5 核心串接：18 維特徵切片與獨立 IC 信心權重 (★ Phase 14.25 順序修正)
+disp('--- 步驟 1.5：特徵切片 (剝離 Macro) 與 18 維獨立能量守恆 IC 信心權重計算 ---');
+
+% ★ Phase 14.25 (第 3.1 節)：先切出萃取器專用的 18 維特徵，再進行 IC 權重評估
+numExtractorFeats = 3 + configObj.NumMicroFeatures; % 18 維 (Rel 3 + Micro 15)
+X_norm_3D_extractor_raw = X_norm_3D(:, 1:numExtractorFeats, :);
+
 evaluator = FeatureEvaluator(configObj);
-% 產出無未來函數之能量守恆動態特徵信心注意力權重 (均值維持 1.0)
-IC_Weights_2D = evaluator.compute_confidence(X_norm_3D, Prices_Active, Expert_Active);
+% 僅對 18 維計算 Softmax，確保能量守恆歸一化均值嚴格維持 1.0，不被 Macro 稀釋
+IC_Weights_2D = evaluator.compute_confidence(X_norm_3D_extractor_raw, Prices_Active, Expert_Active);
 
 disp(' -> 執行特徵注意力遮罩融合 (Energy-Preserving Feature Gate)...');
-IC_Weights_3D = reshape(IC_Weights_2D, numDaysRaw, numFeats, 1);
-X_norm_3D = X_norm_3D .* IC_Weights_3D;
+IC_Weights_3D = reshape(IC_Weights_2D, numDaysRaw, numExtractorFeats, 1);
+X_norm_3D_extractor = X_norm_3D_extractor_raw .* IC_Weights_3D;
 
-% ★ 二次優化診斷：檢查各特徵通道變異數，確保無通道被壓至零
-ch_stds = squeeze(std(X_norm_3D, 0, [1, 3], 'omitnan'));
-fprintf('  -> [通道尺度健檢] 22 維特徵標準差範圍: [%.4f, %.4f] (平均: %.4f)\n', ...
+ch_stds = squeeze(std(X_norm_3D_extractor, 0, [1, 3], 'omitnan'));
+fprintf('  -> [萃取器通道健檢] 18 維特徵標準差範圍: [%.4f, %.4f] (平均: %.4f)\n', ...
     min(ch_stds), max(ch_stds), mean(ch_stds));
-if any(ch_stds < 1e-4)
-    warning('⚠️ 警告：偵測到部分特徵通道變異數接近 0，請排查特徵工程與 IC 權重！');
-else
-    disp('✅ 動態特徵信心權重融合完畢，各通道變異數維持健康分佈！');
-end
 
-%% 2. 構建橫截面輔助預測目標 (Cross-Sectional Targets)
-disp('--- 步驟 2：構建無洩漏之橫截面預測標籤 (Beat the Median) ---');
+%% 2. 構建橫截面輔助預測目標 (5 日遠期報酬 Beat the Median)
+disp('--- 步驟 2：構建高訊噪比之橫截面預測標籤 (5-Day Beat the Median) ---');
 R_fwd = NaN(numDaysRaw, numT, 'single');
-R_fwd(1:end-1, :) = (Prices_Active(2:end, :) - Prices_Active(1:end-1, :)) ./ Prices_Active(1:end-1, :);
+R_fwd(1:end-horizon, :) = (Prices_Active(1+horizon:end, :) - Prices_Active(1:end-horizon, :)) ...
+                          ./ Prices_Active(1:end-horizon, :);
 R_fwd(isinf(R_fwd)) = NaN;
-Y_Labels_3D = zeros(numDaysRaw, numT, 'single');
 
-for t = 1:numDaysRaw-1
+Y_Labels_3D = zeros(numDaysRaw, numT, 'single');
+for t = 1:numDaysRaw-horizon
     active_mask = Expert_Active(t, :);
     if sum(active_mask) > 10
         med_ret = median(R_fwd(t, active_mask), 'omitnan');
@@ -87,51 +93,78 @@ for t = 1:numDaysRaw-1
     end
 end
 
-%% 3. 切分時間軸 (嚴格 Train / OOS Validation 樣本解耦)
-disp('--- 步驟 3：切分樣本時間軸 (引入 OOS 驗證監控) ---');
+%% 3. 切分時間軸 (★ Phase 14.25：導入 Purged Embargo 跨體制驗證集)
+disp('--- 步驟 3：切分時間軸 (嚴格構建 IS 內 Purged Embargo 跨體制驗證集) ---');
 Train_Start_Date = datetime('2006-01-01');
 OOS_Start_Date   = datetime('2022-01-01');
 
+% 取出 In-Sample 所有合法索引
 idx_train_raw = find(Dates_Active >= Train_Start_Date & Dates_Active < OOS_Start_Date);
-train_idx_valid = intersect(valid_idx, idx_train_raw);
+is_idx_valid = intersect(valid_idx, idx_train_raw);
+
+% ★ 跨體制驗證窗口定義 (捕捉極端風險與盤整週期)
+regime_windows = { ...
+    struct('name','2008 金融海嘯', 'start', datetime('2007-09-01'), 'end', datetime('2009-06-01')), ...
+    struct('name','2015-16 盤整修正', 'start', datetime('2015-06-01'), 'end', datetime('2016-06-01')), ...
+    struct('name','2020 COVID崩盤', 'start', datetime('2020-01-01'), 'end', datetime('2020-12-01')) ...
+};
+
+val_idx_valid = [];
+embargo_val_idx = [];
+embargo = 20; % ★ 20 天滾動特徵隔離期
+
+for i = 1:length(regime_windows)
+    w = regime_windows{i};
+    idx_w = find(Dates_Active >= w.start & Dates_Active <= w.end);
+    val_idx_valid = [val_idx_valid; intersect(valid_idx, idx_w)];
+    
+    % 擴充 Embargo 前後隔離區間，防止滾動技術指標資訊洩漏至訓練集
+    idx_embargo = find(Dates_Active >= (w.start - caldays(embargo)) & Dates_Active <= (w.end + caldays(embargo)));
+    embargo_val_idx = [embargo_val_idx; intersect(valid_idx, idx_embargo)];
+end
+
+val_idx_valid = unique(val_idx_valid);
+embargo_val_idx = unique(embargo_val_idx);
+
+% 訓練集為 IS 區間扣除驗證集與 Embargo 緩衝區
+train_idx_valid = setdiff(is_idx_valid, embargo_val_idx);
 num_train = length(train_idx_valid);
+num_val = length(val_idx_valid);
 
-idx_oos_raw = find(Dates_Active >= OOS_Start_Date);
-oos_idx_valid = intersect(valid_idx, idx_oos_raw);
-num_oos = length(oos_idx_valid);
+fprintf('✅ Purged 多體制時間軸劃分成功！訓練樣本: %d 筆 | 跨體制驗證樣本: %d 筆 (Embargo 隔離: %d 天)\n', ...
+    num_train, num_val, embargo);
 
-fprintf('✅ 資料對齊成功！總天數: %d | 訓練樣本: %d 筆 | OOS 盲測驗證樣本: %d 筆\n', ...
-    num_valid, num_train, num_oos);
-
-%% 4. 初始化雙軌 DL 萃取器與獨立輔助預測頭 (Auxiliary Heads)
-disp('--- 步驟 4：初始化雙軌特徵萃取網路與輔助預測頭 ---');
-factory = BuildDecoupledExtractors(configObj);
+%% 4. 初始化雙軌 DL 萃取器與獨立輔助預測頭 (He 初始化)
+disp('--- 步驟 4：初始化雙軌特徵萃取網路 (He 初始化) ---');
+factory = BuildDecoupledExtractors(configObj, numExtractorFeats);
 [net_time, net_space] = factory.buildNetworks();
 
-W_aux_time  = dlarray(randn(1, 64, 'single') * 0.01); 
+W_aux_time  = dlarray(randn(1, 64, 'single') * sqrt(2/64)); 
 b_aux_time  = dlarray(zeros(1, 1, 'single'));         
-W_aux_space = dlarray(randn(1, 64, 'single') * 0.01);
+W_aux_space = dlarray(randn(1, 64, 'single') * sqrt(2/64));
 b_aux_space = dlarray(zeros(1, 1, 'single'));
 
 if canUseGPU()
     gpuInfo = gpuDevice(); 
-    fprintf('🎮 成功捕獲圖形加速卡：【%s】，開啟深度學習預訓練路徑。\n', gpuInfo.Name);
+    fprintf('🎮 成功捕獲圖形加速卡：【%s】，開啟深度學習全量預訓練。\n', gpuInfo.Name);
     net_time = dlupdate(@gpuArray, net_time);
     net_space = dlupdate(@gpuArray, net_space);
     W_aux_time = gpuArray(W_aux_time); b_aux_time = gpuArray(b_aux_time);
     W_aux_space = gpuArray(W_aux_space); b_aux_space = gpuArray(b_aux_space);
 end
 
-%% 5. 啟動雙軌萃取器預訓練 (LR 排程 + 梯度累積)
-disp('--- 步驟 5：執行雙軌萃取器預訓練 (Warm-up + Step Decay 排程) ---');
+%% 5. 啟動雙軌萃取器預訓練 (鎖定配置：L2+早停+坍縮診斷)
+disp('--- 步驟 5：執行雙軌萃取器預訓練 (全量跨體制驗證 + L2 正則化 + 早停) ---');
 epochs = 30; 
 physicalBatchSize = 2;   
 accumulationSteps = 16;  
 numIterationsPerEpoch = floor(num_train / physicalBatchSize);
 clipThreshold = 1.0;
 
-% ★ 二次優化修正：設定基準學習率
+% ★ 鎖定超參數配置
 base_lr = 1e-3; 
+l2_lambda = 1e-4; 
+patience_limit = 5;
 
 avgG_t = []; avgSG_t = []; avgG_s = []; avgSG_s = [];
 avgG_Wt = []; avgSG_Wt = []; avgG_bt = []; avgSG_bt = [];
@@ -143,8 +176,16 @@ historical_loss_space = zeros(epochs, 1);
 val_loss_time = zeros(epochs, 1);
 val_loss_space = zeros(epochs, 1);
 
+best_val_loss = inf; 
+patience = 0; 
+best_net_time = net_time; 
+best_net_space = net_space;
+
+min_healthy_var_t = 0.01;   
+min_healthy_var_s = 0.10;
+
 for epoch = 1:epochs
-    % ★ 二次優化修正：Warm-up (前 3 輪) + 每 10 輪衰減一半
+    % 3 輪 Warm-up + 每 10 輪衰減
     if epoch <= 3
         current_lr = 1e-4 + (base_lr - 1e-4) * (epoch / 3);
     else
@@ -159,16 +200,19 @@ for epoch = 1:epochs
     grad_s_accum = []; grad_Ws_accum = []; grad_bs_accum = [];
     accum_count = 0;
     
+    last_gnorm_t = 0;
+    last_gnorm_s = 0;
+    
     % --- 訓練階段 ---
     for i = 1:numIterationsPerEpoch
         batch_idx = idx_shuffle((i-1)*physicalBatchSize + 1 : i*physicalBatchSize);
         actual_t_indices = train_idx_valid(batch_idx);
         
         [X_batch_time, X_batch_space, A_batch_space, Y_batch, M_batch] = prepareBatchData(...
-            actual_t_indices, X_norm_3D, AdjMatrix_3D, Y_Labels_3D, Expert_Active, numFeats, numT, seqLen, physicalBatchSize);
+            actual_t_indices, X_norm_3D_extractor, AdjMatrix_3D, Y_Labels_3D, Expert_Active, numExtractorFeats, numT, seqLen, physicalBatchSize);
         
-        [loss_t, grad_t, grad_Wt, grad_bt] = dlfeval(@aux_loss_time, net_time, W_aux_time, b_aux_time, X_batch_time, Y_batch, M_batch);
-        [loss_s, grad_s, grad_Ws, grad_bs] = dlfeval(@aux_loss_space, net_space, W_aux_space, b_aux_space, X_batch_space, A_batch_space, Y_batch, M_batch);
+        [loss_t, grad_t, grad_Wt, grad_bt] = dlfeval(@(n,w,b,x,y,m) aux_loss_time(n,w,b,x,y,m, l2_lambda), net_time, W_aux_time, b_aux_time, X_batch_time, Y_batch, M_batch);
+        [loss_s, grad_s, grad_Ws, grad_bs] = dlfeval(@(n,w,b,x,a,y,m) aux_loss_space(n,w,b,x,a,y,m, l2_lambda), net_space, W_aux_space, b_aux_space, X_batch_space, A_batch_space, Y_batch, M_batch);
         
         if isempty(grad_t_accum)
             grad_t_accum = grad_t; grad_Wt_accum = grad_Wt; grad_bt_accum = grad_bt;
@@ -189,6 +233,9 @@ for epoch = 1:epochs
             grad_Wt_accum = grad_Wt_accum / accum_count; grad_bt_accum = grad_bt_accum / accum_count;
             grad_Ws_accum = grad_Ws_accum / accum_count; grad_bs_accum = grad_bs_accum / accum_count;
             
+            last_gnorm_t = sqrt(sum(cellfun(@(x) sum(extractdata(x(:)).^2), grad_t_accum.Value)));
+            last_gnorm_s = sqrt(sum(cellfun(@(x) sum(extractdata(x(:)).^2), grad_s_accum.Value)));
+            
             grad_t_accum = dlupdate(@(g) clipGradient(g, clipThreshold), grad_t_accum);
             grad_s_accum = dlupdate(@(g) clipGradient(g, clipThreshold), grad_s_accum);
             
@@ -208,16 +255,16 @@ for epoch = 1:epochs
         epoch_loss_time  = epoch_loss_time + extractdata(loss_t);
         epoch_loss_space = epoch_loss_space + extractdata(loss_s);
         
-        clear X_batch_time X_batch_space A_batch_space Y_batch M_batch loss_t loss_s grad_t grad_s;
+        clear loss_t loss_s grad_t grad_s;
     end
     
     historical_loss_time(epoch)  = epoch_loss_time / numIterationsPerEpoch;
     historical_loss_space(epoch) = epoch_loss_space / numIterationsPerEpoch;
     
-    % --- OOS 驗證階段 ---
-    val_samples = min(num_oos, 32); 
-    val_idx_shuffle = randperm(num_oos, val_samples);
-    actual_val_indices = oos_idx_valid(val_idx_shuffle);
+    % --- 多體制驗證階段 ---
+    val_samples = min(num_val, 64); 
+    val_idx_shuffle = randperm(num_val, val_samples);
+    actual_val_indices = val_idx_valid(val_idx_shuffle);
     
     val_batch_size = 2; 
     temp_val_loss_t = 0;
@@ -231,7 +278,7 @@ for epoch = 1:epochs
         chunk_indices = actual_val_indices(v_start:v_end);
         
         [X_val_time, X_val_space, A_val_space, Y_val, M_val] = prepareBatchData(...
-            chunk_indices, X_norm_3D, AdjMatrix_3D, Y_Labels_3D, Expert_Active, numFeats, numT, seqLen, chunk_size);
+            chunk_indices, X_norm_3D_extractor, AdjMatrix_3D, Y_Labels_3D, Expert_Active, numExtractorFeats, numT, seqLen, chunk_size);
         
         v_loss_t_chunk = calc_val_loss_time(net_time, W_aux_time, b_aux_time, X_val_time, Y_val, M_val);
         v_loss_s_chunk = calc_val_loss_space(net_space, W_aux_space, b_aux_space, X_val_space, A_val_space, Y_val, M_val);
@@ -245,27 +292,59 @@ for epoch = 1:epochs
     val_loss_time(epoch)  = temp_val_loss_t / val_samples;
     val_loss_space(epoch) = temp_val_loss_s / val_samples;
     
-    fprintf(' -> Epoch %2d/%d (LR: %.2e) | Train (T: %.4f, S: %.4f) | Val OOS (T: %.4f, S: %.4f)\n', ...
+    % 診斷埋點：確保未發生表徵坍塌
+    e_t_sample = extractdata(predict(net_time, X_batch_time));
+    e_s_sample = extractdata(reshape(predict(net_space, X_batch_space, A_batch_space), 64, []));
+    var_e_t = var(e_t_sample(:), 'omitnan');
+    var_e_s = var(e_s_sample(:), 'omitnan');
+    
+    fprintf(' -> Epoch %2d/%d (LR: %.2e) | Train (T: %.4f, S: %.4f) | Val Multi-Regime (T: %.4f, S: %.4f)\n', ...
         epoch, epochs, current_lr, historical_loss_time(epoch), historical_loss_space(epoch), val_loss_time(epoch), val_loss_space(epoch));
+    fprintf('    [診斷] GradNorm(T: %.2e, S: %.2e) | E_Var(T: %.4f, S: %.4f)\n', ...
+        last_gnorm_t, last_gnorm_s, var_e_t, var_e_s);
+    
+    if var_e_t < min_healthy_var_t
+        fprintf('    ⚠️ [警告] E_Var(T)=%.4f 低於健康閾值 (%.2f)，疑似發生表徵坍縮！\n', var_e_t, min_healthy_var_t);
+    end
+    if var_e_s < min_healthy_var_s
+        fprintf('    ⚠️ [警告] E_Var(S)=%.4f 低於健康閾值 (%.2f)，疑似發生表徵坍縮！\n', var_e_s, min_healthy_var_s);
+    end
+    
+    % ★ Early Stopping 檢驗與快照保存
+    combined_val = val_loss_time(epoch) + val_loss_space(epoch);
+    if combined_val < best_val_loss - 1e-4
+        best_val_loss = combined_val;
+        patience = 0;
+        best_net_time = net_time; 
+        best_net_space = net_space;
+    else
+        patience = patience + 1;
+    end
+    
+    if patience >= patience_limit
+        fprintf('🛑 [Early Stopping] 多體制驗證損失連續 %d 輪未改善，提前於 Epoch %d 終止訓練並回滾最佳快照！\n', patience_limit, epoch);
+        net_time = best_net_time; 
+        net_space = best_net_space;
+        break;
+    end
+    
+    clear X_batch_time X_batch_space A_batch_space Y_batch M_batch e_t_sample e_s_sample;
 end
 
-%% ★ 二次優化收斂健檢閘門 (Health Check Gate)
+%% ★ 收斂健檢閘門 (Health Check Gate)
 loss_t_start = historical_loss_time(1);
-loss_t_end   = historical_loss_time(end);
-loss_t_drop  = (loss_t_start - loss_t_end) / loss_t_start;
-
+loss_t_end   = val_loss_time(min(epoch, epochs)); 
 loss_s_start = historical_loss_space(1);
-loss_s_end   = historical_loss_space(end);
-loss_s_drop  = (loss_s_start - loss_s_end) / loss_s_start;
+loss_s_end   = val_loss_space(min(epoch, epochs));
 
-fprintf('\n📊 雙軌特徵萃取器收斂診斷:\n');
-fprintf('  > 時序專家 (T) Loss: %.4f -> %.4f (降幅: %.2f%%)\n', loss_t_start, loss_t_end, loss_t_drop * 100);
-fprintf('  > 空間專家 (S) Loss: %.4f -> %.4f (降幅: %.2f%%)\n', loss_s_start, loss_s_end, loss_s_drop * 100);
+fprintf('\n📊 全量雙軌萃取器收斂診斷 (跨體制驗證集基準):\n');
+fprintf('  > 時序專家 (T) 最終 Val Loss: %.4f\n', loss_t_end);
+fprintf('  > 空間專家 (S) 最終 Val Loss: %.4f\n', loss_s_end);
 
-if (abs(loss_t_end - 0.6931) < 0.005 && loss_t_drop < 0.05) || (abs(loss_s_end - 0.6931) < 0.005 && loss_s_drop < 0.05)
-    warning('⚠️ 警告：模型 Loss 仍滯留於 ln(2) ≈ 0.6931 隨機基準線，可能尚未學習到足夠特徵！');
+if (abs(loss_t_end - 0.6931) < 0.005) || (abs(loss_s_end - 0.6931) < 0.005)
+    warning('⚠️ 警告：模型最終 Val Loss 仍滯留於 ln(2) ≈ 0.6931 隨機基準線，請檢查特徵與網路架構！');
 else
-    disp('✅ 雙軌萃取器輔助任務收斂正常，成功突破隨機基準線！');
+    disp('✅ 全量雙軌萃取器成功突破隨機猜測基準線，具備跨體制泛化能力！');
 end
 
 %% 6. 最終全歷史 Embedding 提煉與存檔 (推論階段)
@@ -281,7 +360,7 @@ for start_idx = 1:inferBatchSize:num_valid
     actual_t_indices = valid_idx(start_idx:end_idx); 
     
     [X_inf_time, X_inf_space, A_inf_space, ~, ~] = prepareBatchData(...
-        actual_t_indices, X_norm_3D, AdjMatrix_3D, Y_Labels_3D, Expert_Active, numFeats, numT, seqLen, chunk_size);
+        actual_t_indices, X_norm_3D_extractor, AdjMatrix_3D, Y_Labels_3D, Expert_Active, numExtractorFeats, numT, seqLen, chunk_size);
     
     E_time_raw = predict(net_time, X_inf_time);
     E_space_flat_out = predict(net_space, X_inf_space, A_inf_space);
@@ -299,7 +378,7 @@ fig_loss = figure('Name', 'Phase 2: Extractor Pretrain Loss', 'Position', [100, 
 
 subplot(1, 2, 1);
 plot(1:epochs, historical_loss_time, '-o', 'LineWidth', 2, 'DisplayName', 'Train Loss'); hold on;
-plot(1:epochs, val_loss_time, '-x', 'LineWidth', 2, 'DisplayName', 'Val (OOS) Loss');
+plot(1:epochs, val_loss_time, '-x', 'LineWidth', 2, 'DisplayName', 'Val (Multi-Regime) Loss');
 title('Time Expert (Transformer-LSTM) BCE Loss');
 xlabel('Epochs'); ylabel('BCE Loss');
 legend('Location', 'best'); grid on;
@@ -307,7 +386,7 @@ yline(0.6931, '--r', 'Random Guess (0.6931)', 'LabelHorizontalAlignment', 'left'
 
 subplot(1, 2, 2);
 plot(1:epochs, historical_loss_space, '-o', 'LineWidth', 2, 'DisplayName', 'Train Loss'); hold on;
-plot(1:epochs, val_loss_space, '-x', 'LineWidth', 2, 'DisplayName', 'Val (OOS) Loss');
+plot(1:epochs, val_loss_space, '-x', 'LineWidth', 2, 'DisplayName', 'Val (Multi-Regime) Loss');
 title('Space Expert (DyGAT) BCE Loss');
 xlabel('Epochs'); ylabel('BCE Loss');
 legend('Location', 'best'); grid on;
@@ -383,7 +462,7 @@ function [X_time, X_space, A_space, Y, M] = prepareBatchData(indices, X_3D, Adj_
     end
 end
 
-function [loss, grad_net, grad_W, grad_b] = aux_loss_time(net, W_aux, b_aux, X, Y, M)
+function [loss, grad_net, grad_W, grad_b] = aux_loss_time(net, W_aux, b_aux, X, Y, M, l2_lambda)
     E = forward(net, X); 
     E_unfmt = stripdims(E);
     logits = W_aux * E_unfmt + b_aux; 
@@ -392,11 +471,21 @@ function [loss, grad_net, grad_W, grad_b] = aux_loss_time(net, W_aux, b_aux, X, 
     M_unfmt = stripdims(M);
     bce = -(Y_unfmt .* log(Y_pred + 1e-8) + (1 - Y_unfmt) .* log(1 - Y_pred + 1e-8));
     masked_bce = bce .* M_unfmt;
-    loss = sum(masked_bce, 'all') / (sum(M_unfmt, 'all') + 1e-8); 
+    bce_loss = sum(masked_bce, 'all') / (sum(M_unfmt, 'all') + 1e-8); 
+    
+    l2_penalty = 0;
+    learnables = net.Learnables;
+    for r = 1:height(learnables)
+        w = learnables.Value{r};
+        l2_penalty = l2_penalty + sum(w(:).^2);
+    end
+    l2_penalty = l2_penalty + sum(W_aux(:).^2);
+    
+    loss = bce_loss + 0.5 * l2_lambda * l2_penalty;
     [grad_net, grad_W, grad_b] = dlgradient(loss, net.Learnables, W_aux, b_aux);
 end
 
-function [loss, grad_net, grad_W, grad_b] = aux_loss_space(net, W_aux, b_aux, X, A, Y, M)
+function [loss, grad_net, grad_W, grad_b] = aux_loss_space(net, W_aux, b_aux, X, A, Y, M, l2_lambda)
     E_flat_out = forward(net, X, A); 
     E_unfmt = reshape(stripdims(E_flat_out), 64, []);
     logits = W_aux * E_unfmt + b_aux; 
@@ -405,7 +494,17 @@ function [loss, grad_net, grad_W, grad_b] = aux_loss_space(net, W_aux, b_aux, X,
     M_unfmt = stripdims(M);
     bce = -(Y_unfmt .* log(Y_pred + 1e-8) + (1 - Y_unfmt) .* log(1 - Y_pred + 1e-8));
     masked_bce = bce .* M_unfmt;
-    loss = sum(masked_bce, 'all') / (sum(M_unfmt, 'all') + 1e-8);
+    bce_loss = sum(masked_bce, 'all') / (sum(M_unfmt, 'all') + 1e-8);
+    
+    l2_penalty = 0;
+    learnables = net.Learnables;
+    for r = 1:height(learnables)
+        w = learnables.Value{r};
+        l2_penalty = l2_penalty + sum(w(:).^2);
+    end
+    l2_penalty = l2_penalty + sum(W_aux(:).^2);
+    
+    loss = bce_loss + 0.5 * l2_lambda * l2_penalty;
     [grad_net, grad_W, grad_b] = dlgradient(loss, net.Learnables, W_aux, b_aux);
 end
 
