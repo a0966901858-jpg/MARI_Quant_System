@@ -1,9 +1,10 @@
 classdef FeatureEvaluator < handle
     % =========================================================================
-    % 類別：FeatureEvaluator (特徵信心評估器)
-    % 升級：Phase 14.22 (★ 能量守恆特徵注意力、軟化 Softmax 溫度、防禦特徵通道尺度坍塌)
-    % 職責：計算各維度特徵的動態預測能力 (Spearman Rank IC)，產出特徵信心注意力權重矩陣
-    % 對接：產出之 [Days, Feats] 權重可直接注入 Phase 2 作為雙軌萃取器的特徵動態遮罩
+    % 類別：FeatureEvaluator (特徵信心評估器與共線性診斷中心)
+    % 升級：Phase 14.25 (★ 能量守恆特徵注意力、全特徵 Pairwise 相關性共線性自動診斷)
+    % 職責：
+    %   1. 計算各維度特徵的動態預測能力 (Spearman Rank IC)，產出能量守恆特徵注意力權重
+    %   2. 評估全特徵相關係數矩陣，自動標記 |corr| > 0.85 的高度共線性特徵對
     % =========================================================================
     
     properties
@@ -16,7 +17,7 @@ classdef FeatureEvaluator < handle
         % ---------------------------------------------------------
         function obj = FeatureEvaluator(configObj)
             obj.ConfigObj = configObj;
-            fprintf(' ⚙️ [FeatureEvaluator] 初始化完成。準備執行橫截面 IC 檢定與信心注意力生成。\n');
+            fprintf(' ⚙️ [FeatureEvaluator] 初始化完成。已載入橫截面 IC 評估與特徵共線性診斷引擎。\n');
         end
         
         % =========================================================
@@ -24,8 +25,8 @@ classdef FeatureEvaluator < handle
         % =========================================================
         function IC_Weights_2D = compute_confidence(obj, X_denoised_3D, Prices_Active, Expert_Active)
             % -----------------------------------------------------------------
-            % 函數輸入維度斷言：
-            % X_denoised_3D: [Days, Feats, NumTickers] (由 FeatureEngineer 重構產出)
+            % 函數輸入維度：
+            % X_denoised_3D: [Days, Feats, NumTickers]
             % Prices_Active: [Days, NumTickers]
             % Expert_Active: [Days, NumTickers] (活躍標的遮罩)
             % 輸出維度：
@@ -36,7 +37,6 @@ classdef FeatureEvaluator < handle
             
             [numDays, numFeats, numTickers] = size(X_denoised_3D);
             
-            % 動態獲取 Config 中的回溯視窗長度，若無則預設為 60 (約一季)
             if isprop(obj.ConfigObj, 'Lookback')
                 lookback = obj.ConfigObj.Lookback;
             else
@@ -44,29 +44,22 @@ classdef FeatureEvaluator < handle
             end
             
             %% 1. 預先計算 T 日至 T+1 日的 Forward Returns (未來報酬)
-            % 嚴格物理定義：R_fwd(t) 是從 t 日收盤買進，持有至 t+1 日收盤的報酬
             R_fwd = NaN(numDays, numTickers, 'single');
             R_fwd(1:end-1, :) = (Prices_Active(2:end, :) - Prices_Active(1:end-1, :)) ./ Prices_Active(1:end-1, :);
             R_fwd(isinf(R_fwd)) = NaN;
             
-            %% 2. 核心引擎：計算每日「橫截面 (Cross-Sectional)」Rank IC
+            %% 2. 核心引擎：計算每日「橫截面」Rank IC
             Daily_IC = zeros(numDays, numFeats, 'single');
-            
-            % 統一橫截面最小樣本門檻，與 FeatureEngineer.m 完全一致
             min_valid_samples = max(10, floor(numTickers * 0.05));
             
             fprintf('  -> 啟動 Parpool 平行運算，評估 %d 維特徵的橫截面預測力 (動態門檻: %d 檔)...\n', ...
                 numFeats, min_valid_samples);
             
-            % 使用 parfor 平行運算各維度特徵的 IC
             parfor k = 1:numFeats
                 feat_ic_col = zeros(numDays, 1, 'single');
-                
-                % 鎖定 [Days, NumTickers] 2D 矩陣
                 X_k = reshape(X_denoised_3D(:, k, :), numDays, numTickers);
                 
                 for tau = 1:numDays-1
-                    % 僅針對當日與次日皆為活躍的標的進行截面比較
                     active_mask = Expert_Active(tau, :) & Expert_Active(tau+1, :);
                     
                     if sum(active_mask) < min_valid_samples
@@ -84,7 +77,6 @@ classdef FeatureEvaluator < handle
                         continue;
                     end
                     
-                    % 計算 Spearman Rank Correlation (等級相關係數)
                     rank_x = tiedrank(x_valid);
                     rank_y = tiedrank(y_valid);
                     
@@ -107,42 +99,30 @@ classdef FeatureEvaluator < handle
             Raw_IC_Weight = zeros(numDays, numFeats, 'single');
             
             for t = lookback+1 : numDays
-                % ☢️ 絕對防禦：在 t 日推論時，嚴格只使用歷史 Daily_IC(t-lookback : t-1)
                 window_ic = Daily_IC(t-lookback : t-1, :);
-                
-                % 取絕對值：捕獲預測能力強度
                 mean_abs_ic = mean(abs(window_ic), 1, 'omitnan');
                 mean_abs_ic(isnan(mean_abs_ic)) = 0;
-                
                 Raw_IC_Weight(t, :) = mean_abs_ic;
             end
             
-            %% 4. ★ 能量守恆 Softmax 注意力縮放 (防止特徵通道變異數歸零)
+            %% 4. ★ 能量守恆 Softmax 注意力縮放 (維持特徵尺度均值為 1.0)
             disp('  -> 執行能量守恆 Softmax 注意力縮放 (Energy-Preserving Normalization)...');
-            
-            % ★ 二次優化修正 1：軟化 Softmax 溫度至 1.0 (避免過度尖銳導致非主力通道權重歸零)
             temperature = 1.0; 
-            
-            % ★ 二次優化修正 2：全域預設值設為 1.0 (確保暖機期特徵尺度不被縮減)
             IC_Weights_2D = ones(numDays, numFeats, 'single');
             
             for t = lookback+1 : numDays
                 raw_ic = Raw_IC_Weight(t, :);
                 
                 if sum(raw_ic) > 0
-                    % 橫截面 Z-score 標準化
                     mu_ic = mean(raw_ic);
                     std_ic = std(raw_ic) + 1e-8;
                     norm_ic = (raw_ic - mu_ic) ./ std_ic;
                     
-                    % Softmax 數值穩定運算
                     max_z = max(norm_ic);
                     exp_vals = exp((norm_ic - max_z) / temperature);
                     softmax_prob = exp_vals ./ (sum(exp_vals) + 1e-8);
                     
-                    % ★ 二次優化修正 3：保能量乘法縮放 (乘以 numFeats)
-                    % 使得 sum(weights) = numFeats，平均權重 = 1.0
-                    % 既保留相對 IC 信心加權，又徹底防禦 DL 輸入特徵尺度坍塌
+                    % 保能量乘法縮放：sum(weights) = numFeats，平均權重 = 1.0
                     IC_Weights_2D(t, :) = softmax_prob .* numFeats;
                 else
                     IC_Weights_2D(t, :) = 1.0;
@@ -150,6 +130,67 @@ classdef FeatureEvaluator < handle
             end
             
             disp('✅ 橫截面 Spearman IC 評估與能量守恆注意力權重生成完畢！');
+        end
+        
+        % =====================================================================
+        % ★ Phase 14.25 (第 6 節)：全特徵 Pairwise 相關係數共線性診斷
+        % =====================================================================
+        function [corr_matrix, high_corr_pairs] = diagnose_collinearity(~, X_3D, Expert_Active, feat_names)
+            % -----------------------------------------------------------------
+            % 職責：檢測特徵間的成對相關性，篩查 |corr| > 0.85 的共線性風險指標
+            % -----------------------------------------------------------------
+            disp('--- 啟動全特徵 Pairwise 相關性共線性診斷 (Collinearity Audit) ---');
+            
+            [numDays, numFeats, numTickers] = size(X_3D);
+            
+            if nargin < 4 || isempty(feat_names)
+                feat_names = arrayfun(@(x) sprintf('Feat_%d', x), 1:numFeats, 'UniformOutput', false);
+            end
+            
+            % 抽取活躍樣本壓平為 [N_samples, numFeats]
+            active_mask_flat = reshape(Expert_Active, [numDays * numTickers, 1]);
+            X_flat = zeros(numDays * numTickers, numFeats, 'single');
+            for k = 1:numFeats
+                slice_k = X_3D(:, k, :);
+                X_flat(:, k) = slice_k(:);
+            end
+            
+            valid_rows = active_mask_flat & all(~isnan(X_flat) & ~isinf(X_flat), 2);
+            X_valid = double(X_flat(valid_rows, :));
+            
+            % 隨機抽樣 200,000 筆樣本加速矩陣相關運算
+            if size(X_valid, 1) > 200000
+                sample_idx = randsample(size(X_valid, 1), 200000);
+                X_valid = X_valid(sample_idx, :);
+            end
+            
+            corr_matrix = corr(X_valid, 'Type', 'Spearman');
+            corr_matrix(isnan(corr_matrix)) = 0;
+            
+            % 檢測 |corr| > 0.85 的成對特徵
+            threshold = 0.85;
+            [row_idx, col_idx] = find(triu(abs(corr_matrix) > threshold, 1));
+            
+            high_corr_pairs = cell(length(row_idx), 3);
+            fprintf('\n=================================================================\n');
+            fprintf('📊 【Phase 14.25 特徵共線性診斷報告 (|Corr| > %.2f)】\n', threshold);
+            fprintf('=================================================================\n');
+            
+            if isempty(row_idx)
+                fprintf('  ✅ 優秀！所有特徵間之 Spearman 相關係數均低於 %.2f，無嚴重共線性！\n', threshold);
+            else
+                fprintf('  ⚠️ 警告：偵測到 %d 對高度共線性特徵，建議在 FeatureEngineer 中評估合併或剔除：\n\n', length(row_idx));
+                for p = 1:length(row_idx)
+                    f1 = feat_names{row_idx(p)};
+                    f2 = feat_names{col_idx(p)};
+                    c_val = corr_matrix(row_idx(p), col_idx(p));
+                    high_corr_pairs{p, 1} = f1;
+                    high_corr_pairs{p, 2} = f2;
+                    high_corr_pairs{p, 3} = c_val;
+                    fprintf('  [%2d] %-18s <---> %-18s | Spearman Corr = %+.4f\n', p, f1, f2, c_val);
+                end
+            end
+            fprintf('=================================================================\n\n');
         end
     end
 end
