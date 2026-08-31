@@ -1,42 +1,39 @@
 📁 MARI_Quant_System/ 
 │
 ├── 📁 configs/ 
-│   └── Config.m                # 全域超參數管理 (包含 BO 最佳化數值與大宇宙清單)
+│   └── Config.m                # 全域超參數中心 (10維宏觀特徵、DL正則化、BO最佳化閉環與大宇宙清單)
 │
 ├── 📁 data/ 
 │   ├── 📁 crawlers/ 
+│   │   ├── .env                # 環境變數與 API 金鑰管理 (存放 FRED_API_KEY)
 │   │   ├── requirements.txt    # 執行環境依賴管理
-│   │   ├── us_universe.csv     # 歷史大宇宙成分股名單
-│   │   └── hybrid_crawler.py   # True PiT 混合資料爬蟲微服務
+│   │   ├── us_universe.csv     # 歷史大宇宙成分股名單 (動態防呆更新)
+│   │   ├── hybrid_crawler.py   # True PiT 混合資料爬蟲 (美股歷史K線與流動性標籤)
+│   │   └── fred_crawler.py     # ★ 新增: FRED 宏觀總經爬蟲 (殖利率、信用利差、失業率 + PiT 延遲校正)
 │   │
-│   ├── 📁 data_lake/           # 存放經對齊後的 .parquet 歷史長表
+│   ├── 📁 data_lake/           # 存放原始對齊長表 (master_universe.parquet, fred_macro.parquet)
 │   │
 │   ├── DataFetcher.m           # 數據湖矩陣映射、SPY日曆錨定、流動性物理斷言
-│   ├── FeatureEngineer.m       # 3D 面板張量萃取、DyGAT 動態圖譜、標準化引擎
-│   └── 📁 cache/               # 存放 features_denoised.mat (3D 降噪張量)
-│
-├── 📁 envs/ 
-│   └── HRLEnvironment.m        # （不參與執行流程）向量化 RL 模擬環境、動態滑價、Sortino 二次方懲罰
+│   ├── FeatureEngineer.m       # 3D 面板萃取 (18維微觀/相對 + 10維宏觀)、DyGAT 時變圖譜、標準化引擎
+│   └── 📁 cache/               # 存放 features_denoised.mat (3D 降噪特徵與圖譜快取)
 │
 ├── 📁 models/ 
-│   ├── EMAQuantizer.m          # VQ-VAE 字典 EMA 更新與死向量平滑喚醒(附屬於VQVAEAgent.m)
-│   ├── FeatureEvaluator.m      # 動態特徵信心權重 (IC 導向)
-│   ├── BuildDecoupledExtractors.m # 時間層特徵擷取 (LSTM + Transformer)
-│   ├── GraphSpatialFusionLayer.m  # 動態圖卷積空間融合層 (ASTGCN)(附屬於BuildDecoupledExtractors.m)
-│   └── vqvaeLoss.m             # VQ-VAE 損失函數與 STE 梯度穿透機制(附屬於VQVAEAgent.m)
+│   ├── EMAQuantizer.m          # VQ-VAE 字典 EMA 更新與死向量平滑喚醒
+│   ├── FeatureEvaluator.m      # 橫截面特徵 IC 評估與動態信心注意力權重 (Energy-Preserving Gate)
+│   ├── BuildDecoupledExtractors.m # 雙軌時空特徵萃取 (Macro 剝離純 18D、Dual Dropout 正則化)
+│   └── GraphSpatialFusionLayer.m  # 動態圖卷積空間融合層 (動態特徵維度適配、Masked Softmax)
 │
 ├── 📁 agents/ 
-│   ├── VQVAEAgent.m            # 向量量化降噪代理人
-│   ├── GBDTExpertAgent.m       # RUSBoost 專家網路與 SHAP 壓力測試器
-│   ├── HRLManagerAgent.m       # （不參與執行流程）總管基礎類別定義
-│   └── Agent_PPO.m             # 連續動作空間 PPO 代理人
+│   ├── VQVAEAgent.m            # 向量量化降噪代理人 (物理結界與零值保護)
+│   ├── GBDTExpertAgent.m       # 橫截面/護欄專家網路 (含 Platt Scaling 機率校準、Sanity Baseline、SHAP)
+│   └── Agent_PPO.m             # 連續動作空間 PPO 代理人 (非對稱 Huber-like 獎勵與空手懲罰)
 │
 ├── 📁 scripts/ 
-│   ├── 1_Run_Data_and_Features.m   # 資料湖建構 -> 特徵工程 -> VQ-VAE 降噪
-│   ├── 2_Run_Extractor_Pretrain.m  # 深度學習特徵擷取
-│   ├── 3_Run_GBDT_and_SHAP.m       # GBDT訓練、SHAP 歸因
-│   ├── 4_Run_BO_Hyperparameter.m   # 貝氏最佳化
-│   ├── 5_Run_CIO_Awakening.m       # 強化學習集成訓練
-│   └── 6_Run_WalkForward_Backtest.m# 回測
+│   ├── 1_Run_Data_and_Features.m      # 雙爬蟲微服務調度 -> 24/28維特徵融合 -> VQ-VAE In-Sample 降噪
+│   ├── 2_Run_Extractor_Pretrain.m     # DL 特徵萃取預訓練 (全量多體制跨週期驗證、L2 權重衰減、早停機制)
+│   ├── 3_Run_GBDT_and_SHAP.m          # GBDT 顯性專家訓練、OOS 機率生成與 SHAP 歸因
+│   ├── 4_Run_BO_Hyperparameter.m      # 貝氏尋優 (尋找最佳現金護欄、時空權重與持股集中度)
+│   ├── 5_Run_CIO_Awakening.m          # HRL 三軌總管集成訓練 (牛市/震盪/熊市獨立大腦)
+│   └── 6_Run_WalkForward_Backtest.m   # 無縫前向滾動回測 (OOS 破產重置、護欄連續縮放防護、X光診斷報表)
 │
-└── 📁 results/                 # 存放所有模型權重、機率矩陣與績效圖表
+└── 📁 results/                 # 存放所有大腦權重 (.mat)、OOS 機率矩陣與績效/SHAP視覺化圖表
