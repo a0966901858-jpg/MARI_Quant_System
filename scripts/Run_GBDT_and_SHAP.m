@@ -8,7 +8,7 @@ disp('=================================================================');
 disp('🚀 [Phase 14.25] 啟動 GBDT 顯性風險預測流與 SHAP 歸因分析管線');
 disp('=================================================================');
 
-%% 0. 環境路徑掛載與全域設定
+%% 0. 環境路徑掛載
 currentPath = fileparts(mfilename('fullpath'));
 if isempty(currentPath), currentPath = pwd; end
 projectRoot = currentPath; 
@@ -18,9 +18,9 @@ end
 
 addpath(genpath(fullfile(projectRoot, 'configs')));
 addpath(genpath(fullfile(projectRoot, 'data')));
-addpath(genpath(fullfile(projectRoot, 'envs')));
 addpath(genpath(fullfile(projectRoot, 'agents'))); 
 addpath(genpath(fullfile(projectRoot, 'models'))); 
+addpath(genpath(fullfile(projectRoot, 'utils'))); % ★ 統一掛載共用統計工具箱
 rehash toolboxcache;
 
 configObj = Config();
