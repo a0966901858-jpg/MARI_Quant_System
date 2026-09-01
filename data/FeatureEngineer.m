@@ -2,8 +2,8 @@
 classdef FeatureEngineer < handle
     % =========================================================================
     % 模組：FeatureEngineer.m 
-    % 升級：Phase 14.25 (★ P2 特徵工程升級：特質波動度、Amihud流動性、52週新高、MACD柱狀圖)
-    % 職責：計算無未來函數之相對/微觀/宏觀特徵與 DyGAT 時變共整合圖譜
+    % 升級：Phase 15 (★ DyGAT 共整合檢定導入 Benjamini-Hochberg FDR 多重比較校正)
+    % 職責：計算無未來函數之相對/微觀/宏觀特徵與嚴格降噪之 DyGAT 時變共整合圖譜
     % =========================================================================
     
     properties
@@ -151,7 +151,7 @@ classdef FeatureEngineer < handle
             inactive_mask = repmat(reshape(~Expert_Active, [numDays, 1, obj.NumTickers]), [1, obj.TotalNodeFeats, 1]);
             X_norm_3D(inactive_mask) = 0; 
             
-            disp(' -> 構建 DyGAT 時變圖譜矩陣 (啟動多執行緒平行運算與結界嚴格對齊)...');
+            disp(' -> 構建 DyGAT 時變圖譜矩陣 (BH-FDR 多重比較校正防偽陽性邊)...');
             
             n_tickers = obj.NumTickers;
             daily_rets = NaN(numDays, n_tickers, 'single');
@@ -217,6 +217,8 @@ classdef FeatureEngineer < handle
                         num_pairs = max_eg_tests;
                     end
                     
+                    % ★ Phase 15 (P1-2)：先收集所有候選配對 p-value
+                    p_values = NaN(num_pairs, 1);
                     for k = 1:num_pairs
                         idx_A = valid_idx(row_idx(k));
                         idx_B = valid_idx(col_idx(k));
@@ -224,9 +226,27 @@ classdef FeatureEngineer < handle
                         pA = window_logP(:, idx_A);
                         pB = window_logP(:, idx_B);
                         
-                        [h, ~] = egcitest(double([pA, pB]), 'Alpha', 0.05);
-                        
-                        if h == 1 
+                        [~, pVal] = egcitest(double([pA, pB]), 'Alpha', 0.05);
+                        p_values(k) = pVal;
+                    end
+                    
+                    % ★ Phase 15 (P1-2)：執行 Benjamini-Hochberg FDR 多重比較校正 (q = 0.05)
+                    fdr_q = 0.05;
+                    [sorted_p, ~] = sort(p_values);
+                    m = length(sorted_p);
+                    bh_critical = ((1:m)' / m) * fdr_q;
+                    below = sorted_p <= bh_critical;
+                    if any(below)
+                        p_threshold = sorted_p(find(below, 1, 'last'));
+                    else
+                        p_threshold = 0; % 無配對通過校正
+                    end
+                    significant_mask = p_values <= p_threshold;
+                    
+                    for k = 1:num_pairs
+                        if significant_mask(k)
+                            idx_A = valid_idx(row_idx(k));
+                            idx_B = valid_idx(col_idx(k));
                             bin_adj(idx_A, idx_B) = true;
                             bin_adj(idx_B, idx_A) = true; 
                         end
@@ -252,7 +272,7 @@ classdef FeatureEngineer < handle
                 end
             end
             
-            disp('✅ 3D 特徵面板與共整合圖譜提取完畢！維度與物理意義已絕對對齊。');
+            disp('✅ 3D 特徵面板與 BH-FDR 降噪圖譜提取完畢！維度與物理意義已絕對對齊。');
         end  
         
         %% --- 內部特徵計算函數 ---
@@ -271,7 +291,7 @@ classdef FeatureEngineer < handle
             
             Vol20 = movstd(R1, [19 0], 1, 'omitnan');
             
-            % ★ Phase 14.25 新增：特質波動度 (Idiosyncratic Volatility 20D)
+            % 特質波動度 (Idiosyncratic Volatility 20D)
             spy_R1 = R1(:, spy_idx);
             spy_Var20 = movvar(spy_R1, [19 0], 1, 'omitnan') + 1e-8;
             IdioVol20 = NaN(numDays, obj.NumTickers, 'single');
@@ -288,7 +308,7 @@ classdef FeatureEngineer < handle
             V20 = movmean(V, [19 0], 1, 'omitnan');
             VolRatio = V5 ./ (V20 + 1e-8);
             
-            % ★ Phase 14.25 新增：Amihud 20D 流動性衝擊係數 (|R1| / DollarVolume)
+            % Amihud 20D 流動性衝擊係數 (|R1| / DollarVolume)
             dollar_vol = P .* V + 1e-8;
             amihud_daily = abs(R1) ./ dollar_vol;
             Amihud_20 = movmean(amihud_daily, [19 0], 1, 'omitnan') * 1e6;
@@ -297,14 +317,14 @@ classdef FeatureEngineer < handle
             SMA20 = movmean(P, [19 0], 1, 'omitnan') ./ P;
             SMA60 = movmean(P, [59 0], 1, 'omitnan') ./ P;
             
-            % ★ Phase 14.25 合併：MACD Histogram (消除 Line 與 Signal 之高度共線)
+            % MACD Histogram (消除 Line 與 Signal 之高度共線)
             EMA12 = obj.calc_ema(P, 12);
             EMA26 = obj.calc_ema(P, 26);
             MACD_Line = (EMA12 - EMA26) ./ P;
             MACD_Sig = obj.calc_ema(MACD_Line, 9);
             MACD_Hist = MACD_Line - MACD_Sig;
             
-            % RSI (保留 RSI，移除共線的 MFI)
+            % RSI
             diff_P = NaN(numDays, obj.NumTickers, 'single');
             diff_P(2:end,:) = diff(P);
             U = max(diff_P, 0);
@@ -314,7 +334,7 @@ classdef FeatureEngineer < handle
             RS = EMA_U ./ (EMA_D + 1e-8); 
             RSI = 100 - (100 ./ (1 + RS)); 
             
-            % OBV_20 (保留 OBV，移除共線的 VPT_20)
+            % OBV_20
             SignR = sign(R1);
             OBV_diff = SignR .* V;
             OBV_20 = movsum(OBV_diff, [19 0], 1, 'omitnan') ./ (V20 * 20 + 1e-8);
@@ -325,11 +345,11 @@ classdef FeatureEngineer < handle
             HL_Spread = (H20 - L20) ./ P;
             Dist_H20 = (P - H20) ./ H20;
             
-            % ★ Phase 14.25 新增：52 週 (252日) 新高距離 (Dist_H252)
+            % 52 週 (252日) 新高距離 (Dist_H252)
             H252 = movmax(H, [251 0], 1, 'omitnan');
             Dist_H252 = (P - H252) ./ (H252 + 1e-8);
             
-            % ★ 組合 15 維微觀特徵矩陣 (3 進 3 出，守恆 15 維)
+            % 組合 15 維微觀特徵矩陣
             Micro(:, 1, :)  = R1;          Micro(:, 2, :)  = R5;         Micro(:, 3, :)  = R20;
             Micro(:, 4, :)  = Vol20;       Micro(:, 5, :)  = IdioVol20;  Micro(:, 6, :)  = VolRatio;
             Micro(:, 7, :)  = Amihud_20;   Micro(:, 8, :)  = SMA20;      Micro(:, 9, :)  = SMA60;
