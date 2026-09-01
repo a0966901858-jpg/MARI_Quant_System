@@ -1,11 +1,11 @@
 % =========================================================================
 % 腳本：4_Run_BO_Hyperparameter_Tuning.m
-% 升級：Phase 14.25 (★ 全歷史平滑一致性、連續護欄風險縮放、自適應機率邊界防護)
-% 職責：利用貝氏最佳化，在多子窗口防過擬合微型模擬器中聯合尋優，防止策略退化為全現金
+% 升級：Phase 15 (★ 日頻交易成本校正、Deflated Sharpe Ratio 多重試驗偏誤校正)
+% 職責：利用貝氏最佳化在多子窗口中聯合尋優，並以 DSR 量化選擇偏誤
 % =========================================================================
 clear; clc; close all;
 disp('=================================================================');
-disp('🧠 [Phase 14.25] 啟動 CIO 總管動態路由貝氏超參數尋優 (穩健多窗口版)');
+disp('🧠 [Phase 15] 啟動 CIO 總管動態路由貝氏超參數尋優 (DSR 校正版)');
 disp('=================================================================');
 
 currentPath = fileparts(mfilename('fullpath'));
@@ -53,7 +53,7 @@ numT = configObj.NumTickers;
 seqLen = configObj.SeqLen;
 valid_idx = seqLen : numDaysRaw;
 
-% ★ Phase 14.25 (第 7 節)：先對全歷史進行 20 日移動平均平滑，再截取有效區間
+% 先對全歷史進行 20 日移動平均平滑，再截取有效區間
 P_crash_smooth_all = movmean(P_crash_all, [19, 0]);
 P_crash_smooth = P_crash_smooth_all(valid_idx);
 
@@ -80,7 +80,7 @@ P_time_IS  = P_time_M(:, idx_IS);
 P_space_IS = P_space_M(:, idx_IS);
 Dates_IS   = Dates_Active(idx_IS);
 
-%% 3. 定義貝氏最佳化超參數空間 (★ 自適應邊界加固)
+%% 3. 定義貝氏最佳化超參數空間 (自適應邊界加固)
 disp('--- 步驟 3：定義貝氏最佳化超參數空間 (自適應邊界與間距保證) ---');
 
 p_80 = prctile(P_crash_IS, 80);
@@ -91,15 +91,12 @@ if isnan(p_80) || isnan(p_99) || p_80 >= p_99
     p_99 = 0.30;
 end
 
-% 確保下界在合理有效區間內
 p_80 = max(0.01, min(0.90, p_80));
 
-% 確保上界嚴格大於下界至少 0.05
 if (p_99 - p_80) < 0.05
     p_99 = p_80 + 0.05;
 end
 
-% 封頂保護
 if p_99 > 0.99
     p_99 = 0.99;
     p_80 = min(p_80, p_99 - 0.05);
@@ -121,7 +118,6 @@ if isempty(poolobj)
     parpool('Processes');
 end
 
-% 封裝多窗口穩健目標函數
 obj_fun = @(x) evaluate_hrl_proxy_robust(x, Prices_IS, Opens_IS, Expert_IS, P_time_IS, P_space_IS, P_crash_IS, configObj);
 results = bayesopt(obj_fun, bo_vars, ...
     'MaxObjectiveEvaluations', 25, ...                       
@@ -129,8 +125,8 @@ results = bayesopt(obj_fun, bo_vars, ...
     'UseParallel', true, ...                                
     'Verbose', 1);
 
-%% 5. 提取最佳參數、多重診斷與存檔
-disp('--- 步驟 5：提取最佳參數、診斷檢驗與落地存檔 ---');
+%% 5. 提取最佳參數、DSR 統計校正與存檔
+disp('--- 步驟 5：提取最佳參數、DSR 統計檢驗與落地存檔 ---');
 if isempty(results.XAtMinObjective) || height(results.XAtMinObjective) == 0
     best_params = table(p_99, 0.5, 20, 'VariableNames', {'Guardrail_CrashProb', 'Expert_Time_Weight', 'Top_K_Assets'});
     warning('⚠️ 優化未收斂，將自動採用預設值');
@@ -140,25 +136,39 @@ end
 
 best_robust_score = -results.MinObjective;
 
-% ★ 診斷 1：計算 IS 期間護欄觸發天數比例
+% ★ Phase 15 (P1-1)：執行單一完整 IS 模擬以提取最佳逐日超額報酬序列
+spy_idx = find(strcmp(configObj.IdxTickers, 'SPY'));
+if isempty(spy_idx), spy_idx = 1; end
+spy_prices = Prices_IS(:, spy_idx);
+spy_rets = [0; diff(spy_prices) ./ spy_prices(1:end-1)];
+spy_rets(isnan(spy_rets) | isinf(spy_rets)) = 0;
+vol20_is = movstd(spy_rets, [19, 0], 1) * sqrt(252);
+
+[~, best_excess_returns] = run_subwindow_simulation(best_params, Prices_IS, Opens_IS, Expert_IS, ...
+    P_time_IS, P_space_IS, P_crash_IS, vol20_is, spy_idx, 21, size(Prices_IS, 1) - 2, configObj);
+
+% 計算 IS 期間護欄觸發天數比例
 pct_days_guarded = mean(P_crash_IS > best_params.Guardrail_CrashProb) * 100;
 
-fprintf('\n🏆 【Phase 14.25 貝氏最佳化尋優結果】 🏆\n');
+fprintf('\n🏆 【Phase 15 貝氏最佳化尋優結果】 🏆\n');
 fprintf('  > 最佳 崩盤護欄閥值 (Guardrail) : %.4f\n', best_params.Guardrail_CrashProb);
 fprintf('  > 最佳 時序專家權重 (Time_W)  : %.4f\n', best_params.Expert_Time_Weight);
 fprintf('  > 最佳 集中度標的數 (Top_K)   : %d\n', best_params.Top_K_Assets);
 fprintf('  > 穩健綜合指標 (Robust Score) : %.4f\n', best_robust_score);
 fprintf('  > 護欄觸發比例 (IS 期間)      : %.1f%% 的交易日啟用完全避險\n', pct_days_guarded);
 
-% ★ 診斷 2：護欄頻率警報
+% ★ Phase 15 (P1-1)：Deflated Sharpe Ratio 多重試驗選擇偏誤校正
+trial_scores = -results.ObjectiveTrace; % 各輪試驗的穩健 IR 分數
+[dsr_val, psr_val, sr0_val] = compute_deflated_sharpe(trial_scores, best_excess_returns);
+
+% 診斷警示
 if pct_days_guarded > 15.0
     warning('⚠️ 警告：護欄觸發比例 (%.1f%%) 偏高，可能導致系統過度避險！', pct_days_guarded);
 end
 
-% ★ 診斷 3：邊界解自動化警示
 boundary_tol = 0.02;
 if abs(best_params.Expert_Time_Weight - 0.0) < boundary_tol || abs(best_params.Expert_Time_Weight - 1.0) < boundary_tol
-    warning('⚠️ 警告：Expert_Time_Weight (%.4f) 落在搜索邊界，可能代表 P_time/P_space 高度相關 (虛假多樣性)！', ...
+    warning('⚠️ 警告：Expert_Time_Weight (%.4f) 落在搜索邊界，可能代表 P_time/P_space 高度相關！', ...
         best_params.Expert_Time_Weight);
 end
 
@@ -166,13 +176,11 @@ if best_params.Top_K_Assets <= 11 || best_params.Top_K_Assets >= 39
     warning('⚠️ 警告：Top_K_Assets (%d) 落在搜索邊界，可能代表選股訊號排序集中度邊界！', best_params.Top_K_Assets);
 end
 
-% ★ 診斷 4：循環斷路器 (Circuit Breaker)
 if results.MinObjective > 0
     warning(['\n⚠️ =========================================================================\n' ...
              '⚠️ 【循環斷路器觸發警告】\n' ...
              '   貝氏最佳化在整個搜索空間內未找到任何正穩健 IR 組合 (Score = %.4f)！\n' ...
              '   代表當前選股訊號在多子窗口環境中均無超額 Alpha，問題在於 Phase 2/3 的特徵品質。\n' ...
-             '   建議排查雙軌萃取器與 GBDT 的特徵預測力！\n' ...
              '⚠️ =========================================================================\n'], best_robust_score);
 else
     disp('✅ 尋優成功！在多子窗口下捕獲具備泛化能力的正超額收益參數組合。');
@@ -184,11 +192,11 @@ configObj.Expert_Time_Weight  = best_params.Expert_Time_Weight;
 configObj.Top_K_Assets        = best_params.Top_K_Assets;
 
 boPath = fullfile(configObj.ModelDir, 'BO_Hyperparameters.mat');
-save(boPath, 'best_params', 'results');
-disp('✅ Phase 4 完成！穩健超參數已鎖定，請接著執行 Phase 5。');
+save(boPath, 'best_params', 'results', 'dsr_val', 'psr_val', 'sr0_val');
+disp('✅ Phase 4 完成！穩健超參數與 DSR 檢驗結果已鎖定，請接著執行 Phase 5。');
 
 %% =====================================================================
-% ★ 多子窗口穩健代理評估函數 (Multi-Subwindow Robust Proxy Evaluator)
+% 多子窗口穩健代理評估函數
 % =====================================================================
 function neg_robust_IR = evaluate_hrl_proxy_robust(params, Prices, Opens, Expert, P_time, P_space, P_crash, config)
     try
@@ -216,11 +224,10 @@ function neg_robust_IR = evaluate_hrl_proxy_robust(params, Prices, Opens, Expert
                 continue;
             end
             
-            fold_IRs(f) = run_subwindow_simulation(params, Prices, Opens, Expert, P_time, P_space, P_crash, ...
+            [fold_IRs(f), ~] = run_subwindow_simulation(params, Prices, Opens, Expert, P_time, P_space, P_crash, ...
                 vol20, spy_idx, f_start, f_end, config);
         end
         
-        % 穩健目標函數：平均 IR 減去 0.5 倍標準差 (懲罰跨週期不穩定性)
         mean_ir = mean(fold_IRs);
         std_ir  = std(fold_IRs);
         robust_score = mean_ir - (0.5 * std_ir);
@@ -232,7 +239,10 @@ function neg_robust_IR = evaluate_hrl_proxy_robust(params, Prices, Opens, Expert
     end
 end
 
-function ir_val = run_subwindow_simulation(params, ~, Opens, Expert, P_time, P_space, P_crash, vol20, spy_idx, start_t, end_t, config)
+% =====================================================================
+% 微型子窗口撮合模擬器 (★ Phase 15 日頻成本校正 + 序列回傳)
+% =====================================================================
+function [ir_val, excess_returns] = run_subwindow_simulation(params, ~, Opens, Expert, P_time, P_space, P_crash, vol20, spy_idx, start_t, end_t, config)
     numTickers = size(Opens, 2);
     steps = end_t - start_t + 1;
     
@@ -301,14 +311,15 @@ function ir_val = run_subwindow_simulation(params, ~, Opens, Expert, P_time, P_s
         asset_weights = comb_p .* rem_cap_for_assets;
         asset_weights(halted_mask) = locked_weights(halted_mask);
         
-        % 4. 交易摩擦成本計算
+        % 4. ★ Phase 15 (P0-1)：交易摩擦成本計算 (年化波動度還原為日頻波動度)
         current_vol = vol20(t);
         if isnan(current_vol) || isinf(current_vol), current_vol = 0; end
+        current_vol_daily = current_vol / sqrt(252);
         
         if isprop(config, 'BaseFrictionFee') && isprop(config, 'SlippageVolCoeff')
-            tc_rate = config.BaseFrictionFee + (config.SlippageVolCoeff * current_vol);
+            tc_rate = config.BaseFrictionFee + (config.SlippageVolCoeff * current_vol_daily);
         else
-            tc_rate = 0.0005 + (0.10 * current_vol);
+            tc_rate = 0.0005 + (0.10 * current_vol_daily);
         end
         
         frict_cost = sum(abs(asset_weights(~halted_mask) - w_drift(~halted_mask))) * tc_rate;
@@ -335,4 +346,46 @@ function ir_val = run_subwindow_simulation(params, ~, Opens, Expert, P_time, P_s
     else
         ir_val = (avg_ex / std_ex) * sqrt(252);
     end
+end
+
+% =====================================================================
+% ★ Phase 15 (P1-1)：Deflated Sharpe Ratio 統計校正函數
+% =====================================================================
+function [dsr, psr, sr0_noise_floor] = compute_deflated_sharpe(all_trial_scores, best_excess_returns)
+    N = length(all_trial_scores);
+    var_trials = var(all_trial_scores);
+    euler_gamma = 0.5772156649;
+
+    if N > 1 && var_trials > 0
+        sr0_noise_floor = sqrt(var_trials) * ((1 - euler_gamma) * norminv(1 - 1/N) + ...
+                                              euler_gamma * norminv(1 - 1/(N * exp(1))));
+    else
+        sr0_noise_floor = 0;
+    end
+
+    observed_sr = mean(best_excess_returns) / (std(best_excess_returns) + 1e-8) * sqrt(252);
+    n_obs = length(best_excess_returns);
+    skew_val = skewness(best_excess_returns);
+    kurt_val = kurtosis(best_excess_returns);
+
+    z_num = (observed_sr - sr0_noise_floor) * sqrt(n_obs - 1);
+    z_den = sqrt(max(1e-8, 1 - skew_val * observed_sr + ((kurt_val - 1) / 4) * observed_sr^2));
+
+    psr = normcdf(z_num / z_den);
+    dsr = psr;
+
+    fprintf('\n=================================================================\n');
+    fprintf('📊 【Phase 15 Deflated Sharpe Ratio (DSR) 選擇偏誤校正報告】\n');
+    fprintf('=================================================================\n');
+    fprintf('  > BayesOpt 試驗次數 N         : %d 次\n', N);
+    fprintf('  > 試驗噪聲基準 (Sharpe0 Floor): %.4f (高於此值才具統計顯著性)\n', sr0_noise_floor);
+    fprintf('  > 最佳參數觀測年化 Sharpe     : %.4f\n', observed_sr);
+    fprintf('  > Deflated Sharpe Ratio (DSR) : %.4f\n', dsr);
+    fprintf('-----------------------------------------------------------------\n');
+    if dsr > 0.95
+        fprintf('  ✅ 在 95%% 信心水準下，尋優結果統計上顯著超越多重試驗運氣！\n');
+    else
+        fprintf('  ⚠️ 未能拒絕「此結果僅為 %d 次試驗中運氣最好者」之虛無假設！\n', N);
+    end
+    fprintf('=================================================================\n\n');
 end
