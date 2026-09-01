@@ -8,16 +8,19 @@ disp('=================================================================');
 disp('🚀 [Phase 15] 啟動 MARI 嚴格前向滾動回測與動態體制集成引擎');
 disp('=================================================================');
 
+%% 0. 環境路徑掛載
 currentPath = fileparts(mfilename('fullpath'));
 if isempty(currentPath), currentPath = pwd; end
 projectRoot = currentPath; 
-if ~exist(fullfile(projectRoot, 'configs'), 'dir'), projectRoot = fullfile(currentPath, '..'); end
+if ~exist(fullfile(projectRoot, 'configs'), 'dir')
+    projectRoot = fullfile(currentPath, '..'); 
+end
 
 addpath(genpath(fullfile(projectRoot, 'configs')));
 addpath(genpath(fullfile(projectRoot, 'data')));
-addpath(genpath(fullfile(projectRoot, 'envs')));
-addpath(genpath(fullfile(projectRoot, 'models')));
-addpath(genpath(fullfile(projectRoot, 'agents')));
+addpath(genpath(fullfile(projectRoot, 'agents'))); 
+addpath(genpath(fullfile(projectRoot, 'models'))); 
+addpath(genpath(fullfile(projectRoot, 'utils'))); % ★ 統一掛載共用統計工具箱
 rehash toolboxcache;
 
 configObj = Config();
