@@ -334,7 +334,7 @@ for g = 1:num_groups
     t_duration = toc;
     fprintf('  ⚡ %s 訓練完成！耗時: %.2f 秒\n', grp.name, t_duration);
     
-    % 批次分塊線性探針 AUC 評估
+    % ★ 批次分塊線性探針 AUC 評估 (修復變數與網路名稱適配)
     [auc_t, auc_s] = evaluate_linear_probe_batched(net_t, net_s, X_curr_input, Adj_sub, Expert_sub, Y_5D, ...
         val_days, seqLen, sample_T, feat_dim_space, adj_dim_space, use_gpu);
     
@@ -563,9 +563,9 @@ function [loss, emb] = compute_val_forward_space(net, W, b, dl_feat, dl_adj, y_t
 end
 
 %% =====================================================================
-% 輔助函數：批次分塊線性探針 AUC 評估
+% 輔助函數：批次分塊線性探針 AUC 評估 (修復變數與網路名稱適配)
 % =====================================================================
-function [auc_t, auc_s] = evaluate_linear_probe_batched(net_t, ~, X_input, Adj_sub, Expert_sub, Y_5D, ...
+function [auc_t, auc_s] = evaluate_linear_probe_batched(net_t, net_s, X_input, Adj_sub, Expert_sub, Y_5D, ...
     val_days, seqLen, sample_T, feat_dim_space, adj_dim_space, use_gpu)
     total_val = sum(Expert_sub(val_days, :), 'all');
     E_t = zeros(total_val, 64, 'single');
@@ -610,10 +610,10 @@ function [auc_t, auc_s] = evaluate_linear_probe_batched(net_t, ~, X_input, Adj_s
         dl_c_s_adj  = dlarray(X_chunk_S_adj, 'CB');
         if use_gpu
             dl_c_s_feat = gpuArray(dl_c_s_feat);
-            dl_c_s_adj  = gpuArray(dl_val_s_adj);
+            dl_c_s_adj  = gpuArray(dl_c_s_adj); % ★ 修復筆誤：變數對齊為 dl_c_s_adj
         end
         
-        emb_s_raw = forward_space_wrapper(net_space, dl_c_s_feat, dl_c_s_adj);
+        emb_s_raw = forward_space_wrapper(net_s, dl_c_s_feat, dl_c_s_adj); % ★ 修復引數：對齊為 net_s
         emb_s_raw = extractdata(gather(emb_s_raw));
         emb_s_all = reshape(emb_s_raw, 64, sample_T * C);
         
