@@ -1,13 +1,13 @@
 % =========================================================================
 % 腳本：2_Run_Extractor_Pretrain.m (階段 2：DL 雙軌時空特徵萃取器預訓練管線)
-% 升級：Phase 15.5 (★ 導入 ICIR 方向穩定性健檢、VICReg 變異數保底防坍縮、輸出層 L2 解耦)
+% 升級：Phase 15.5 (★ 1D/5D 雙軌 HAC-ICIR 穩定性健檢、VICReg 變異數保底防坍縮、輸出層 L2 解耦)
 % 職責：僅使用 18 維個股特徵提煉 64 維 Embedding，徹底防禦表徵坍縮與單一體制過擬合
 % =========================================================================
 clear; clc; close all;
 
 %% 0. 環境路徑掛載
 disp('=================================================================');
-disp('🚀 [Phase 15.5] 啟動 DL 雙軌特徵萃取器預訓練管線 (ICIR 穩定性健檢 + VICReg 防坍縮版)');
+disp('🚀 [Phase 15.5] 啟動 DL 雙軌特徵萃取器預訓練管線 (5D HAC-ICIR 健檢 + VICReg 防坍縮版)');
 disp('=================================================================');
 
 currentPath = fileparts(mfilename('fullpath'));
@@ -20,9 +20,9 @@ end
 
 addpath(genpath(fullfile(projectRoot, 'configs')));
 addpath(genpath(fullfile(projectRoot, 'data')));
-addpath(genpath(fullfile(projectRoot, 'envs')));
 addpath(genpath(fullfile(projectRoot, 'agents'))); 
 addpath(genpath(fullfile(projectRoot, 'models'))); 
+addpath(genpath(fullfile(projectRoot, 'utils'))); % ★ 掛載 HAC 統計工具箱
 rehash toolboxcache;
 
 configObj = Config();
@@ -55,26 +55,33 @@ num_valid = length(valid_idx);
 fprintf('  -> 宇宙規模: %d 檔 | 交易天數: %d 天 | 原始特徵維度: %d 維\n', ...
     numT, numDaysRaw, numFeats_All);
 
-%% 1.5 核心串接：18 維特徵切片、ICIR 穩定性健檢與獨立 IC 信心權重
-disp('--- 步驟 1.5：特徵切片 (剝離 Macro)、ICIR 方向穩定性健檢與特徵注意力加權 ---');
+%% 1.5 核心串接：18 維特徵切片、1D/5D 雙軌 HAC-ICIR 健檢與特徵注意力閘門
+disp('--- 步驟 1.5：特徵切片 (剝離 Macro)、1D/5D HAC-ICIR 健檢與特徵注意力加權 ---');
 
 numExtractorFeats = 3 + configObj.NumMicroFeatures; % 18 維 (Rel 3 + Micro 15)
 X_norm_3D_extractor_raw = X_norm_3D(:, 1:numExtractorFeats, :);
 
 evaluator = FeatureEvaluator(configObj);
-% ★ Phase 15.5：接收能量守恆權重、滾動 |IC| 與每日帶符號 Daily_IC
-[IC_Weights_2D, Raw_IC_Weight, Daily_IC] = evaluator.compute_confidence(X_norm_3D_extractor_raw, Prices_Active, Expert_Active);
 
 % 定義 18 維特徵標準名稱
 feat_names_18d = [{'Beta', 'Corr', 'RelStrength'}, ...
     {'R1', 'R5', 'R20', 'Vol20', 'IdioVol20', 'VolRatio', 'Amihud20', 'SMA20', 'SMA60', ...
      'MACD_Hist', 'RSI', 'OBV20', 'HL_Spread', 'Dist_H20', 'Dist_H252'}];
 
-% ★ Phase 15.5：輸出 ICIR 方向穩定性健檢報告 (判斷特徵可交易邊際)
-evaluator.report_icir_ranking(Daily_IC, feat_names_18d, 0.05);
+% 1. 計算 1 日 Horizon 信心權重 (供特徵閘門聚焦使用)
+[IC_Weights_2D, Raw_IC_Weight, Daily_IC_1D] = evaluator.compute_confidence(X_norm_3D_extractor_raw, Prices_Active, Expert_Active, 1);
 
-% 輸出特徵閘門注意力強度報告 (|IC|)
+% 輸出 1 日 Horizon HAC-ICIR 排行榜 (檢視微結構短期反轉強度)
+evaluator.report_icir_ranking(Daily_IC_1D, feat_names_18d, 0.05, '1D (Micro-Structure)');
+
+% 輸出特徵閘門滾動注意力強度 (|IC|)
 evaluator.report_ic_ranking(Raw_IC_Weight, feat_names_18d);
+
+% ★ Phase 15.5：計算 5 日 Horizon Daily_IC (與 GBDT 訓練標籤「5日 Beat Median」嚴格對齊)
+[~, ~, Daily_IC_5D] = evaluator.compute_confidence(X_norm_3D_extractor_raw, Prices_Active, Expert_Active, 5);
+
+% ★ 輸出 5 日對齊版 HAC-ICIR 排行榜 (作為判斷中期 Alpha 邊際之核心真理關卡)
+evaluator.report_icir_ranking(Daily_IC_5D, feat_names_18d, 0.05, '5D (Aligned with GBDT Target)');
 
 disp(' -> 執行特徵注意力遮罩融合 (Energy-Preserving Feature Gate)...');
 IC_Weights_3D = reshape(IC_Weights_2D, numDaysRaw, numExtractorFeats, 1);
@@ -88,7 +95,7 @@ fprintf('  -> [萃取器通道健檢] 18 維特徵標準差範圍: [%.4f, %.4f] 
 disp('--- 步驟 2：構建高訊噪比之橫截面預測標籤 (5-Day Beat the Median) ---');
 R_fwd = NaN(numDaysRaw, numT, 'single');
 R_fwd(1:end-horizon, :) = (Prices_Active(1+horizon:end, :) - Prices_Active(1:end-horizon, :)) ...
-                          ./ Prices_Active(1:end-horizon, :);
+                          ./ (Prices_Active(1:end-horizon, :) + 1e-8);
 R_fwd(isinf(R_fwd)) = NaN;
 
 Y_Labels_3D = zeros(numDaysRaw, numT, 'single');
