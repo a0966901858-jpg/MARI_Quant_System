@@ -8,6 +8,7 @@ disp('=================================================================');
 disp('🧠 [Phase 15] 啟動 CIO 總管動態路由貝氏超參數尋優 (DSR 校正版)');
 disp('=================================================================');
 
+%% 0. 環境路徑掛載
 currentPath = fileparts(mfilename('fullpath'));
 if isempty(currentPath), currentPath = pwd; end
 projectRoot = currentPath; 
@@ -17,7 +18,9 @@ end
 
 addpath(genpath(fullfile(projectRoot, 'configs')));
 addpath(genpath(fullfile(projectRoot, 'data')));
+addpath(genpath(fullfile(projectRoot, 'agents'))); 
 addpath(genpath(fullfile(projectRoot, 'models'))); 
+addpath(genpath(fullfile(projectRoot, 'utils'))); % ★ 統一掛載共用統計工具箱
 rehash toolboxcache;
 
 configObj = Config();
