@@ -8,7 +8,7 @@ disp('=================================================================');
 disp('🚀 [Phase 14.25] 啟動 MARI 數據湖對齊、特徵萃取與零洩漏降噪管線');
 disp('=================================================================');
 
-% --- 環境初始化 ---
+%% 0. 環境路徑掛載
 currentPath = fileparts(mfilename('fullpath'));
 if isempty(currentPath), currentPath = pwd; end
 projectRoot = currentPath; 
@@ -18,11 +18,10 @@ end
 
 addpath(genpath(fullfile(projectRoot, 'configs')));
 addpath(genpath(fullfile(projectRoot, 'data')));
-addpath(genpath(fullfile(projectRoot, 'envs')));
-addpath(genpath(fullfile(projectRoot, 'agents')));
+addpath(genpath(fullfile(projectRoot, 'agents'))); 
 addpath(genpath(fullfile(projectRoot, 'models'))); 
+addpath(genpath(fullfile(projectRoot, 'utils'))); % ★ 統一掛載共用統計工具箱
 rehash toolboxcache;
-
 configObj = Config();
 
 % 固定全域隨機種子
