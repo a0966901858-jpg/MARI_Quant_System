@@ -1,7 +1,7 @@
 classdef Config < handle
     % =========================================================================
     % 類別: Config (系統全域超參數與路徑配置中心)
-    % 升級: Phase 14.25 (★ 10維宏觀特徵、P2升級15維微觀特徵、28維全域特徵總數校驗)
+    % 升級: Phase 15 (★ 表徵變異數保底超參數注入、調降 L2 正則化係數防坍縮)
     % 職責: 作為 MARI 量化系統的超參數與組態單一真理來源 (Single Source of Truth)
     % =========================================================================
     
@@ -31,7 +31,6 @@ classdef Config < handle
     % ---------------------------------------------------------
     properties
         % --- 1. 特徵工程與雙軌萃取器 (Phase 1 & 2) ---
-        % ★ Phase 14.25 修正：擴充至 10 維 (4項SPY衍生 + 6項FRED宏觀總經指標)
         NumMacroFeatures = 10    % 宏觀特徵維度 (VIX_Proxy, R20, R60, Breadth, Real_VIX, VRP, T10Y2Y, HY, DGS10, UNRATE)
         NumMicroFeatures = 15    % 微觀特徵維度 (含特質波動度、Amihud流動性、52週新高、MACD柱狀圖)
         NumCointFeatures = 3     % 協整相對特徵 (Beta, Corr, Relative Strength)
@@ -40,10 +39,12 @@ classdef Config < handle
         SeqLen = 60              % LSTM 時序專家回溯視窗長度 (對齊一季 60 個交易日)
         Lookback = 60            % 相關性圖譜與 IC 檢定的歷史滾動視窗
         
-        % 雙軌萃取器正則化超參數
-        DL_DropoutRate = 0.2     % Transformer-LSTM Dropout 機率 (抑制過擬合)
-        DL_L2_Regularization = 1e-4 % 權重衰減係數 (Weight Decay)
-        DL_EarlyStoppingPatience = 5 % 早停容忍輪數
+        % ★ Phase 15 雙軌萃取器正則化超參數與變異數保底
+        DL_DropoutRate = 0.2             % Transformer-LSTM Dropout 機率 (抑制過擬合)
+        DL_L2_Regularization = 1e-5      % ★ 由 1e-4 調降一個數量級，避免主導弱梯度訊號
+        DL_VarianceFloorLambda = 0.05    % ★ 新增：表徵變異數保底正則化係數 (VICReg 風格)
+        DL_VarianceFloorTarget = 1.0     % ★ 新增：每個 embedding 維度跨樣本標準差的目標下限
+        DL_EarlyStoppingPatience = 5     % 早停容忍輪數
         
         % --- 2. VQ-VAE 向量量化降噪器 (Phase 2) ---
         VQ_DLatent = 3           % 潛在空間維度
@@ -67,7 +68,7 @@ classdef Config < handle
         
         % 全域統一交易成本模型係數
         BaseFrictionFee = 0.0005 % 基礎固定手續費 0.05%
-        SlippageVolCoeff = 0.10  % 波動率動態衝擊成本係數
+        SlippageVolCoeff = 0.10  % 波動率動態衝擊成本係數 (日頻波動度基礎)
         
         % BO 最佳化超參數 (將在腳本初始化時被 loadBOParams 動態覆寫)
         Guardrail_CrashProb = 0.85 
