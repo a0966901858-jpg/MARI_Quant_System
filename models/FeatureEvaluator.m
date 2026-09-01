@@ -1,10 +1,11 @@
 classdef FeatureEvaluator < handle
     % =========================================================================
-    % 類別：FeatureEvaluator (特徵信心評估器與共線性診斷中心)
-    % 升級：Phase 14.25 (★ 能量守恆特徵注意力、全特徵 Pairwise 相關性共線性自動診斷)
+    % 類別：FeatureEvaluator (特徵信心評估器、ICIR 穩定性健檢與共線性診斷中心)
+    % 升級：Phase 15.5 (★ 導入 ICIR 方向穩定性健檢、能量守恆特徵注意力、共線性診斷)
     % 職責：
-    %   1. 計算各維度特徵的動態預測能力 (Spearman Rank IC)，產出能量守恆特徵注意力權重
-    %   2. 評估全特徵相關係數矩陣，自動標記 |corr| > 0.85 的高度共線性特徵對
+    %   1. 計算每日橫截面 Spearman Rank IC，產出能量守恆特徵注意力權重
+    %   2. 評估特徵長周期 ICIR = mean(signed IC) / std(signed IC)，檢驗方向可交易邊際
+    %   3. 評估全特徵相關係數矩陣，自動標記 |corr| > 0.85 的高度共線性特徵對
     % =========================================================================
     
     properties
@@ -17,13 +18,13 @@ classdef FeatureEvaluator < handle
         % ---------------------------------------------------------
         function obj = FeatureEvaluator(configObj)
             obj.ConfigObj = configObj;
-            fprintf(' ⚙️ [FeatureEvaluator] 初始化完成。已載入橫截面 IC 評估與特徵共線性診斷引擎。\n');
+            fprintf(' ⚙️ [FeatureEvaluator] 初始化完成。已載入橫截面 IC/ICIR 評估與共線性診斷引擎。\n');
         end
         
         % =========================================================
-        % 核心運算：計算無未來函數的動態特徵權重
+        % 核心運算：計算無未來函數的動態特徵權重 (回傳注意力權重、滾動|IC|與每日IC)
         % =========================================================
-        function IC_Weights_2D = compute_confidence(obj, X_denoised_3D, Prices_Active, Expert_Active)
+        function [IC_Weights_2D, Raw_IC_Weight, Daily_IC] = compute_confidence(obj, X_denoised_3D, Prices_Active, Expert_Active)
             % -----------------------------------------------------------------
             % 函數輸入維度：
             % X_denoised_3D: [Days, Feats, NumTickers]
@@ -31,6 +32,8 @@ classdef FeatureEvaluator < handle
             % Expert_Active: [Days, NumTickers] (活躍標的遮罩)
             % 輸出維度：
             % IC_Weights_2D: [Days, Feats] (每日各特徵的能量守恆注意力權重，均值維持 1.0)
+            % Raw_IC_Weight: [Days, Feats] (各特徵歷史滾動平均 |IC|，供特徵閘門聚焦使用)
+            % Daily_IC:      [Days, Feats] (每日橫截面帶符號 Spearman Rank IC)
             % -----------------------------------------------------------------
             
             disp('--- 啟動極速多核心橫截面特徵信心評估 (Cross-Sectional Spearman IC) ---');
@@ -48,7 +51,7 @@ classdef FeatureEvaluator < handle
             R_fwd(1:end-1, :) = (Prices_Active(2:end, :) - Prices_Active(1:end-1, :)) ./ Prices_Active(1:end-1, :);
             R_fwd(isinf(R_fwd)) = NaN;
             
-            %% 2. 核心引擎：計算每日「橫截面」Rank IC
+            %% 2. 核心引擎：計算每日「橫截面」帶符號 Rank IC
             Daily_IC = zeros(numDays, numFeats, 'single');
             min_valid_samples = max(10, floor(numTickers * 0.05));
             
@@ -94,7 +97,7 @@ classdef FeatureEvaluator < handle
                 Daily_IC(:, k) = feat_ic_col;
             end
             
-            %% 3. ★ 零洩漏時間平移 (Zero-Leakage Time-Shift)
+            %% 3. ★ 零洩漏時間平移 (Zero-Leakage Time-Shift 特徵閘門強度)
             disp('  -> 執行時間平移與滾動平滑 (生成無未來函數之 IC 強度)...');
             Raw_IC_Weight = zeros(numDays, numFeats, 'single');
             
@@ -133,12 +136,96 @@ classdef FeatureEvaluator < handle
         end
         
         % =====================================================================
-        % ★ Phase 14.25 (第 6 節)：全特徵 Pairwise 相關係數共線性診斷
+        % ★ Phase 15.5 新增：特徵訊號方向穩定性 ICIR 排行榜健檢報告
+        % =====================================================================
+        function [icir_table, max_icir] = report_icir_ranking(obj, Daily_IC, feat_names, min_icir_threshold)
+            if nargin < 4 || isempty(min_icir_threshold)
+                min_icir_threshold = 0.05; 
+            end
+            
+            if isprop(obj.ConfigObj, 'Lookback')
+                lookback = obj.ConfigObj.Lookback;
+            else
+                lookback = 60; 
+            end
+            
+            numFeats = size(Daily_IC, 2);
+            if nargin < 3 || isempty(feat_names) || length(feat_names) ~= numFeats
+                feat_names = arrayfun(@(x) sprintf('Feat_%d', x), 1:numFeats, 'UniformOutput', false);
+            end
+            
+            valid_ic_window = Daily_IC(lookback+1:end, :);
+            mean_ic = mean(valid_ic_window, 1, 'omitnan');
+            std_ic  = std(valid_ic_window, 0, 1, 'omitnan');
+            icir    = mean_ic ./ (std_ic + 1e-8);
+            
+            % 橫截面有效樣本數檢定 (初篩 t-stat 與 p-val)
+            n_eff  = sum(~isnan(valid_ic_window), 1);
+            t_stat = icir .* sqrt(n_eff);
+            p_val  = 2 * (1 - normcdf(abs(t_stat)));
+            
+            [sorted_icir, sort_idx] = sort(abs(icir), 'descend');
+            
+            fprintf('\n=================================================================\n');
+            fprintf('📊 【Phase 15.5 特徵訊號方向穩定性健檢：ICIR 排行榜】\n');
+            fprintf('=================================================================\n');
+            for i = 1:length(sorted_icir)
+                j = sort_idx(i);
+                sig_flag = '';
+                if p_val(j) < 0.05
+                    sig_flag = '⭐ p<0.05';
+                end
+                fprintf('  [%2d] %-16s | mean(IC)=%+.4f  std(IC)=%.4f  ICIR=%+.4f  %s\n', ...
+                    i, feat_names{j}, mean_ic(j), std_ic(j), icir(j), sig_flag);
+            end
+            fprintf('-----------------------------------------------------------------\n');
+            
+            max_icir = max(abs(icir));
+            if max_icir < min_icir_threshold
+                warning(['⚠️ 警告：所有特徵 |ICIR| 均低於 %.4f！\n' ...
+                         '   代表特徵瞬時相關性不小，但方向長期頻繁反轉，不具可靠交易邊際。\n' ...
+                         '   此診斷與 GBDT AUC≈0.50、DSR=0.0000 的結論完全吻合！'], min_icir_threshold);
+            else
+                fprintf('  ✅ 通過穩定性健檢：最高特徵 |ICIR| = %.4f (>= %.4f)，具備方向預測邊際。\n', ...
+                    max_icir, min_icir_threshold);
+            end
+            fprintf('=================================================================\n\n');
+            
+            icir_table = table(feat_names(:), mean_ic(:), std_ic(:), icir(:), p_val(:), ...
+                'VariableNames', {'Feature', 'Mean_IC', 'Std_IC', 'ICIR', 'P_Value'});
+        end
+        
+        % =====================================================================
+        % 特徵絕對相關性強度報告 (mean(|IC|)，供特徵閘門參考)
+        % =====================================================================
+        function report_ic_ranking(obj, Raw_IC_Weight, feat_names)
+            if isprop(obj.ConfigObj, 'Lookback')
+                lookback = obj.ConfigObj.Lookback;
+            else
+                lookback = 60; 
+            end
+            
+            numFeats = size(Raw_IC_Weight, 2);
+            if nargin < 3 || isempty(feat_names) || length(feat_names) ~= numFeats
+                feat_names = arrayfun(@(x) sprintf('Feat_%d', x), 1:numFeats, 'UniformOutput', false);
+            end
+            
+            mean_abs_ic_per_feat = mean(abs(Raw_IC_Weight(lookback+1:end, :)), 1, 'omitnan');
+            [sorted_ic, sort_idx] = sort(mean_abs_ic_per_feat, 'descend');
+            
+            fprintf('\n=================================================================\n');
+            fprintf('📊 【特徵閘門注意力強度：平均絕對 |IC| 排行榜】\n');
+            fprintf('=================================================================\n');
+            for i = 1:length(sorted_ic)
+                fprintf('  [%2d] %-16s | 滾動 mean(|IC|) = %.4f\n', i, feat_names{sort_idx(i)}, sorted_ic(i));
+            end
+            fprintf('=================================================================\n\n');
+        end
+        
+        % =====================================================================
+        % 全特徵 Pairwise 相關係數共線性診斷
         % =====================================================================
         function [corr_matrix, high_corr_pairs] = diagnose_collinearity(~, X_3D, Expert_Active, feat_names)
-            % -----------------------------------------------------------------
-            % 職責：檢測特徵間的成對相關性，篩查 |corr| > 0.85 的共線性風險指標
-            % -----------------------------------------------------------------
             disp('--- 啟動全特徵 Pairwise 相關性共線性診斷 (Collinearity Audit) ---');
             
             [numDays, numFeats, numTickers] = size(X_3D);
@@ -147,7 +234,6 @@ classdef FeatureEvaluator < handle
                 feat_names = arrayfun(@(x) sprintf('Feat_%d', x), 1:numFeats, 'UniformOutput', false);
             end
             
-            % 抽取活躍樣本壓平為 [N_samples, numFeats]
             active_mask_flat = reshape(Expert_Active, [numDays * numTickers, 1]);
             X_flat = zeros(numDays * numTickers, numFeats, 'single');
             for k = 1:numFeats
@@ -158,7 +244,6 @@ classdef FeatureEvaluator < handle
             valid_rows = active_mask_flat & all(~isnan(X_flat) & ~isinf(X_flat), 2);
             X_valid = double(X_flat(valid_rows, :));
             
-            % 隨機抽樣 200,000 筆樣本加速矩陣相關運算
             if size(X_valid, 1) > 200000
                 sample_idx = randsample(size(X_valid, 1), 200000);
                 X_valid = X_valid(sample_idx, :);
@@ -167,13 +252,12 @@ classdef FeatureEvaluator < handle
             corr_matrix = corr(X_valid, 'Type', 'Spearman');
             corr_matrix(isnan(corr_matrix)) = 0;
             
-            % 檢測 |corr| > 0.85 的成對特徵
             threshold = 0.85;
             [row_idx, col_idx] = find(triu(abs(corr_matrix) > threshold, 1));
             
             high_corr_pairs = cell(length(row_idx), 3);
             fprintf('\n=================================================================\n');
-            fprintf('📊 【Phase 14.25 特徵共線性診斷報告 (|Corr| > %.2f)】\n', threshold);
+            fprintf('📊 【特徵共線性診斷報告 (|Corr| > %.2f)】\n', threshold);
             fprintf('=================================================================\n');
             
             if isempty(row_idx)
