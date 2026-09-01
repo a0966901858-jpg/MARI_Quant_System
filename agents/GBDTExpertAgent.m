@@ -1,7 +1,7 @@
 classdef GBDTExpertAgent < handle
     % =========================================================================
     % 類別：GBDTExpertAgent (顯性風險預測流與 SHAP 解釋器)
-    % 升級：Phase 14.25 (★ 嚴格對照組 Baseline、Purged/Embargoed 交叉驗證、Platt Scaling 事後機率校準)
+    % 升級：Phase 15 (★ 崩盤正樣本分層時序 CV、Bootstrap 95% CI、Platt 機率校準)
     % 職責：接收 DL 萃取之 Embedding 與擴充宏觀特徵，輸出 OOF 校準機率與 SHAP 歸因
     % =========================================================================
     
@@ -10,7 +10,7 @@ classdef GBDTExpertAgent < handle
         MdlTime             % 最終訓練完成之時序專家 GBDT 模型
         MdlSpace            % 最終訓練完成之空間專家 GBDT 模型
         MdlCrash            % 最終訓練完成之崩盤護欄 GBDT 模型
-        MdlPlatt            % 崩盤護欄之 Platt Scaling 機率校準模型 (Phase 14.25 新增)
+        MdlPlatt            % 崩盤護欄之 Platt Scaling 機率校準模型
         
         FeatureNamesTime    % 時序特徵名稱對應表 (供 SHAP 解釋使用)
         FeatureNamesSpace   % 空間特徵名稱對應表 (供 SHAP 解釋使用)
@@ -23,7 +23,7 @@ classdef GBDTExpertAgent < handle
         % ---------------------------------------------------------
         function obj = GBDTExpertAgent(configObj)
             obj.ConfigObj = configObj; 
-            fprintf(' ⚙️ [GBDTExpertAgent] 實例化完成。已啟動嚴格 Baseline 驗證、Purged CV 與 Platt Scaling。\n');
+            fprintf(' ⚙️ [GBDTExpertAgent] 實例化完成。已啟動正樣本分層 CV、Bootstrap 95%% CI 與 Platt 校準。\n');
         end
         
         % =========================================================
@@ -78,10 +78,10 @@ classdef GBDTExpertAgent < handle
             
             oof_scores_time = zeros(totalActive, 1, 'single');
             oof_scores_space = zeros(totalActive, 1, 'single');
-            oof_scores_raw = zeros(totalActive, 1, 'single'); % Baseline 預測分數
+            oof_scores_raw = zeros(totalActive, 1, 'single');
             
             K = 5; 
-            embargo = 20; % ★ 隔離天數：防範滾動技術指標跨邊界洩漏
+            embargo = 20; % 20 天滾動特徵隔離期
             fprintf('  -> 啟動手動 %d-Fold 區塊時序 (Purged Expanding Window, Embargo=%d天) 交叉驗證...\n', K, embargo);
             
             day_array = row_mapping(:, 1);
@@ -98,7 +98,7 @@ classdef GBDTExpertAgent < handle
                 fprintf('     - 正在訓練時間區塊 Fold %d/%d (嚴格防洩漏) ... ', k, K);
                 
                 val_mask = (fold_indices == k);
-                train_mask = (day_array < (edges(k) - embargo)); % ★ 扣除 Embargo 窗口
+                train_mask = (day_array < (edges(k) - embargo));
                 
                 train_idx = find(train_mask);
                 val_idx = find(val_mask);
@@ -216,10 +216,10 @@ classdef GBDTExpertAgent < handle
         end
         
         % =========================================================
-        % 2. 崩盤護欄訓練與 OOF 機率推論 (★ Purged CV + Platt Scaling)
+        % 2. 崩盤護欄訓練與 OOF 機率推論 (★ Phase 15 正樣本分層時序 CV + Bootstrap 95% CI)
         % =========================================================
         function P_crash_oof = train_and_predict_oof_crash(obj, Macro_2D, Y_Crash_1D)
-            disp('--- 啟動崩盤護欄 GBDT 訓練 (Purged 時序 OOF 與 Platt Scaling 校準) ---');
+            disp('--- 啟動崩盤護欄 GBDT 訓練 (正樣本分層時序 OOF、Bootstrap 95% CI 與 Platt 校準) ---');
             
             numDays = size(Macro_2D, 1);
             numMacro = size(Macro_2D, 2);
@@ -229,33 +229,75 @@ classdef GBDTExpertAgent < handle
             obj.FeatureNamesMacro = obj.get_macro_names(numMacro);
             
             K = 5;
-            embargo = 20; % ★ 隔離天數
-            edges = linspace(1, numDays + 0.1, K + 1);
+            embargo = 20; % 20 天滾動特徵隔離期
             P_crash_oof_scores = zeros(numDays, 1, 'single');
             
+            % ★ Phase 15 (P1-3)：依據崩盤正樣本累積密度決定時序切分邊界 (Stratified Chronological Folds)
+            pos_crash_indices = find(Y_Crash_1D == 1);
+            num_pos_crash = length(pos_crash_indices);
+            
+            if num_pos_crash >= (K * 5)
+                % 確保每個驗證 Fold 均勻分配到等量的崩盤歷史日
+                pos_segment_idx = round(linspace(1, num_pos_crash, K + 1));
+                edges = pos_crash_indices(pos_segment_idx);
+                edges(1) = 1;
+                edges(end) = numDays + 1;
+                edges = unique(edges);
+                if length(edges) < (K + 1)
+                    edges = round(linspace(1, numDays + 0.1, K + 1));
+                end
+            else
+                edges = round(linspace(1, numDays + 0.1, K + 1));
+            end
+            
             for k = 2:K
-                fprintf('     - 正在訓練崩盤護欄 Fold %d/%d ... ', k, K);
-                
                 val_mask = ((1:numDays)' >= edges(k)) & ((1:numDays)' < edges(k+1));
-                train_mask = ((1:numDays)' < (edges(k) - embargo)); % ★ 扣除 Embargo 窗口
+                train_mask = ((1:numDays)' < (edges(k) - embargo));
                 
-                mdl_crash_fold = fitcensemble(Macro_2D(train_mask, :), Y_categorical(train_mask), ...
-                    'Method', 'RUSBoost', 'Learners', t_tree, 'NumLearningCycles', 30, ...
-                    'LearnRate', 0.1, 'PredictorNames', obj.FeatureNamesMacro);
+                num_val_pos = sum(Y_Crash_1D(val_mask) == 1);
+                fprintf('     - 正在訓練崩盤護欄 Fold %d/%d (驗證崩盤樣本: %d 天) ... ', k, K, num_val_pos);
+                
+                % 防呆：若訓練集正樣本過少則退回基礎權重
+                if sum(Y_Crash_1D(train_mask) == 1) < 5
+                    mdl_crash_fold = fitcensemble(Macro_2D(train_mask, :), Y_categorical(train_mask), ...
+                        'Method', 'LogitBoost', 'Learners', t_tree, 'NumLearningCycles', 30, ...
+                        'LearnRate', 0.1, 'PredictorNames', obj.FeatureNamesMacro);
+                else
+                    mdl_crash_fold = fitcensemble(Macro_2D(train_mask, :), Y_categorical(train_mask), ...
+                        'Method', 'RUSBoost', 'Learners', t_tree, 'NumLearningCycles', 30, ...
+                        'LearnRate', 0.1, 'PredictorNames', obj.FeatureNamesMacro);
+                end
                 
                 [~, score_c] = predict(mdl_crash_fold, Macro_2D(val_mask, :));
                 P_crash_oof_scores(val_mask) = score_c(:, 2);
                 
                 val_crash_y = double(Y_Crash_1D(val_mask));
                 p_c_fold = 1 ./ (1 + exp(-score_c(:, 2)));
+                
                 auc_c = 0.5;
+                ci_lower = 0.5; ci_upper = 0.5;
+                
                 if length(unique(val_crash_y)) > 1
                     try
                         [~,~,~,auc_c] = perfcurve(val_crash_y, p_c_fold, 1);
+                        % ★ Phase 15 (P1-3)：Bootstrap 95% 信賴區間計算
+                        n_boot = 1000;
+                        boot_aucs = zeros(n_boot, 1);
+                        n_val = length(val_crash_y);
+                        for b = 1:n_boot
+                            b_idx = randsample(n_val, n_val, true);
+                            if length(unique(val_crash_y(b_idx))) > 1
+                                [~,~,~,boot_aucs(b)] = perfcurve(val_crash_y(b_idx), p_c_fold(b_idx), 1);
+                            else
+                                boot_aucs(b) = 0.5;
+                            end
+                        end
+                        ci_lower = prctile(boot_aucs, 2.5);
+                        ci_upper = prctile(boot_aucs, 97.5);
                     catch
                     end
                 end
-                fprintf('完成！(Fold %d OOF Crash AUC: %.4f)\n', k, auc_c);
+                fprintf('完成！(Fold %d OOF Crash AUC: %.4f [95%% CI: %.4f, %.4f])\n', k, auc_c, ci_lower, ci_upper);
             end
             
             P_crash_oof_uncalibrated = 1 ./ (1 + exp(-P_crash_oof_scores));
@@ -271,16 +313,31 @@ classdef GBDTExpertAgent < handle
                 P_crash_oof = predict(obj.MdlPlatt, P_crash_oof_uncalibrated);
                 val_crash_pred_calibrated = P_crash_oof(eval_crash_mask);
             catch ME
-                warning('⚠️ Platt Scaling 失敗 (可能 OOF 樣本中無足夠崩盤日)，退回未校準機率: %s', ME.message);
+                warning('⚠️ Platt Scaling 失敗，退回未校準機率: %s', ME.message);
                 obj.MdlPlatt = [];
                 P_crash_oof = P_crash_oof_uncalibrated;
                 val_crash_pred_calibrated = uncalibrated_pred;
             end
             
             overall_auc_c = 0.5;
+            overall_ci_lower = 0.5; overall_ci_upper = 0.5;
+            
             if length(unique(val_crash_true)) > 1
                 try
                     [~,~,~,overall_auc_c] = perfcurve(val_crash_true, val_crash_pred_calibrated, 1);
+                    n_boot = 1000;
+                    boot_aucs_all = zeros(n_boot, 1);
+                    n_all = length(val_crash_true);
+                    for b = 1:n_boot
+                        b_idx = randsample(n_all, n_all, true);
+                        if length(unique(val_crash_true(b_idx))) > 1
+                            [~,~,~,boot_aucs_all(b)] = perfcurve(val_crash_true(b_idx), val_crash_pred_calibrated(b_idx), 1);
+                        else
+                            boot_aucs_all(b) = 0.5;
+                        end
+                    end
+                    overall_ci_lower = prctile(boot_aucs_all, 2.5);
+                    overall_ci_upper = prctile(boot_aucs_all, 97.5);
                 catch
                 end
             end
@@ -289,9 +346,9 @@ classdef GBDTExpertAgent < handle
             brier_calibrated = mean((val_crash_pred_calibrated - val_crash_true).^2);
             
             fprintf('\n=================================================================\n');
-            fprintf('📊 【Phase 14.25 崩盤護欄總評與 Platt Scaling 校準報告】\n');
+            fprintf('📊 【Phase 15 崩盤護欄總評與 Platt Scaling 校準報告】\n');
             fprintf('=================================================================\n');
-            fprintf(' > 全域 OOF Crash AUC   : %.4f\n', overall_auc_c);
+            fprintf(' > 全域 OOF Crash AUC   : %.4f [95%% CI: %.4f, %.4f]\n', overall_auc_c, overall_ci_lower, overall_ci_upper);
             fprintf(' > 校準前 Brier Score   : %.4f\n', brier_uncalibrated);
             fprintf(' > 校準後 Brier Score   : %.4f (改善: %+.2f%%)\n', brier_calibrated, (brier_uncalibrated - brier_calibrated)/brier_uncalibrated*100);
             fprintf('-----------------------------------------------------------------\n\n');
