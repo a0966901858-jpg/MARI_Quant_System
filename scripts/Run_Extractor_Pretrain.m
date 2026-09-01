@@ -1,13 +1,13 @@
 % =========================================================================
 % 腳本：2_Run_Extractor_Pretrain.m (階段 2：DL 雙軌時空特徵萃取器預訓練管線)
-% 升級：Phase 14.25 (★ 18D 獨立 IC 權重運算、Purged Embargo 跨體制驗證、防坍縮正則化)
-% 職責：僅使用 18 維個股特徵提煉 64 維 Embedding，徹底防禦單一體制過擬合與同質捷徑
+% 升級：Phase 15.5 (★ 導入 ICIR 方向穩定性健檢、VICReg 變異數保底防坍縮、輸出層 L2 解耦)
+% 職責：僅使用 18 維個股特徵提煉 64 維 Embedding，徹底防禦表徵坍縮與單一體制過擬合
 % =========================================================================
 clear; clc; close all;
 
 %% 0. 環境路徑掛載
 disp('=================================================================');
-disp('🚀 [Phase 14.25] 啟動 DL 雙軌特徵萃取器預訓練管線 (18D 獨立 IC + Embargo 驗證版)');
+disp('🚀 [Phase 15.5] 啟動 DL 雙軌特徵萃取器預訓練管線 (ICIR 穩定性健檢 + VICReg 防坍縮版)');
 disp('=================================================================');
 
 currentPath = fileparts(mfilename('fullpath'));
@@ -26,9 +26,6 @@ addpath(genpath(fullfile(projectRoot, 'models')));
 rehash toolboxcache;
 
 configObj = Config();
-
-% 鎖定溫和正則化
-configObj.DL_DropoutRate = 0.2;
 
 if isprop(configObj, 'RNG_Seed')
     rng(configObj.RNG_Seed, 'twister');
@@ -58,16 +55,26 @@ num_valid = length(valid_idx);
 fprintf('  -> 宇宙規模: %d 檔 | 交易天數: %d 天 | 原始特徵維度: %d 維\n', ...
     numT, numDaysRaw, numFeats_All);
 
-%% 1.5 核心串接：18 維特徵切片與獨立 IC 信心權重 (★ Phase 14.25 順序修正)
-disp('--- 步驟 1.5：特徵切片 (剝離 Macro) 與 18 維獨立能量守恆 IC 信心權重計算 ---');
+%% 1.5 核心串接：18 維特徵切片、ICIR 穩定性健檢與獨立 IC 信心權重
+disp('--- 步驟 1.5：特徵切片 (剝離 Macro)、ICIR 方向穩定性健檢與特徵注意力加權 ---');
 
-% ★ Phase 14.25 (第 3.1 節)：先切出萃取器專用的 18 維特徵，再進行 IC 權重評估
 numExtractorFeats = 3 + configObj.NumMicroFeatures; % 18 維 (Rel 3 + Micro 15)
 X_norm_3D_extractor_raw = X_norm_3D(:, 1:numExtractorFeats, :);
 
 evaluator = FeatureEvaluator(configObj);
-% 僅對 18 維計算 Softmax，確保能量守恆歸一化均值嚴格維持 1.0，不被 Macro 稀釋
-IC_Weights_2D = evaluator.compute_confidence(X_norm_3D_extractor_raw, Prices_Active, Expert_Active);
+% ★ Phase 15.5：接收能量守恆權重、滾動 |IC| 與每日帶符號 Daily_IC
+[IC_Weights_2D, Raw_IC_Weight, Daily_IC] = evaluator.compute_confidence(X_norm_3D_extractor_raw, Prices_Active, Expert_Active);
+
+% 定義 18 維特徵標準名稱
+feat_names_18d = [{'Beta', 'Corr', 'RelStrength'}, ...
+    {'R1', 'R5', 'R20', 'Vol20', 'IdioVol20', 'VolRatio', 'Amihud20', 'SMA20', 'SMA60', ...
+     'MACD_Hist', 'RSI', 'OBV20', 'HL_Spread', 'Dist_H20', 'Dist_H252'}];
+
+% ★ Phase 15.5：輸出 ICIR 方向穩定性健檢報告 (判斷特徵可交易邊際)
+evaluator.report_icir_ranking(Daily_IC, feat_names_18d, 0.05);
+
+% 輸出特徵閘門注意力強度報告 (|IC|)
+evaluator.report_ic_ranking(Raw_IC_Weight, feat_names_18d);
 
 disp(' -> 執行特徵注意力遮罩融合 (Energy-Preserving Feature Gate)...');
 IC_Weights_3D = reshape(IC_Weights_2D, numDaysRaw, numExtractorFeats, 1);
@@ -93,16 +100,14 @@ for t = 1:numDaysRaw-horizon
     end
 end
 
-%% 3. 切分時間軸 (★ Phase 14.25：導入 Purged Embargo 跨體制驗證集)
+%% 3. 切分時間軸 (Purged Embargo 跨體制驗證集)
 disp('--- 步驟 3：切分時間軸 (嚴格構建 IS 內 Purged Embargo 跨體制驗證集) ---');
 Train_Start_Date = datetime('2006-01-01');
 OOS_Start_Date   = datetime('2022-01-01');
 
-% 取出 In-Sample 所有合法索引
 idx_train_raw = find(Dates_Active >= Train_Start_Date & Dates_Active < OOS_Start_Date);
 is_idx_valid = intersect(valid_idx, idx_train_raw);
 
-% ★ 跨體制驗證窗口定義 (捕捉極端風險與盤整週期)
 regime_windows = { ...
     struct('name','2008 金融海嘯', 'start', datetime('2007-09-01'), 'end', datetime('2009-06-01')), ...
     struct('name','2015-16 盤整修正', 'start', datetime('2015-06-01'), 'end', datetime('2016-06-01')), ...
@@ -111,14 +116,13 @@ regime_windows = { ...
 
 val_idx_valid = [];
 embargo_val_idx = [];
-embargo = 20; % ★ 20 天滾動特徵隔離期
+embargo = 20;
 
 for i = 1:length(regime_windows)
     w = regime_windows{i};
     idx_w = find(Dates_Active >= w.start & Dates_Active <= w.end);
     val_idx_valid = [val_idx_valid; intersect(valid_idx, idx_w)];
     
-    % 擴充 Embargo 前後隔離區間，防止滾動技術指標資訊洩漏至訓練集
     idx_embargo = find(Dates_Active >= (w.start - caldays(embargo)) & Dates_Active <= (w.end + caldays(embargo)));
     embargo_val_idx = [embargo_val_idx; intersect(valid_idx, idx_embargo)];
 end
@@ -126,7 +130,6 @@ end
 val_idx_valid = unique(val_idx_valid);
 embargo_val_idx = unique(embargo_val_idx);
 
-% 訓練集為 IS 區間扣除驗證集與 Embargo 緩衝區
 train_idx_valid = setdiff(is_idx_valid, embargo_val_idx);
 num_train = length(train_idx_valid);
 num_val = length(val_idx_valid);
@@ -153,18 +156,19 @@ if canUseGPU()
     W_aux_space = gpuArray(W_aux_space); b_aux_space = gpuArray(b_aux_space);
 end
 
-%% 5. 啟動雙軌萃取器預訓練 (鎖定配置：L2+早停+坍縮診斷)
-disp('--- 步驟 5：執行雙軌萃取器預訓練 (全量跨體制驗證 + L2 正則化 + 早停) ---');
+%% 5. 啟動雙軌萃取器預訓練 (VICReg 保底 + 健康閘門快照)
+disp('--- 步驟 5：執行雙軌萃取器預訓練 (VICReg 防坍縮 + 跨體制驗證 + 早停) ---');
 epochs = 30; 
 physicalBatchSize = 2;   
 accumulationSteps = 16;  
 numIterationsPerEpoch = floor(num_train / physicalBatchSize);
 clipThreshold = 1.0;
 
-% ★ 鎖定超參數配置
-base_lr = 1e-3; 
-l2_lambda = 1e-4; 
-patience_limit = 5;
+base_lr        = 1e-3; 
+l2_lambda      = configObj.DL_L2_Regularization;      % 1e-5
+var_lambda     = configObj.DL_VarianceFloorLambda;    % 0.05
+var_target     = configObj.DL_VarianceFloorTarget;    % 1.0
+patience_limit = configObj.DL_EarlyStoppingPatience;
 
 avgG_t = []; avgSG_t = []; avgG_s = []; avgSG_s = [];
 avgG_Wt = []; avgSG_Wt = []; avgG_bt = []; avgSG_bt = [];
@@ -181,11 +185,10 @@ patience = 0;
 best_net_time = net_time; 
 best_net_space = net_space;
 
-min_healthy_var_t = 0.01;   
+min_healthy_var_t = 0.05;
 min_healthy_var_s = 0.10;
 
 for epoch = 1:epochs
-    % 3 輪 Warm-up + 每 10 輪衰減
     if epoch <= 3
         current_lr = 1e-4 + (base_lr - 1e-4) * (epoch / 3);
     else
@@ -211,8 +214,10 @@ for epoch = 1:epochs
         [X_batch_time, X_batch_space, A_batch_space, Y_batch, M_batch] = prepareBatchData(...
             actual_t_indices, X_norm_3D_extractor, AdjMatrix_3D, Y_Labels_3D, Expert_Active, numExtractorFeats, numT, seqLen, physicalBatchSize);
         
-        [loss_t, grad_t, grad_Wt, grad_bt] = dlfeval(@(n,w,b,x,y,m) aux_loss_time(n,w,b,x,y,m, l2_lambda), net_time, W_aux_time, b_aux_time, X_batch_time, Y_batch, M_batch);
-        [loss_s, grad_s, grad_Ws, grad_bs] = dlfeval(@(n,w,b,x,a,y,m) aux_loss_space(n,w,b,x,a,y,m, l2_lambda), net_space, W_aux_space, b_aux_space, X_batch_space, A_batch_space, Y_batch, M_batch);
+        [loss_t, grad_t, grad_Wt, grad_bt] = dlfeval(@(n,w,b,x,y,m) aux_loss_time(n,w,b,x,y,m, l2_lambda, var_lambda, var_target), ...
+            net_time, W_aux_time, b_aux_time, X_batch_time, Y_batch, M_batch);
+        [loss_s, grad_s, grad_Ws, grad_bs] = dlfeval(@(n,w,b,x,a,y,m) aux_loss_space(n,w,b,x,a,y,m, l2_lambda), ...
+            net_space, W_aux_space, b_aux_space, X_batch_space, A_batch_space, Y_batch, M_batch);
         
         if isempty(grad_t_accum)
             grad_t_accum = grad_t; grad_Wt_accum = grad_Wt; grad_bt_accum = grad_bt;
@@ -310,15 +315,20 @@ for epoch = 1:epochs
         fprintf('    ⚠️ [警告] E_Var(S)=%.4f 低於健康閾值 (%.2f)，疑似發生表徵坍縮！\n', var_e_s, min_healthy_var_s);
     end
     
-    % ★ Early Stopping 檢驗與快照保存
+    % 快照保存健康變異數閘門
     combined_val = val_loss_time(epoch) + val_loss_space(epoch);
-    if combined_val < best_val_loss - 1e-4
+    is_healthy = (var_e_t >= min_healthy_var_t) && (var_e_s >= min_healthy_var_s);
+    
+    if is_healthy && (combined_val < best_val_loss - 1e-4)
         best_val_loss = combined_val;
         patience = 0;
         best_net_time = net_time; 
         best_net_space = net_space;
     else
         patience = patience + 1;
+        if ~is_healthy
+            fprintf('    ⏭️  [跳過快照] 本輪因表徵變異數未達健康門檻不列入候選！\n');
+        end
     end
     
     if patience >= patience_limit
@@ -424,7 +434,7 @@ disp('🎯 [Phase 2] 完美完成。個股身分與物理維度 100% 銜接對�
 disp('=================================================================');
 
 %% =====================================================================
-% 輔助函數區 (資料封裝與預測頭 Loss 計算)
+% 輔助函數區 (VICReg 變異數保底與 L2 解耦 Loss 計算)
 % =====================================================================
 function [X_time, X_space, A_space, Y, M] = prepareBatchData(indices, X_3D, Adj_3D, Y_Lab, Expert, nF, nT, sL, bZ)
     X_time_raw = zeros(nF, nT * bZ, sL, 'single');
@@ -462,7 +472,7 @@ function [X_time, X_space, A_space, Y, M] = prepareBatchData(indices, X_3D, Adj_
     end
 end
 
-function [loss, grad_net, grad_W, grad_b] = aux_loss_time(net, W_aux, b_aux, X, Y, M, l2_lambda)
+function [loss, grad_net, grad_W, grad_b] = aux_loss_time(net, W_aux, b_aux, X, Y, M, l2_lambda, var_lambda, var_target)
     E = forward(net, X); 
     E_unfmt = stripdims(E);
     logits = W_aux * E_unfmt + b_aux; 
@@ -473,15 +483,24 @@ function [loss, grad_net, grad_W, grad_b] = aux_loss_time(net, W_aux, b_aux, X, 
     masked_bce = bce .* M_unfmt;
     bce_loss = sum(masked_bce, 'all') / (sum(M_unfmt, 'all') + 1e-8); 
     
+    % 變異數保底正則化 (VICReg 風格，懲罰方差過小)
+    mu_dim = mean(E_unfmt, 2);
+    var_per_dim = mean((E_unfmt - mu_dim).^2, 2);
+    std_per_dim = sqrt(var_per_dim + 1e-4);
+    var_penalty = mean(max(0, var_target - std_per_dim));
+    
+    % L2 懲罰排除最終表徵輸出層 ('E_time')
     l2_penalty = 0;
     learnables = net.Learnables;
     for r = 1:height(learnables)
-        w = learnables.Value{r};
-        l2_penalty = l2_penalty + sum(w(:).^2);
+        if ~contains(learnables.Layer{r}, 'E_time')
+            w = learnables.Value{r};
+            l2_penalty = l2_penalty + sum(w(:).^2);
+        end
     end
     l2_penalty = l2_penalty + sum(W_aux(:).^2);
     
-    loss = bce_loss + 0.5 * l2_lambda * l2_penalty;
+    loss = bce_loss + 0.5 * l2_lambda * l2_penalty + var_lambda * var_penalty;
     [grad_net, grad_W, grad_b] = dlgradient(loss, net.Learnables, W_aux, b_aux);
 end
 
