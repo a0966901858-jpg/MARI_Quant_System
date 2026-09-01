@@ -1,7 +1,7 @@
 classdef Config < handle
     % =========================================================================
     % 類別: Config (系統全域超參數與路徑配置中心)
-    % 升級: Phase 15 (★ 表徵變異數保底超參數注入、調降 L2 正則化係數防坍縮)
+    % 升級: Phase 15.5 (★ 新增空間專家訓練開關 EnableSpaceExpertTraining、表徵變異數保底)
     % 職責: 作為 MARI 量化系統的超參數與組態單一真理來源 (Single Source of Truth)
     % =========================================================================
     
@@ -30,6 +30,12 @@ classdef Config < handle
     % 系統全域超參數 (Hyperparameters - 統一控管防禦 Hardcoding)
     % ---------------------------------------------------------
     properties
+        % --- 0. 模組執行開關 (Module Execution Flags) ---
+        % ★ Phase 15.5 新增：空間專家訓練加速開關
+        % 設為 false 時可跳過 Phase 1 DyGAT 圖譜構建與 Phase 2 空間網路訓練，大幅加速迭代
+        % 正式定稿或生成完整論文對照報告時請設回 true
+        EnableSpaceExpertTraining = true 
+        
         % --- 1. 特徵工程與雙軌萃取器 (Phase 1 & 2) ---
         NumMacroFeatures = 10    % 宏觀特徵維度 (VIX_Proxy, R20, R60, Breadth, Real_VIX, VRP, T10Y2Y, HY, DGS10, UNRATE)
         NumMicroFeatures = 15    % 微觀特徵維度 (含特質波動度、Amihud流動性、52週新高、MACD柱狀圖)
@@ -39,11 +45,11 @@ classdef Config < handle
         SeqLen = 60              % LSTM 時序專家回溯視窗長度 (對齊一季 60 個交易日)
         Lookback = 60            % 相關性圖譜與 IC 檢定的歷史滾動視窗
         
-        % ★ Phase 15 雙軌萃取器正則化超參數與變異數保底
+        % 雙軌萃取器正則化超參數與變異數保底 (VICReg 風格)
         DL_DropoutRate = 0.2             % Transformer-LSTM Dropout 機率 (抑制過擬合)
-        DL_L2_Regularization = 1e-5      % ★ 由 1e-4 調降一個數量級，避免主導弱梯度訊號
-        DL_VarianceFloorLambda = 0.05    % ★ 新增：表徵變異數保底正則化係數 (VICReg 風格)
-        DL_VarianceFloorTarget = 1.0     % ★ 新增：每個 embedding 維度跨樣本標準差的目標下限
+        DL_L2_Regularization = 1e-5      % 降低 L2 懲罰，避免主導弱梯度訊號
+        DL_VarianceFloorLambda = 0.05    % 表徵變異數保底正則化係數
+        DL_VarianceFloorTarget = 1.0     % 每個 embedding 維度跨樣本標準差的目標下限
         DL_EarlyStoppingPatience = 5     % 早停容忍輪數
         
         % --- 2. VQ-VAE 向量量化降噪器 (Phase 2) ---
