@@ -1,11 +1,12 @@
 % =========================================================================
 % 腳本：1_Run_Data_and_Features.m 
-% 升級：Phase 14.25 (★ 雙爬蟲微服務調度、FRED 總經資料整合、VQ-VAE 字典物理凍結保護)
-% 職責：調度 Python 爬蟲 -> DataFetcher 矩陣映射 -> 特徵工程 (含真實VIX/VRP) -> VQ-VAE 降噪
+% 升級：Phase 15.5 (★ 雙爬蟲微服務調度、FRED 總經整合、VQ-VAE 字典物理凍結與大腦實體落地)
+% 職責：調度 Python 爬蟲 -> DataFetcher 矩陣映射 -> 特徵工程 (含真實VIX/VRP) -> VQ-VAE 降噪存檔
 % =========================================================================
 clear; clc; close all;
+
 disp('=================================================================');
-disp('🚀 [Phase 14.25] 啟動 MARI 數據湖對齊、特徵萃取與零洩漏降噪管線');
+disp('🚀 [Phase 15.5] 啟動 MARI 數據湖對齊、特徵萃取與零洩漏降噪管線');
 disp('=================================================================');
 
 %% 0. 環境路徑掛載
@@ -22,6 +23,7 @@ addpath(genpath(fullfile(projectRoot, 'agents')));
 addpath(genpath(fullfile(projectRoot, 'models'))); 
 addpath(genpath(fullfile(projectRoot, 'utils'))); % ★ 統一掛載共用統計工具箱
 rehash toolboxcache;
+
 configObj = Config();
 
 % 固定全域隨機種子
@@ -94,7 +96,6 @@ end
 [numDaysCheck, totalFeatsCheck, numTickersCheck] = size(X_norm_3D);
 fprintf('  📊 [特徵面板維度校驗] 天數: %d | 節點特徵數: %d 維 (預期 %d 維) | 標的數: %d 檔\n', ...
     numDaysCheck, totalFeatsCheck, fe.TotalNodeFeats, numTickersCheck);
-
 if totalFeatsCheck ~= fe.TotalNodeFeats
     error('❌ 特徵維度不匹配：實際產出 %d 維，預期為 %d 維！', totalFeatsCheck, fe.TotalNodeFeats);
 end
@@ -103,30 +104,36 @@ end
 disp('--- 步驟 4：嚴格 In-Sample 預訓練 VQ-VAE 降噪器與字典凍結 ---');
 Train_Start_Date = datetime('2006-01-01', 'TimeZone', 'UTC');
 OOS_Start_Date   = datetime('2022-01-01', 'TimeZone', 'UTC');
-
 idx_IS = find(Dates_Active >= Train_Start_Date & Dates_Active < OOS_Start_Date);
 fprintf(' 🔒 物理隔絕啟動：VQ-VAE 僅允許在 In-Sample 區間 (%d 天) 進行降噪字典學習。\n', length(idx_IS));
 
 vqvaeAgent = VQVAEAgent(configObj);
 X_norm_IS = X_norm_3D(idx_IS, :, :);
 Expert_Active_IS = Expert_Active(idx_IS, :); 
-
 vqvaeAgent.train(X_norm_IS, Expert_Active_IS, 30); 
 
-% ★ Phase 14.25 (第 1.3 節)：訓練完畢立即凍結字典，物理禁止 OOS 推論時更新編碼簿
+% 訓練完畢立即凍結字典，物理禁止 OOS 推論時更新編碼簿
 vqvaeAgent.Quantizer.freeze();
 fprintf(' 🧊 VQ-VAE 編碼簿字典已成功凍結 (Freeze)，徹底杜絕 OOS 洩漏！\n');
 
-%% --- 步驟 5：全域盲測降噪與快取落地 ---
+%% --- 步驟 5：全域盲測降噪 ---
 disp(' 🔄 啟動全域盲測降噪 (Out-of-Sample Denoising)...');
 X_denoised_3D = vqvaeAgent.denoise(X_norm_3D, Expert_Active);
 
-%% --- 步驟 6：降噪特徵 3D 張量快取落地 ---
-disp('--- 步驟 6：降噪特徵 3D 張量快取落地 ---');
+%% --- 步驟 6：降噪特徵張量與 VQ-VAE 模型實體快取落地 ---
+disp('--- 步驟 6：降噪特徵 3D 張量快取與 VQ-VAE 大腦實體落地 ---');
+
+% 6A. 儲存全域特徵面板與圖譜快取
 cachePath = fullfile(configObj.CacheDir, 'features_denoised.mat');
 save(cachePath, 'X_denoised_3D', 'X_norm_3D', 'Prices_Active', 'Expert_Active', 'Dates_Active', 'AdjMatrix_3D', '-v7.3');
 fprintf('💾 全域 3D 特徵快取已安全落地至: %s\n', cachePath);
 
+% 6B. ★ Phase 15.5 關鍵修復：儲存 VQ-VAE 降噪實體模型 (供 Run_Ablation_VQVAE.m 調用)
+vqModelPath = fullfile(configObj.ModelDir, 'VQVAE_Agent.mat');
+if ~exist(configObj.ModelDir, 'dir'), mkdir(configObj.ModelDir); end
+save(vqModelPath, 'vqvaeAgent', '-v7.3');
+fprintf('💾 VQ-VAE 降噪大腦實體已存檔至: %s\n', vqModelPath);
+
 disp('=================================================================');
-disp('🎯 [Phase 1] 完美完成。資料維度與物理邊界防護已 100% 驗證，請進入 Phase 2！');
+disp('🎯 [Phase 1] 完美完成。特徵資料庫與降噪模型已 100% 落地，請進入 Phase 2！');
 disp('=================================================================');
