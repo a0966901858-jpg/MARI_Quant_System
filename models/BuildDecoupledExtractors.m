@@ -1,7 +1,7 @@
 classdef BuildDecoupledExtractors
     % =========================================================================
     % 模組：BuildDecoupledExtractors.m
-    % 升級：Phase 14.25 (★ 剝離 Macro 特徵，解決維度權重失衡導致的表徵坍縮)
+    % 升級：Phase 15 (★ 時序專家引入層歸一化 LayerNorm、防禦表徵坍縮)
     % 職責：僅使用 18 維微觀與相對特徵萃取 [64, NumTickers] 節點表徵
     % =========================================================================
     
@@ -19,7 +19,7 @@ classdef BuildDecoupledExtractors
     
     methods
         function obj = BuildDecoupledExtractors(config, totalFeats)
-            disp(' ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Macro 剝離版)...');
+            disp(' ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (LayerNorm 防坍縮版)...');
             
             obj.ConfigObj = config;
             obj.NumTickers = config.NumTickers;
@@ -32,7 +32,7 @@ classdef BuildDecoupledExtractors
                 obj.DropoutRate = 0.2;
             end
             
-            % ★ Phase 14.25 核心修復：強制剝離 Macro 特徵，只保留會隨個股變動的 18 維
+            % 剝離 Macro 特徵，只保留會隨個股變動的 18 維 (Rel 3 + Micro 15)
             if nargin >= 2 && ~isempty(totalFeats)
                 obj.TotalNodeFeats = totalFeats;
             else
@@ -52,17 +52,19 @@ classdef BuildDecoupledExtractors
         end
         
         function [net_time, net_space] = buildNetworks(obj)
+            % ★ Phase 15 修正：在 LSTM 後插入 LayerNorm，穩定活化值分佈
             layers_time = [
                 sequenceInputLayer(obj.TotalNodeFeats, 'Name', 'in_time')
                 fullyConnectedLayer(128, 'Name', 'proj_fc')
                 selfAttentionLayer(4, 32, 'Name', 'self_attn')
                 dropoutLayer(obj.DropoutRate, 'Name', 'drop_attn')
                 lstmLayer(128, 'OutputMode', 'last', 'Name', 'lstm_1')
+                layerNormalizationLayer('Name', 'ln_pre_embed')  % ★ 新增層歸一化防坍縮
                 dropoutLayer(obj.DropoutRate, 'Name', 'drop_lstm')
                 fullyConnectedLayer(obj.EmbedDim, 'Name', 'E_time') 
             ];
             net_time = dlnetwork(layers_time);
-            disp('✅ 時序專家網路拓撲構建完畢。');
+            disp('✅ 時序專家網路拓撲構建完畢 (已掛載 LayerNorm)。');
             
             lgraph_space = layerGraph();
             feat_input = featureInputLayer(obj.FlattenedFeatDim, 'Name', 'in_space_feat');
