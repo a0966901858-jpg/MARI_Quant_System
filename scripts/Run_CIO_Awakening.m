@@ -8,17 +8,19 @@ disp('=========================================================');
 disp('🚀 [Phase 15] 啟動 CIO 三軌訓練 (日頻成本校正與跨體制驗證版)');
 disp('=========================================================');
 
-% 動態獲取當前腳本絕對路徑
+%% 0. 環境路徑掛載
 currentPath = fileparts(mfilename('fullpath'));
 if isempty(currentPath), currentPath = pwd; end
 projectRoot = currentPath; 
-if ~exist(fullfile(projectRoot, 'configs'), 'dir'), projectRoot = fullfile(currentPath, '..'); end
+if ~exist(fullfile(projectRoot, 'configs'), 'dir')
+    projectRoot = fullfile(currentPath, '..'); 
+end
 
 addpath(genpath(fullfile(projectRoot, 'configs')));
 addpath(genpath(fullfile(projectRoot, 'data')));
-addpath(genpath(fullfile(projectRoot, 'envs')));
-addpath(genpath(fullfile(projectRoot, 'models')));
-addpath(genpath(fullfile(projectRoot, 'agents')));
+addpath(genpath(fullfile(projectRoot, 'agents'))); 
+addpath(genpath(fullfile(projectRoot, 'models'))); 
+addpath(genpath(fullfile(projectRoot, 'utils'))); % ★ 統一掛載共用統計工具箱
 rehash toolboxcache;
 
 configObj = Config();
