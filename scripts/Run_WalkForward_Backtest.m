@@ -1,11 +1,11 @@
 % =========================================================================
 % 腳本：6_Run_WalkForward_Backtest.m
-% 升級：Phase 14.25 (★ Open-to-Open 撮合對齊 Phase 4、OOS 破產重置、連續護欄縮放、DEBUG 診斷)
+% 升級：Phase 15 (★ 日頻滑價成本校正、Open-to-Open 嚴格撮合、因果律邊界斷言)
 % 職責：執行嚴格的因果律回測，產出無縫的 IS/OOS 真實績效、交易軌跡與視覺化診斷報表
 % =========================================================================
 clear; clc; close all;
 disp('=================================================================');
-disp('🚀 [Phase 14.25] 啟動 MARI 嚴格前向滾動回測與動態體制集成引擎');
+disp('🚀 [Phase 15] 啟動 MARI 嚴格前向滾動回測與動態體制集成引擎');
 disp('=================================================================');
 
 currentPath = fileparts(mfilename('fullpath'));
@@ -38,7 +38,7 @@ agent_aggressive   = load(fullfile(configObj.ModelDir, 'CIO_Aggressive.mat')).ag
 agent_balanced     = load(fullfile(configObj.ModelDir, 'CIO_Balanced.mat')).agent_balanced;
 agent_conservative = load(fullfile(configObj.ModelDir, 'CIO_Conservative.mat')).agent_conservative;
 
-% ★ Phase 14.25 (第 5.1 節)：載入 Opens 以對齊 Phase 4 Open-to-Open 撮合環境
+% 載入 Opens 以對齊 Phase 4 Open-to-Open 撮合環境
 fetcher = DataFetcher(configObj);
 dataStruct = fetcher.fetch_data();
 Opens_Raw = dataStruct.Opens;
@@ -47,7 +47,7 @@ seqLen = configObj.SeqLen;
 numDaysRaw = length(Dates_Active);
 valid_idx = seqLen : numDaysRaw;
 
-% ★ Phase 14.25 (第 7 節)：先對全歷史進行 20 日移動平均平滑，再截取有效區間
+% 先對全歷史進行 20 日移動平均平滑，再截取有效區間
 P_crash_smooth_all = movmean(P_crash_all, [19, 0]);
 P_crash_smooth = P_crash_smooth_all(valid_idx);
 
@@ -101,11 +101,12 @@ valid_start_t = max(spy_inception_idx + 252, idx_train_start);
 OOS_Date = datetime('2022-01-01', 'TimeZone', 'UTC');
 idx_OOS_start = find(Dates_Active >= OOS_Date, 1);
 
-%% 4. 初始化回測沙盒
-disp('--- 步驟 3：初始化連續淨值回測沙盒 (無縫模式) ---');
+%% 4. 初始化回測沙盒與成本模型校驗
+disp('--- 步驟 3：初始化連續淨值回測沙盒與成本率合理性檢驗 ---');
 port_values = ones(numDays, 1, 'single');
 spy_values  = ones(numDays, 1, 'single');
 cash_ratios = zeros(numDays, 1, 'single');
+tc_records  = zeros(numDays, 1, 'single');
 prev_assets = zeros(numTickers, 1, 'single');
 prev_cash = 1.0;
 
@@ -116,11 +117,17 @@ base_frict      = configObj.MoE_FrictionMask;
 Verbose_Log     = true; 
 is_bankrupt     = false; 
 
-%% 5. 執行逐日回測 (★ Open-to-Open 撮合機制)
+% 成本率基線抽樣檢查
+sample_vol_daily = mean(vol20) / sqrt(252);
+sample_tc = configObj.BaseFrictionFee + (configObj.SlippageVolCoeff * sample_vol_daily);
+fprintf(' 📊 [成本模型檢查] 平均日波動度: %.4f%% | 預期平均換手成本率: %.4f%% (合理區間: 0.05%%~0.50%%)\n', ...
+    sample_vol_daily*100, sample_tc*100);
+
+%% 5. 執行逐日回測 (Open-to-Open 撮合機制)
 disp('--- 步驟 4：啟動逐日推論與 X光級交易監控 (Open-to-Open) ---');
 fprintf(' 📡 回測正式起點：%s\n', datestr(Dates_Active(valid_start_t)));
 
-% ★ 插入的 DEBUG 區塊：監測 OOS 起點與護欄機率早期分佈
+% 監測 OOS 起點與護欄機率早期分佈
 fprintf('\n[DEBUG] OOS起點=%d (%s)\n', idx_OOS_start, datestr(Dates_Active(idx_OOS_start)));
 fprintf('[DEBUG] guard_high=%.4f guard_low=%.4f\n', opt_guard, max(0, opt_guard-0.10));
 dbg_days = idx_OOS_start : min(idx_OOS_start+29, numDays-2);
@@ -134,7 +141,10 @@ fprintf('[DEBUG] t=%d 非零選股數=%d comb_p總和=%.4f P_crash=%.4f\n\n', ..
 % 因 Open-to-Open 需存取 t+2，迴圈上限調整至 numDays - 2
 for t = valid_start_t : numDays - 2
     
-    % ★ Phase 14.25 核心修復：OOS 盲測期破產旗標與資金池強制重置
+    % ★ Phase 15 (P1-5)：時間索引因果律邊界斷言防呆
+    assert(t + 2 <= numDays, '❌ Open-to-Open 跨日撮合索引溢出邊界！');
+    
+    % OOS 盲測期破產旗標與資金池強制重置
     if t == idx_OOS_start
         is_bankrupt = false;
         port_values(t) = 1.0;
@@ -183,7 +193,7 @@ for t = valid_start_t : numDays - 2
         w_time = w_time / (w_time + w_space); w_space = 1.0 - w_time;
     end
     
-    % ★ Phase 14.25 崩盤護欄連續縮放 (Continuous Risk Scaling)
+    % 崩盤護欄連續縮放 (Continuous Risk Scaling)
     guard_high = opt_guard;
     guard_low  = max(0, opt_guard - 0.10);
     if guard_high > guard_low
@@ -226,19 +236,22 @@ for t = valid_start_t : numDays - 2
     
     cash_ratios(t) = w_cash;
     
-    % ★ Phase 14.25 (第 5.1 節)：Open-to-Open 跨日報酬撮合
+    % Open-to-Open 跨日報酬撮合
     ret_t1 = (Opens_Active(t+2, :) - Opens_Active(t+1, :)) ./ (Opens_Active(t+1, :) + 1e-8);
     ret_t1(isnan(ret_t1) | isinf(ret_t1)) = 0;
     
     spy_ret_t1 = (Opens_Active(t+2, spy_idx) - Opens_Active(t+1, spy_idx)) / (Opens_Active(t+1, spy_idx) + 1e-8);
     if isnan(spy_ret_t1) || isinf(spy_ret_t1), spy_ret_t1 = 0; end
     
+    % ★ Phase 15 (P0-1)：年化波動度還原為日頻波動度，修正交易成本放大問題
+    current_vol_daily = vol20(t) / sqrt(252);
     if isprop(configObj, 'BaseFrictionFee') && isprop(configObj, 'SlippageVolCoeff')
-        tc_rate = configObj.BaseFrictionFee + (configObj.SlippageVolCoeff * vol20(t));
+        tc_rate = configObj.BaseFrictionFee + (configObj.SlippageVolCoeff * current_vol_daily);
     else
-        tc_rate = 0.0005 + (0.10 * vol20(t));
+        tc_rate = 0.0005 + (0.10 * current_vol_daily);
     end
     cost = sum(abs(asset_w - prev_assets)) * tc_rate;
+    tc_records(t) = cost;
     
     port_ret = sum(asset_w .* ret_t1') - cost;
     
@@ -250,8 +263,8 @@ for t = valid_start_t : numDays - 2
     
     if Verbose_Log && mod(t, 252) == 0
         num_holdings = sum(asset_w > 0.001);
-        fprintf('[%s] SPY: %+5.2f%% | MARI: %+5.2f%% | 現金: %5.1f%% | 持股: %2d 檔 | 累計淨值: %.2f\n', ...
-            datestr(Dates_Active(t+1)), spy_ret_t1*100, port_ret*100, w_cash*100, num_holdings, port_values(t+1));
+        fprintf('[%s] SPY: %+5.2f%% | MARI: %+5.2f%% | 現金: %5.1f%% | 持股: %2d 檔 | 成本: %.3f%% | 累計淨值: %.2f\n', ...
+            datestr(Dates_Active(t+1)), spy_ret_t1*100, port_ret*100, w_cash*100, num_holdings, cost*100, port_values(t+1));
     end
 end
 cash_ratios(numDays-1:numDays) = w_cash;
@@ -275,7 +288,7 @@ is_m   = calc_metrics(is_port);  is_sm  = calc_metrics(is_spy);
 oos_m  = calc_metrics(oos_port); oos_sm = calc_metrics(oos_spy);
 
 fprintf('\n=======================================================\n');
-fprintf('📊 MARI Quant System 嚴格分離盲測報告 (Open-to-Open)\n');
+fprintf('📊 MARI Quant System 嚴格分離盲測報告 (Phase 15 Open-to-Open)\n');
 fprintf('=======================================================\n');
 fprintf('[In-Sample: %s to %s]\n', datestr(Dates_Active(valid_start_t)), datestr(Dates_Active(idx_OOS_start-1)));
 fprintf('  > MARI : 總報酬 %8.2f%% | MDD %7.2f%% | 夏普 %5.2f\n', is_m.Ret, is_m.MDD, is_m.Sharpe);
@@ -288,7 +301,7 @@ fprintf('=======================================================\n');
 
 %% 7. 繪製機構級回測視覺化報表
 disp('--- 步驟 6：生成機構級視覺化報表 ---');
-figure('Name', 'MARI Quant Walk-Forward Backtest (Open-to-Open)', 'Color', 'w', 'Position', [100, 100, 1200, 950]);
+figure('Name', 'MARI Quant Walk-Forward Backtest (Phase 15)', 'Color', 'w', 'Position', [100, 100, 1200, 950]);
 
 subplot(4,1,1);
 plot(Dates_Active(valid_start_t:idx_OOS_start-1), log10(is_port), 'LineWidth', 1.5, 'Color', '#D95319'); hold on;
