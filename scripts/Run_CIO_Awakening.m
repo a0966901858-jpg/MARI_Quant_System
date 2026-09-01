@@ -1,11 +1,11 @@
 % =========================================================================
 % 腳本：5_Run_CIO_Awakening.m
-% 升級：Phase 14.25 (★ 多體制驗證集 Early Stopping、護欄空手扣分修正、Rollout 波動度懲罰)
+% 升級：Phase 15 (★ 日頻交易成本校正、向量化邊界斷言、多體制驗證 Early Stopping)
 % 職責：在向量化平行模擬環境中，訓練三位具備不同風險偏好的 CIO 總管，追求高夏普與低回撤
 % =========================================================================
 clear; clc; close all;
 disp('=========================================================');
-disp('🚀 [Phase 14.25] 啟動 CIO 三軌訓練 (跨體制驗證與夏普導向獎勵版)');
+disp('🚀 [Phase 15] 啟動 CIO 三軌訓練 (日頻成本校正與跨體制驗證版)');
 disp('=========================================================');
 
 % 動態獲取當前腳本絕對路徑
@@ -46,7 +46,7 @@ seqLen = configObj.SeqLen;
 numDaysRaw = length(Dates_Active);
 valid_idx = seqLen : numDaysRaw;
 
-% ★ Phase 14.25 (第 7 節)：先對全歷史進行 20 日移動平均平滑，再截取有效區間
+% 先對全歷史進行 20 日移動平均平滑，再截取有效區間
 P_crash_smooth_all = movmean(P_crash_all, [19, 0]);
 P_crash_M = P_crash_smooth_all(valid_idx)';
 
@@ -106,7 +106,7 @@ cfg_agg = struct('Frict', base_frict*0.5, 'Guard', min(0.99, base_guard*1.15), '
 cfg_bal = struct('Frict', base_frict,     'Guard', base_guard,                 'LR', base_lr);
 cfg_con = struct('Frict', base_frict*1.5, 'Guard', base_guard*0.85,            'LR', base_lr*0.8);
 
-%% 4. 動態對齊時間軸並構建跨體制驗證池 (★ Phase 14.25 第 3.3 節)
+%% 4. 動態對齊時間軸並構建跨體制驗證池
 disp('--- 步驟 4：切分訓練池與多體制驗證池 (解決短回合過擬合) ---');
 spy_inception_idx = find(spy_prices > 10, 1);
 if isempty(spy_inception_idx), spy_inception_idx = 1; end
@@ -123,7 +123,7 @@ idx_OOS_start = find(Dates_Active >= datetime('2022-01-01', 'TimeZone', 'UTC'), 
 RolloutSteps = 60; 
 valid_starts = valid_start_t : (idx_OOS_start - RolloutSteps - 1);
 
-% ★ 跨體制驗證窗口 (僅限 IS 範圍內)
+% 跨體制驗證窗口 (僅限 IS 範圍內)
 val_windows = { ...
     struct('start', datetime('2008-01-01','TimeZone','UTC'), 'end', datetime('2009-06-01','TimeZone','UTC')), ...
     struct('start', datetime('2020-01-01','TimeZone','UTC'), 'end', datetime('2020-12-01','TimeZone','UTC')), ...
@@ -186,7 +186,7 @@ for ep = 1:epochs
     rew_bal = rews_out(2);
     rew_con = rews_out(3);
     
-    % ★ Phase 14.25 (第 3.3 節)：在獨立驗證池評估多體制泛化表現 (skip_update = true, noise_std = 0)
+    % 在獨立驗證池評估多體制泛化表現 (skip_update = true, noise_std = 0)
     val_batch_size = min(length(val_starts), batch_size);
     val_sample_indices = randsample(val_starts, val_batch_size)';
     val_rews_out = zeros(1, 3);
@@ -211,7 +211,7 @@ for ep = 1:epochs
             ep, rew_agg, rew_bal, rew_con, val_ensemble_reward, lr_decay);
     end
     
-    % ★ Early Stopping 僅依賴多體制驗證集 Reward
+    % Early Stopping 僅依賴多體制驗證集 Reward
     if val_ensemble_reward > best_val_ensemble_reward + 1e-4
         best_val_ensemble_reward = val_ensemble_reward;
         patience_counter = 0;
@@ -245,13 +245,14 @@ save(fullfile(configObj.ModelDir, 'CIO_Conservative.mat'), 'agent_conservative')
 disp('✅ Phase 5 訓練完成！最佳大腦已具備跨體制穩健性並安全落地。');
 
 %% =====================================================================
-% ★ 向量化環境模擬核心函數 (★ Phase 14.25 護欄空手解耦 + 波動度懲罰)
+% ★ 向量化環境模擬核心函數 (★ Phase 15 日頻成本校正 + 索引邊界斷言)
 % =====================================================================
 function [avg_reward, agent] = simulate_and_update(agent, cfg, start_indices, steps, CIO_State, P_time, P_space, P_crash, Prices, Expert, noise_std, configObj, skip_update)
     if nargin < 13, skip_update = false; end
     
     batch_size = length(start_indices); 
     num_tickers = configObj.NumTickers;
+    num_days_total = size(Prices, 1);
     
     top_k_val = configObj.Top_K_Assets;
     fallback_w_time = configObj.Expert_Time_Weight;
@@ -259,7 +260,7 @@ function [avg_reward, agent] = simulate_and_update(agent, cfg, start_indices, st
     ep_states    = zeros(5, batch_size, steps, 'single'); 
     ep_actions   = zeros(3, batch_size, steps, 'single'); 
     ep_rewards   = zeros(1, batch_size, steps, 'single'); 
-    ep_port_rets = zeros(1, batch_size, steps, 'single'); % ★ 記錄組合原始報酬
+    ep_port_rets = zeros(1, batch_size, steps, 'single'); 
     
     prev_assets = zeros(num_tickers, batch_size, 'single'); 
     prev_cash = ones(1, batch_size, 'single'); 
@@ -269,6 +270,9 @@ function [avg_reward, agent] = simulate_and_update(agent, cfg, start_indices, st
     
     for step_idx = 1:steps
         current_t = start_indices + step_idx - 1; 
+        
+        % ★ Phase 15 (P1-5)：時間索引邊界斷言防呆
+        assert(max(current_t) + 1 <= num_days_total, '❌ 向量化模擬環境時間索引溢出邊界！');
         
         current_state = CIO_State(:, current_t);  
         current_state(5, :) = prev_cash;
@@ -327,13 +331,15 @@ function [avg_reward, agent] = simulate_and_update(agent, cfg, start_indices, st
         ret = (Prices(current_t + 1, :) ./ Prices(current_t, :) - 1)';
         ret(isnan(ret) | isinf(ret)) = 0; 
         
+        % ★ Phase 15 (P0-1)：年化波動度還原為日頻波動度，修正滑價過度扣罰
         current_vol = current_state(3, :); 
         current_vol(isnan(current_vol) | isinf(current_vol)) = 0;
+        current_vol_daily = current_vol / sqrt(252);
         
         if isprop(configObj, 'BaseFrictionFee') && isprop(configObj, 'SlippageVolCoeff')
-            tc_rate = configObj.BaseFrictionFee + (configObj.SlippageVolCoeff .* current_vol);
+            tc_rate = configObj.BaseFrictionFee + (configObj.SlippageVolCoeff .* current_vol_daily);
         else
-            tc_rate = 0.0005 + (0.10 .* current_vol);
+            tc_rate = 0.0005 + (0.10 .* current_vol_daily);
         end
         
         tc = tc_rate .* sum(abs(asset_weights - prev_assets), 1); 
@@ -342,7 +348,7 @@ function [avg_reward, agent] = simulate_and_update(agent, cfg, start_indices, st
         spy_ret = ret(spy_idx, :);
         excess_return = port_ret - spy_ret;
         
-        ep_port_rets(1, :, step_idx) = port_ret; % 記錄步報酬
+        ep_port_rets(1, :, step_idx) = port_ret;
         
         % Huber-like 獎勵計算
         rew_cio = zeros(1, batch_size, 'single');
@@ -359,7 +365,7 @@ function [avg_reward, agent] = simulate_and_update(agent, cfg, start_indices, st
         raw_large_penalty = loss_threshold * 100.0 + ((abs(excess_return(large_loss_mask)) - loss_threshold) * 100.0).^2;
         rew_cio(large_loss_mask) = -min(raw_large_penalty, 100.0);
         
-        % ★ Phase 14.25 (第 4.1 節)：解除護欄強制空手扣分矛盾 (排除 c_mask)
+        % 解除護欄強制空手扣分矛盾 (排除 c_mask)
         cash_penalty_coeff = 0.05;
         rew_cio = rew_cio - cash_penalty_coeff * single(w_cash > 0.95 & ~c_mask);
         
@@ -371,9 +377,9 @@ function [avg_reward, agent] = simulate_and_update(agent, cfg, start_indices, st
         prev_cash = w_cash;
     end
     
-    % ★ Phase 14.25 (第 4.2 節)：注入 Rollout 已實現波動度懲罰項 (導向高夏普)
+    % 注入 Rollout 已實現波動度懲罰項
     port_rets_2d = reshape(permute(ep_port_rets, [2, 3, 1]), [batch_size, steps]);
-    rollout_vol = std(port_rets_2d, 0, 2)' * sqrt(252); % [1, batch_size] 年化波動度
+    rollout_vol = std(port_rets_2d, 0, 2)' * sqrt(252);
     vol_penalty_coeff = 0.02;
     vol_penalty_per_step = (vol_penalty_coeff * rollout_vol) / steps;
     ep_rewards = ep_rewards - reshape(vol_penalty_per_step, [1, batch_size, 1]);
