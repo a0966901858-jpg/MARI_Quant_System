@@ -1,82 +1,173 @@
 =================================================================
-🚀 [Workstream A] 啟動多 Horizon 天花板掃描 (Stage 2 連續回歸與動態隔離版)
+🚀 [Workstream A] 啟動多 Horizon 天花板掃描 (Task A HAC 貫穿修復版)
 =================================================================
  🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
  ⚡ [Config] 成功注入 Phase 4 BO 最佳化參數：
-    - 崩盤護欄硬熔斷閾值 : 0.0488
-    - 時序專家權重 (Time_W): 0.9993
-    - 集中度標的數 (Top_K) : 31
+    - 崩盤護欄硬熔斷閾值 : 0.0485
+    - 時序專家權重 (Time_W): 0.9989
+    - 集中度標的數 (Top_K) : 39
+⚡ 啟動最佳化平行池 (6 Workers)...
+Starting parallel pool (parpool) using the 'Processes' profile ...
+Connected to parallel pool with 6 workers.
 --- 步驟 1：載入全域 3D 特徵面板並執行記憶體型態壓縮 ---
   📊 面板維度：有效天數 8396 天 | 特徵數 28 維 | 宇宙規模 504 檔 (全單精度/邏輯矩陣)
   🔥 成功建立 24 個獨立掃描任務 (動態 Embargo=H)，準備由 Worker 平行搶佔！
 --- 步驟 2：啟動平行天花板掃描 (包含連續回歸 OOF Rank IC 檢定) ---
-  ✅ [Worker 完成  1/24] Horizon:  1 日 | 18D (Rel+Micro)  | AUC: 0.5093 [0.4374, 0.5702] | OOF IC: +0.0106 (p=0.0001) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成  2/24] Horizon:  1 日 | 10D (Macro)      | AUC: 0.5011 [0.4559, 0.5579] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成  3/24] Horizon:  1 日 | 28D (Full)       | AUC: 0.5098 [0.4441, 0.5730] | OOF IC: +0.0104 (p=0.0001) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成  4/24] Horizon:  3 日 | 18D (Rel+Micro)  | AUC: 0.5098 [0.4609, 0.5572] | OOF IC: +0.0072 (p=0.0086) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成  5/24] Horizon:  3 日 | 10D (Macro)      | AUC: 0.4957 [0.4426, 0.5475] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成  6/24] Horizon:  3 日 | 28D (Full)       | AUC: 0.5072 [0.4527, 0.5531] | OOF IC: +0.0073 (p=0.0081) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成  7/24] Horizon:  5 日 | 18D (Rel+Micro)  | AUC: 0.5111 [0.4615, 0.5629] | OOF IC: +0.0057 (p=0.0332) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成  8/24] Horizon:  5 日 | 10D (Macro)      | AUC: 0.5005 [0.4554, 0.5549] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成  9/24] Horizon:  5 日 | 28D (Full)       | AUC: 0.5104 [0.4574, 0.5669] | OOF IC: +0.0057 (p=0.0318) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成 10/24] Horizon: 10 日 | 18D (Rel+Micro)  | AUC: 0.5086 [0.4577, 0.5594] | OOF IC: +0.0091 (p=0.0012) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成 11/24] Horizon: 10 日 | 10D (Macro)      | AUC: 0.4983 [0.4541, 0.5524] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成 12/24] Horizon: 10 日 | 28D (Full)       | AUC: 0.5067 [0.4606, 0.5725] | OOF IC: +0.0092 (p=0.0011) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成 13/24] Horizon: 20 日 | 18D (Rel+Micro)  | AUC: 0.5085 [0.4538, 0.5685] | OOF IC: +0.0096 (p=0.0026) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成 14/24] Horizon: 20 日 | 10D (Macro)      | AUC: 0.4986 [0.4496, 0.5531] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成 15/24] Horizon: 20 日 | 28D (Full)       | AUC: 0.5076 [0.4563, 0.5585] | OOF IC: +0.0098 (p=0.0022) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成 16/24] Horizon: 40 日 | 18D (Rel+Micro)  | AUC: 0.5142 [0.4452, 0.5686] | OOF IC: +0.0096 (p=0.0019) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成 17/24] Horizon: 40 日 | 10D (Macro)      | AUC: 0.4999 [0.4520, 0.5516] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成 18/24] Horizon: 40 日 | 28D (Full)       | AUC: 0.5133 [0.4448, 0.5629] | OOF IC: +0.0094 (p=0.0024) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成 19/24] Horizon: 60 日 | 18D (Rel+Micro)  | AUC: 0.5187 [0.4627, 0.5822] | OOF IC: +0.0088 (p=0.0176) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成 20/24] Horizon: 60 日 | 10D (Macro)      | AUC: 0.4992 [0.4507, 0.5513] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成 21/24] Horizon: 60 日 | 28D (Full)       | AUC: 0.5172 [0.4653, 0.5748] | OOF IC: +0.0088 (p=0.0176) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成 22/24] Horizon: 90 日 | 18D (Rel+Micro)  | AUC: 0.5209 [0.4735, 0.5693] | OOF IC: +0.0132 (p=0.0001) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成 23/24] Horizon: 90 日 | 10D (Macro)      | AUC: 0.5006 [0.4520, 0.5423] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
-  ✅ [Worker 完成 24/24] Horizon: 90 日 | 28D (Full)       | AUC: 0.5202 [0.4743, 0.5675] | OOF IC: +0.0131 (p=0.0001) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成  1/24] Horizon:  1 日 | 18D (Rel+Micro)  | AUC: 0.5078 [0.4563, 0.5608] | OOF IC: +0.0090 (p=0.0004) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成  2/24] Horizon:  1 日 | 10D (Macro)      | AUC: 0.4962 [0.4485, 0.5464] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成  3/24] Horizon:  1 日 | 28D (Full)       | AUC: 0.5063 [0.4544, 0.5602] | OOF IC: +0.0089 (p=0.0005) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成  4/24] Horizon:  3 日 | 18D (Rel+Micro)  | AUC: 0.5009 [0.4520, 0.5592] | OOF IC: +0.0060 (p=0.0307) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成  5/24] Horizon:  3 日 | 10D (Macro)      | AUC: 0.4992 [0.4396, 0.5446] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成  6/24] Horizon:  3 日 | 28D (Full)       | AUC: 0.5007 [0.4556, 0.5521] | OOF IC: +0.0057 (p=0.0408) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成  7/24] Horizon:  5 日 | 18D (Rel+Micro)  | AUC: 0.5116 [0.4589, 0.5732] | OOF IC: +0.0089 (p=0.0014) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成  8/24] Horizon:  5 日 | 10D (Macro)      | AUC: 0.5027 [0.4503, 0.5553] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成  9/24] Horizon:  5 日 | 28D (Full)       | AUC: 0.5114 [0.4581, 0.5739] | OOF IC: +0.0089 (p=0.0016) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 10/24] Horizon: 10 日 | 18D (Rel+Micro)  | AUC: 0.5112 [0.4533, 0.5614] | OOF IC: +0.0077 (p=0.0142) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 11/24] Horizon: 10 日 | 10D (Macro)      | AUC: 0.5035 [0.4519, 0.5540] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 12/24] Horizon: 10 日 | 28D (Full)       | AUC: 0.5116 [0.4522, 0.5650] | OOF IC: +0.0077 (p=0.0144) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 13/24] Horizon: 20 日 | 18D (Rel+Micro)  | AUC: 0.5064 [0.4582, 0.5599] | OOF IC: +0.0045 (p=0.2157) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 14/24] Horizon: 20 日 | 10D (Macro)      | AUC: 0.4975 [0.4517, 0.5563] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 15/24] Horizon: 20 日 | 28D (Full)       | AUC: 0.5057 [0.4599, 0.5617] | OOF IC: +0.0044 (p=0.2245) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 16/24] Horizon: 40 日 | 18D (Rel+Micro)  | AUC: 0.5064 [0.4452, 0.5720] | OOF IC: +0.0050 (p=0.1704) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 17/24] Horizon: 40 日 | 10D (Macro)      | AUC: 0.4988 [0.4548, 0.5608] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 18/24] Horizon: 40 日 | 28D (Full)       | AUC: 0.5057 [0.4484, 0.5620] | OOF IC: +0.0051 (p=0.1656) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 19/24] Horizon: 60 日 | 18D (Rel+Micro)  | AUC: 0.5146 [0.4571, 0.5751] | OOF IC: +0.0082 (p=0.0966) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 20/24] Horizon: 60 日 | 10D (Macro)      | AUC: 0.4984 [0.4518, 0.5522] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 21/24] Horizon: 60 日 | 28D (Full)       | AUC: 0.5137 [0.4604, 0.5720] | OOF IC: +0.0084 (p=0.0850) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 22/24] Horizon: 90 日 | 18D (Rel+Micro)  | AUC: 0.5119 [0.4597, 0.5691] | OOF IC: +0.0089 (p=0.1753) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 23/24] Horizon: 90 日 | 10D (Macro)      | AUC: 0.4965 [0.4454, 0.5502] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 24/24] Horizon: 90 日 | 28D (Full)       | AUC: 0.5106 [0.4552, 0.5683] | OOF IC: +0.0090 (p=0.1737) | NO-GO (Noise/Overlap)
 
-⚡ 24 個天花板掃描任務全平行運算完畢！總耗時: 1.39 分鐘 (83.30 秒)
+⚡ 24 個天花板掃描任務全平行運算完畢！總耗時: 1.30 分鐘 (78.17 秒)
  
 ====================================================================================================================
-📊 【Workstream A: 多 Horizon 訊號天花板掃描綜合報告 (Stage 2 連續回歸與動態隔離版)】
+📊 【Workstream A: 多 Horizon 訊號天花板掃描綜合報告 (Task A HAC 貫穿修復版)】
 ====================================================================================================================
  Horizon(天) | 特徵子集         | OOF AUC | 95% CI (Day-Block) | OOF Rank IC | OOF HAC p-val | HAC顯著數 | max|ICIR| | 決策
 --------------------------------------------------------------------------------------------------------------------
-   1        | 28D (Full)       | 0.5098  | [0.4441, 0.5730]   |   +0.0104   |    0.0001     |   16 檔    |  0.2095   | NO-GO (Noise/Overlap)
-   1        | 18D (Rel+Micro)  | 0.5093  | [0.4374, 0.5702]   |   +0.0106   |    0.0001     |   16 檔    |  0.2095   | NO-GO (Noise/Overlap)
-   1        | 10D (Macro)      | 0.5011  | [0.4559, 0.5579]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
-   3        | 28D (Full)       | 0.5072  | [0.4527, 0.5531]   |   +0.0073   |    0.0081     |   13 檔    |  0.2429   | NO-GO (Noise/Overlap)
-   3        | 18D (Rel+Micro)  | 0.5098  | [0.4609, 0.5572]   |   +0.0072   |    0.0086     |   13 檔    |  0.2429   | NO-GO (Noise/Overlap)
-   3        | 10D (Macro)      | 0.4957  | [0.4426, 0.5475]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
-   5        | 28D (Full)       | 0.5104  | [0.4574, 0.5669]   |   +0.0057   |    0.0318     |   13 檔    |  0.2607   | NO-GO (Noise/Overlap)
-   5        | 18D (Rel+Micro)  | 0.5111  | [0.4615, 0.5629]   |   +0.0057   |    0.0332     |   13 檔    |  0.2607   | NO-GO (Noise/Overlap)
-   5        | 10D (Macro)      | 0.5005  | [0.4554, 0.5549]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
-  10        | 28D (Full)       | 0.5067  | [0.4606, 0.5725]   |   +0.0092   |    0.0011     |   13 檔    |  0.2570   | NO-GO (Noise/Overlap)
-  10        | 18D (Rel+Micro)  | 0.5086  | [0.4577, 0.5594]   |   +0.0091   |    0.0012     |   13 檔    |  0.2570   | NO-GO (Noise/Overlap)
-  10        | 10D (Macro)      | 0.4983  | [0.4541, 0.5524]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
-  20        | 28D (Full)       | 0.5076  | [0.4563, 0.5585]   |   +0.0098   |    0.0022     |   15 檔    |  0.2511   | NO-GO (Noise/Overlap)
-  20        | 18D (Rel+Micro)  | 0.5085  | [0.4538, 0.5685]   |   +0.0096   |    0.0026     |   15 檔    |  0.2511   | NO-GO (Noise/Overlap)
-  20        | 10D (Macro)      | 0.4986  | [0.4496, 0.5531]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
-  40        | 28D (Full)       | 0.5133  | [0.4448, 0.5629]   |   +0.0094   |    0.0024     |   16 檔    |  0.4024   | NO-GO (Noise/Overlap)
-  40        | 18D (Rel+Micro)  | 0.5142  | [0.4452, 0.5686]   |   +0.0096   |    0.0019     |   16 檔    |  0.4024   | NO-GO (Noise/Overlap)
-  40        | 10D (Macro)      | 0.4999  | [0.4520, 0.5516]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
-  60        | 28D (Full)       | 0.5172  | [0.4653, 0.5748]   |   +0.0088   |    0.0176     |   17 檔    |  0.5136   | NO-GO (Noise/Overlap)
-  60        | 18D (Rel+Micro)  | 0.5187  | [0.4627, 0.5822]   |   +0.0088   |    0.0176     |   17 檔    |  0.5136   | NO-GO (Noise/Overlap)
-  60        | 10D (Macro)      | 0.4992  | [0.4507, 0.5513]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
-  90        | 28D (Full)       | 0.5202  | [0.4743, 0.5675]   |   +0.0131   |    0.0001     |   17 檔    |  0.6375   | NO-GO (Noise/Overlap)
-  90        | 18D (Rel+Micro)  | 0.5209  | [0.4735, 0.5693]   |   +0.0132   |    0.0001     |   17 檔    |  0.6375   | NO-GO (Noise/Overlap)
-  90        | 10D (Macro)      | 0.5006  | [0.4520, 0.5423]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
+   1        | 28D (Full)       | 0.5063  | [0.4544, 0.5602]   |   +0.0089   |    0.0005     |   16 檔    |  0.2095   | NO-GO (Noise/Overlap)
+   1        | 18D (Rel+Micro)  | 0.5078  | [0.4563, 0.5608]   |   +0.0090   |    0.0004     |   16 檔    |  0.2095   | NO-GO (Noise/Overlap)
+   1        | 10D (Macro)      | 0.4962  | [0.4485, 0.5464]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
+   3        | 28D (Full)       | 0.5007  | [0.4556, 0.5521]   |   +0.0057   |    0.0408     |   13 檔    |  0.2429   | NO-GO (Noise/Overlap)
+   3        | 18D (Rel+Micro)  | 0.5009  | [0.4520, 0.5592]   |   +0.0060   |    0.0307     |   13 檔    |  0.2429   | NO-GO (Noise/Overlap)
+   3        | 10D (Macro)      | 0.4992  | [0.4396, 0.5446]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
+   5        | 28D (Full)       | 0.5114  | [0.4581, 0.5739]   |   +0.0089   |    0.0016     |   13 檔    |  0.2607   | NO-GO (Noise/Overlap)
+   5        | 18D (Rel+Micro)  | 0.5116  | [0.4589, 0.5732]   |   +0.0089   |    0.0014     |   13 檔    |  0.2607   | NO-GO (Noise/Overlap)
+   5        | 10D (Macro)      | 0.5027  | [0.4503, 0.5553]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
+  10        | 28D (Full)       | 0.5116  | [0.4522, 0.5650]   |   +0.0077   |    0.0144     |   13 檔    |  0.2570   | NO-GO (Noise/Overlap)
+  10        | 18D (Rel+Micro)  | 0.5112  | [0.4533, 0.5614]   |   +0.0077   |    0.0142     |   13 檔    |  0.2570   | NO-GO (Noise/Overlap)
+  10        | 10D (Macro)      | 0.5035  | [0.4519, 0.5540]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
+  20        | 28D (Full)       | 0.5057  | [0.4599, 0.5617]   |   +0.0044   |    0.2245     |   15 檔    |  0.2518   | NO-GO (Noise/Overlap)
+  20        | 18D (Rel+Micro)  | 0.5064  | [0.4582, 0.5599]   |   +0.0045   |    0.2157     |   15 檔    |  0.2518   | NO-GO (Noise/Overlap)
+  20        | 10D (Macro)      | 0.4975  | [0.4517, 0.5563]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
+  40        | 28D (Full)       | 0.5057  | [0.4484, 0.5620]   |   +0.0051   |    0.1656     |   15 檔    |  0.4037   | NO-GO (Noise/Overlap)
+  40        | 18D (Rel+Micro)  | 0.5064  | [0.4452, 0.5720]   |   +0.0050   |    0.1704     |   15 檔    |  0.4037   | NO-GO (Noise/Overlap)
+  40        | 10D (Macro)      | 0.4988  | [0.4548, 0.5608]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
+  60        | 28D (Full)       | 0.5137  | [0.4604, 0.5720]   |   +0.0084   |    0.0850     |   15 檔    |  0.5149   | NO-GO (Noise/Overlap)
+  60        | 18D (Rel+Micro)  | 0.5146  | [0.4571, 0.5751]   |   +0.0082   |    0.0966     |   15 檔    |  0.5149   | NO-GO (Noise/Overlap)
+  60        | 10D (Macro)      | 0.4984  | [0.4518, 0.5522]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
+  90        | 28D (Full)       | 0.5106  | [0.4552, 0.5683]   |   +0.0090   |    0.1737     |   15 檔    |  0.6386   | NO-GO (Noise/Overlap)
+  90        | 18D (Rel+Micro)  | 0.5119  | [0.4597, 0.5691]   |   +0.0089   |    0.1753     |   15 檔    |  0.6386   | NO-GO (Noise/Overlap)
+  90        | 10D (Macro)      | 0.4965  | [0.4454, 0.5502]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
 ====================================================================================================================
 
 💾 掃描數據報告已匯出至: /home/andy/Documents/MARI_Quant_System/results/reports/WorkstreamA_CeilingScan_Report.csv
 --- 步驟 3：產出天花板掃描視覺化圖表 (白底黑字) ---
 📊 視覺化報表 (白底黑字) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/reports/WorkstreamA_CeilingScan.png
 =================================================================
-🎯 [Workstream A] Stage 2 天花板掃描完成！
+🎯 [Workstream A] Stage 2 Task A 天花板掃描完成！
 =================================================================
 >> 
 
+=================================================================
+🧪 [Stage 2 SMOKE TEST] 啟動三大替代方案消融測試 (Task A HAC 修復版)
+=================================================================
+ 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
+ ⚡ [Config] 成功注入 Phase 4 BO 最佳化參數：
+    - 崩盤護欄硬熔斷閾值 : 0.0485
+    - 時序專家權重 (Time_W): 0.9989
+    - 集中度標的數 (Top_K) : 39
+--- 步驟 1：載入特徵快取並執行資料規模擴展抽樣 (60 檔 x 3200 天) ---
+  📊 抽樣規模：標的 60 檔 | 交易天數 3200 天 | 輸入特徵 18 維 (記憶體已釋放)
+--- 步驟 2：載入 GICS 產業別並構建產業內橫截面 Z-Score 特徵 ---
+--- 步驟 3：構建 5D 與 60D 遠期連續報酬與 Beat-the-Median 標籤 (防禦 NaN) ---
+  🎮 偵測到硬體加速卡: 【NVIDIA GeForce RTX 4060 Laptop GPU】，啟用全向量化批次訓練。
+--- 步驟 4：啟動 Stage 2 四組消融對照訓練 ---
 
+▶ 正在執行 [1/4] Group 1: Raw 18D + BCE (Base) ...
+ ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 4 空間混合模式支援版)...
+  -> 網路拓撲設定：
+     [時序專家] 架構體制: PURE_LSTM | 單節點輸入: 18 維 | 序列長度: 60 | Dropout: 0.20
+     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600 | 輸出維度: 64 | 混合模式: GCN_ONLY
+✅ 時序專家網路拓撲構建完畢 (pure_lstm + 雙重 LayerNorm)。
+✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版, 模式: GCN_ONLY)。
+  Ep  1/15 | Train Loss: 0.6931 | Val Loss: 0.6931
+  Ep  5/15 | Train Loss: 0.6889 | Val Loss: 0.6965
+  Ep 10/15 | Train Loss: 0.6557 | Val Loss: 0.7274
+  Ep 15/15 | Train Loss: 0.5911 | Val Loss: 0.7915
+  ⚡ Group 1: Raw 18D + BCE (Base) 訓練完成！耗時: 49.95 秒
+
+▶ 正在執行 [2/4] Group 2: GICS-Neutral + BCE ...
+ ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 4 空間混合模式支援版)...
+  -> 網路拓撲設定：
+     [時序專家] 架構體制: PURE_LSTM | 單節點輸入: 18 維 | 序列長度: 60 | Dropout: 0.20
+     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600 | 輸出維度: 64 | 混合模式: GCN_ONLY
+✅ 時序專家網路拓撲構建完畢 (pure_lstm + 雙重 LayerNorm)。
+✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版, 模式: GCN_ONLY)。
+  Ep  1/15 | Train Loss: 0.6930 | Val Loss: 0.6932
+  Ep  5/15 | Train Loss: 0.6860 | Val Loss: 0.7000
+  Ep 10/15 | Train Loss: 0.6327 | Val Loss: 0.7525
+  Ep 15/15 | Train Loss: 0.5631 | Val Loss: 0.8260
+  ⚡ Group 2: GICS-Neutral + BCE 訓練完成！耗時: 43.18 秒
+
+▶ 正在執行 [3/4] Group 3: GICS-Neutral + Soft-IC Loss ...
+ ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 4 空間混合模式支援版)...
+  -> 網路拓撲設定：
+     [時序專家] 架構體制: PURE_LSTM | 單節點輸入: 18 維 | 序列長度: 60 | Dropout: 0.20
+     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600 | 輸出維度: 64 | 混合模式: GCN_ONLY
+✅ 時序專家網路拓撲構建完畢 (pure_lstm + 雙重 LayerNorm)。
+✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版, 模式: GCN_ONLY)。
+  Ep  1/15 | Train Loss: 0.5279 | Val Loss: 0.7099
+  Ep  5/15 | Train Loss: 0.4432 | Val Loss: 0.7050
+  Ep 10/15 | Train Loss: 0.3159 | Val Loss: 0.7041
+  Ep 15/15 | Train Loss: 0.2475 | Val Loss: 0.7048
+  ⚡ Group 3: GICS-Neutral + Soft-IC Loss 訓練完成！耗時: 79.47 秒
+
+▶ 正在執行 [4/4] Group 4: 60D Horizon (Embargo=60D) ...
+ ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 4 空間混合模式支援版)...
+  -> 網路拓撲設定：
+     [時序專家] 架構體制: PURE_LSTM | 單節點輸入: 18 維 | 序列長度: 60 | Dropout: 0.20
+     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600 | 輸出維度: 64 | 混合模式: GCN_ONLY
+✅ 時序專家網路拓撲構建完畢 (pure_lstm + 雙重 LayerNorm)。
+✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版, 模式: GCN_ONLY)。
+  Ep  1/15 | Train Loss: 0.4852 | Val Loss: 0.7087
+  Ep  5/15 | Train Loss: 0.1576 | Val Loss: 0.7102
+  Ep 10/15 | Train Loss: 0.0823 | Val Loss: 0.7168
+  Ep 15/15 | Train Loss: 0.0629 | Val Loss: 0.7252
+  ⚡ Group 4: 60D Horizon (Embargo=60D) 訓練完成！耗時: 76.02 秒
+
+💾 完整消融結果 (含逐日 IC 序列) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/reports/Stage2_Smoke_Results.mat
+============================================================================================================================
+📊 【Stage 2 三大替代方案消融檢定綜合報告 (Task A max_lag 貫穿修復版)】
+============================================================================================================================
+ 實驗組別名稱                          | 最終 Val Loss | 探針評估 (AUC / IC) | Auto p-val | Corrected p (lag) | 對比 Base (p-val)
+----------------------------------------------------------------------------------------------------------------------------
+ Group 1: Raw 18D + BCE (Base)         |    0.7915    |    AUC = 0.5338     |     N/A      |    N/A            | Reference Base
+ Group 2: GICS-Neutral + BCE           |    0.8260    |    AUC = 0.5356     |     N/A      |    N/A            | HAC p = 1.0000 (lag=5)
+ Group 3: GICS-Neutral + Soft-IC Loss  |    0.7048    |    IC  = +0.0589    |  0.0000   | 0.0000 (lag=6)    | HAC p = 0.1327 (lag=5)
+ Group 4: 60D Horizon (Embargo=60D)    |    0.7252    |    IC  = +0.1024    |  0.0000   | 0.0000 (lag=60)   | HAC p = 0.3424 (lag=60)
+============================================================================================================================
+
+  ✅ 【DIRECTION 1 FALSIFIED】GICS 產業中性化未帶來顯著增量，特徵噪音非源自板塊 Beta。
+  ⭐ 【DIRECTION 2 CONFIRMED】連續 Soft-IC 損失顯著優於二元分類，成功打破 ln(2) 停滯 (Corrected p=0.0000)！
+  ⭐ 【DIRECTION 3 CONFIRMED】60D 中長週期在動態 Embargo 隔離與 lag=60 HAC 校正下具備真實因果預測力 (p=0.0000)！
+============================================================================================================================
+
+📊 視覺化報告已儲存至: /home/andy/Documents/MARI_Quant_System/results/reports/Stage2_Smoke_Ablation.png
+=================================================================
+🎯 [Stage 2 SMOKE TEST] Task A 執行完畢！
+=================================================================
+>> 
 
 =================================================================
 🧪 [Round 6] 啟動合成訊號 Positive Control (Stage 0 方法論修復版)
@@ -306,86 +397,87 @@
 >> 
 
 =================================================================
-🧪 [Round 9] 啟動訓練體制與學習率排查 (Stage 0 方法論修復版)
+🧪 [Round 9] 啟動訓練體制與學習率排查 (Stage 2.5 控制變因修復版)
 =================================================================
  🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
  ⚡ [Config] 成功注入 Phase 4 BO 最佳化參數：
-    - 崩盤護欄硬熔斷閾值 : 0.0488
-    - 時序專家權重 (Time_W): 0.9993
-    - 集中度標的數 (Top_K) : 31
+    - 崩盤護欄硬熔斷閾值 : 0.0485
+    - 時序專家權重 (Time_W): 0.9989
+    - 集中度標的數 (Top_K) : 39
 --- 步驟 1：載入 3D 特徵快取並進行型態壓縮與記憶體釋放 ---
   📊 抽樣規模：標的 60 檔 | 序列長度 60 | 輸入維度 18 維 (記憶體已釋放)
 --- 步驟 2：構建 5 日 Beat-the-Median 目標標籤 ---
 --- 步驟 3：切分訓練集與驗證集 (Embargo 20 天) ---
-  -> 訓練天數: 4009 天 | 驗證天數: 1148 天
+  -> 訓練天數: 4009 天 | 驗證天數: 1149 天
   🎮 偵測到硬體加速卡: 【NVIDIA GeForce RTX 4060 Laptop GPU】，啟用 GPU 向量化張量並行加速。
 --- 步驟 4：設定 3 組 LR 排程 (Step Decay vs Constant Small vs Cosine) ---
 --- 步驟 5：啟動 100 Epochs 向量化訓練與高頻 Loss 監控 ---
 
 ▶ 正在執行 [1/3] Schedule 1: Step Decay (1e-3 -> 1.25e-4) ...
- ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (LayerNorm 防坍縮版)...
-  -> 預期輸入設定：
-     [時序專家] 單一節點特徵: 18 維 (已剝離總經) | 序列長度: 60 | Dropout: 0.20
-     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600
-✅ 時序專家網路拓撲構建完畢 (已掛載 LayerNorm)。
-✅ 空間專家網路拓撲構建完畢。
-  Ep   1/100 (LR: 1.00e-03) | Train BCE: 0.6935 | Val BCE: 0.6931
-  Ep  20/100 (LR: 1.00e-03) | Train BCE: 0.6190 | Val BCE: 0.8024
-  Ep  40/100 (LR: 5.00e-04) | Train BCE: 0.5235 | Val BCE: 1.0302
-  Ep  60/100 (LR: 2.50e-04) | Train BCE: 0.4818 | Val BCE: 1.1601
-  Ep  80/100 (LR: 1.25e-04) | Train BCE: 0.4619 | Val BCE: 1.2240
-  Ep 100/100 (LR: 1.25e-04) | Train BCE: 0.4559 | Val BCE: 1.2593
-  ⚡ Schedule 1: Step Decay (1e-3 -> 1.25e-4) 訓練完成！耗時: 1212.36 秒
+ ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 4 空間混合模式支援版)...
+  -> 網路拓撲設定：
+     [時序專家] 架構體制: TRANS_LSTM | 單節點輸入: 18 維 | 序列長度: 60 | Dropout: 0.20
+     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600 | 輸出維度: 64 | 混合模式: GCN_ONLY
+✅ 時序專家網路拓撲構建完畢 (trans_lstm + 雙重 LayerNorm)。
+✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版, 模式: GCN_ONLY)。
+  Ep   1/100 (LR: 1.00e-03) | Train BCE: 0.6950 | Val BCE: 0.6940
+  Ep  20/100 (LR: 1.00e-03) | Train BCE: 0.6309 | Val BCE: 0.7577
+  Ep  40/100 (LR: 5.00e-04) | Train BCE: 0.5209 | Val BCE: 0.8994
+  Ep  60/100 (LR: 2.50e-04) | Train BCE: 0.4677 | Val BCE: 0.9886
+  Ep  80/100 (LR: 1.25e-04) | Train BCE: 0.4411 | Val BCE: 1.0338
+  Ep 100/100 (LR: 1.25e-04) | Train BCE: 0.4335 | Val BCE: 1.0514
+  ⚡ Schedule 1: Step Decay (1e-3 -> 1.25e-4) 訓練完成！耗時: 1300.34 秒
 
 ▶ 正在執行 [2/3] Schedule 2: Constant Small (2e-4) ...
- ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (LayerNorm 防坍縮版)...
-  -> 預期輸入設定：
-     [時序專家] 單一節點特徵: 18 維 (已剝離總經) | 序列長度: 60 | Dropout: 0.20
-     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600
-✅ 時序專家網路拓撲構建完畢 (已掛載 LayerNorm)。
-✅ 空間專家網路拓撲構建完畢。
-  Ep   1/100 (LR: 2.00e-04) | Train BCE: 0.6942 | Val BCE: 0.6933
-  Ep  20/100 (LR: 2.00e-04) | Train BCE: 0.6839 | Val BCE: 0.7008
-  Ep  40/100 (LR: 2.00e-04) | Train BCE: 0.6325 | Val BCE: 0.7743
-  Ep  60/100 (LR: 2.00e-04) | Train BCE: 0.5906 | Val BCE: 0.8657
-  Ep  80/100 (LR: 2.00e-04) | Train BCE: 0.5612 | Val BCE: 0.9285
-  Ep 100/100 (LR: 2.00e-04) | Train BCE: 0.5379 | Val BCE: 0.9948
-  ⚡ Schedule 2: Constant Small (2e-4) 訓練完成！耗時: 1213.06 秒
+ ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 4 空間混合模式支援版)...
+  -> 網路拓撲設定：
+     [時序專家] 架構體制: TRANS_LSTM | 單節點輸入: 18 維 | 序列長度: 60 | Dropout: 0.20
+     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600 | 輸出維度: 64 | 混合模式: GCN_ONLY
+✅ 時序專家網路拓撲構建完畢 (trans_lstm + 雙重 LayerNorm)。
+✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版, 模式: GCN_ONLY)。
+  Ep   1/100 (LR: 2.00e-04) | Train BCE: 0.6955 | Val BCE: 0.6937
+  Ep  20/100 (LR: 2.00e-04) | Train BCE: 0.6871 | Val BCE: 0.6978
+  Ep  40/100 (LR: 2.00e-04) | Train BCE: 0.6493 | Val BCE: 0.7280
+  Ep  60/100 (LR: 2.00e-04) | Train BCE: 0.6076 | Val BCE: 0.7797
+  Ep  80/100 (LR: 2.00e-04) | Train BCE: 0.5782 | Val BCE: 0.8209
+  Ep 100/100 (LR: 2.00e-04) | Train BCE: 0.5553 | Val BCE: 0.8528
+  ⚡ Schedule 2: Constant Small (2e-4) 訓練完成！耗時: 1397.82 秒
 
 ▶ 正在執行 [3/3] Schedule 3: Cosine Annealing (1e-3 -> 1e-5) ...
- ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (LayerNorm 防坍縮版)...
-  -> 預期輸入設定：
-     [時序專家] 單一節點特徵: 18 維 (已剝離總經) | 序列長度: 60 | Dropout: 0.20
-     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600
-✅ 時序專家網路拓撲構建完畢 (已掛載 LayerNorm)。
-✅ 空間專家網路拓撲構建完畢。
-  Ep   1/100 (LR: 1.00e-03) | Train BCE: 0.6938 | Val BCE: 0.6937
-  Ep  20/100 (LR: 9.05e-04) | Train BCE: 0.6201 | Val BCE: 0.7886
-  Ep  40/100 (LR: 6.58e-04) | Train BCE: 0.5172 | Val BCE: 1.0247
-  Ep  60/100 (LR: 3.52e-04) | Train BCE: 0.4648 | Val BCE: 1.1902
-  Ep  80/100 (LR: 1.05e-04) | Train BCE: 0.4370 | Val BCE: 1.2944
-  Ep 100/100 (LR: 1.00e-05) | Train BCE: 0.4280 | Val BCE: 1.3248
-  ⚡ Schedule 3: Cosine Annealing (1e-3 -> 1e-5) 訓練完成！耗時: 1215.98 秒
-========================================================================================
-📊 【Round 9 訓練體制與學習率排程消融統計檢定報告】
-========================================================================================
+ ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 4 空間混合模式支援版)...
+  -> 網路拓撲設定：
+     [時序專家] 架構體制: TRANS_LSTM | 單節點輸入: 18 維 | 序列長度: 60 | Dropout: 0.20
+     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600 | 輸出維度: 64 | 混合模式: GCN_ONLY
+✅ 時序專家網路拓撲構建完畢 (trans_lstm + 雙重 LayerNorm)。
+✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版, 模式: GCN_ONLY)。
+  Ep   1/100 (LR: 1.00e-03) | Train BCE: 0.6948 | Val BCE: 0.6936
+  Ep  20/100 (LR: 9.05e-04) | Train BCE: 0.6227 | Val BCE: 0.7631
+  Ep  40/100 (LR: 6.58e-04) | Train BCE: 0.5179 | Val BCE: 0.9002
+  Ep  60/100 (LR: 3.52e-04) | Train BCE: 0.4593 | Val BCE: 1.0008
+  Ep  80/100 (LR: 1.05e-04) | Train BCE: 0.4260 | Val BCE: 1.0626
+  Ep 100/100 (LR: 1.00e-05) | Train BCE: 0.4170 | Val BCE: 1.0783
+  ⚡ Schedule 3: Cosine Annealing (1e-3 -> 1e-5) 訓練完成！耗時: 1373.54 秒
+==================================================================================================================
+📊 【Round 9 訓練體制與學習率排程消融統計檢定報告 (Stage 2.5 修復版)】
+==================================================================================================================
  排程名稱                              | 最佳 Val BCE | 最終 Val BCE | 探針 AUC | 對比基準 (HAC p-val) | 突破基準
 ------------------------------------------------------------------------------------------------------------------
- Schedule 1: Step Decay (1e-3 -> 1.25e-4) |    0.6931    |    1.2593    |  0.5330  | Reference Base       | YES (0.6931 < 0.6938)
- Schedule 2: Constant Small (2e-4)     |    0.6932    |    0.9948    |  0.5351  | \Delta: -0.2651 (p=0.0000) | YES (0.6932 < 0.6938)
- Schedule 3: Cosine Annealing (1e-3 -> 1e-5) |    0.6933    |    1.3248    |  0.5297  | \Delta: +0.0679 (p=0.0000) | YES (0.6933 < 0.6938)
+ Schedule 1: Step Decay (1e-3 -> 1.25e-4) |    0.6940    |    1.0514    |  0.5265  | Reference Base       | YES (0.6940 < 0.7266)
+ Schedule 2: Constant Small (2e-4)     |    0.6937    |    0.8528    |  0.5296  | \Delta: -0.1993 (p=0.0000) | YES (0.6937 < 0.7266)
+ Schedule 3: Cosine Annealing (1e-3 -> 1e-5) |    0.6935    |    1.0783    |  0.5252  | \Delta: +0.0275 (p=0.0004) | YES (0.6935 < 0.7266)
 ------------------------------------------------------------------------------------------------------------------
-  ⭐ 【TRAINING EXTENSION BENEFICIAL】長週期訓練或特定 LR 排程成功突破 0.6938 基準！
+  ⭐ 【TRAINING EXTENSION BENEFICIAL】長週期訓練或特定 LR 排程成功突破 Epoch 15 內部基準 (0.7266)！
      -> 證明原先的損失停滯部分源於 Epoch 數不足或學習率衰減過快。
-========================================================================================
+==================================================================================================================
 
 IdleTimeout has been reached.
 Parallel pool using the 'Processes' profile is shutting down.
 📊 視覺化圖表 (白底黑字) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/reports/Round9_TrainingRegimeSweep.png
 =================================================================
-🎯 [Round 9] 執行完畢！
+🎯 [Round 9] Stage 2.5 修正版執行完畢！
 =================================================================
 >> 
+
 
 =================================================================
 🧪 [Round 10] 啟動特徵子集精簡消融實驗 (Stage 0 方法論修復版)
@@ -464,90 +556,3 @@ Connected to parallel pool with 12 workers.
 =================================================================
 >> 
 
-=================================================================
-🧪 [Stage 2 SMOKE TEST] 啟動三大替代方案消融測試 (GPU 批次加速版)
-=================================================================
- 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
- ⚡ [Config] 成功注入 Phase 4 BO 最佳化參數：
-    - 崩盤護欄硬熔斷閾值 : 0.0488
-    - 時序專家權重 (Time_W): 0.9993
-    - 集中度標的數 (Top_K) : 31
---- 步驟 1：載入特徵快取並執行資料規模擴展抽樣 (60 檔 x 3200 天) ---
-  📊 抽樣規模：標的 60 檔 | 交易天數 3200 天 | 輸入特徵 18 維 (記憶體已釋放)
---- 步驟 2：載入 GICS 產業別並構建產業內橫截面 Z-Score 特徵 ---
---- 步驟 3：構建 5D 與 60D 遠期連續報酬與 Beat-the-Median 標籤 (防禦 NaN) ---
-  🎮 偵測到硬體加速卡: 【NVIDIA GeForce RTX 4060 Laptop GPU】，啟用全向量化批次訓練。
---- 步驟 4：啟動 Stage 2 四組消融對照訓練 ---
-
-▶ 正在執行 [1/4] Group 1: Raw 18D + BCE (Base) ...
- ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 2 排序/回歸支援版)...
-  -> 網路拓撲設定：
-     [時序專家] 架構體制: PURE_LSTM | 單節點輸入: 18 維 | 序列長度: 60 | Dropout: 0.20
-     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600 | 輸出維度: 64
-✅ 時序專家網路拓撲構建完畢 (pure_lstm + 雙重 LayerNorm)。
-✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版)。
-  Ep  1/15 | Train Loss: 0.6931 | Val Loss: 0.6931
-  Ep  5/15 | Train Loss: 0.6883 | Val Loss: 0.6979
-  Ep 10/15 | Train Loss: 0.6478 | Val Loss: 0.7306
-  Ep 15/15 | Train Loss: 0.5831 | Val Loss: 0.8057
-  ⚡ Group 1: Raw 18D + BCE (Base) 訓練完成！耗時: 38.83 秒
-
-▶ 正在執行 [2/4] Group 2: GICS-Neutral + BCE ...
- ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 2 排序/回歸支援版)...
-  -> 網路拓撲設定：
-     [時序專家] 架構體制: PURE_LSTM | 單節點輸入: 18 維 | 序列長度: 60 | Dropout: 0.20
-     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600 | 輸出維度: 64
-✅ 時序專家網路拓撲構建完畢 (pure_lstm + 雙重 LayerNorm)。
-✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版)。
-  Ep  1/15 | Train Loss: 0.6930 | Val Loss: 0.6934
-  Ep  5/15 | Train Loss: 0.6835 | Val Loss: 0.7047
-  Ep 10/15 | Train Loss: 0.6315 | Val Loss: 0.7503
-  Ep 15/15 | Train Loss: 0.5649 | Val Loss: 0.8248
-  ⚡ Group 2: GICS-Neutral + BCE 訓練完成！耗時: 38.02 秒
-
-▶ 正在執行 [3/4] Group 3: GICS-Neutral + Soft-IC Loss ...
- ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 2 排序/回歸支援版)...
-  -> 網路拓撲設定：
-     [時序專家] 架構體制: PURE_LSTM | 單節點輸入: 18 維 | 序列長度: 60 | Dropout: 0.20
-     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600 | 輸出維度: 64
-✅ 時序專家網路拓撲構建完畢 (pure_lstm + 雙重 LayerNorm)。
-✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版)。
-  Ep  1/15 | Train Loss: 0.5288 | Val Loss: 0.7110
-  Ep  5/15 | Train Loss: 0.4421 | Val Loss: 0.7045
-  Ep 10/15 | Train Loss: 0.3211 | Val Loss: 0.7042
-  Ep 15/15 | Train Loss: 0.2561 | Val Loss: 0.7044
-  ⚡ Group 3: GICS-Neutral + Soft-IC Loss 訓練完成！耗時: 76.39 秒
-
-▶ 正在執行 [4/4] Group 4: 60D Horizon (Embargo=60D) ...
- ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 2 排序/回歸支援版)...
-  -> 網路拓撲設定：
-     [時序專家] 架構體制: PURE_LSTM | 單節點輸入: 18 維 | 序列長度: 60 | Dropout: 0.20
-     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600 | 輸出維度: 64
-✅ 時序專家網路拓撲構建完畢 (pure_lstm + 雙重 LayerNorm)。
-✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版)。
-  Ep  1/15 | Train Loss: 0.4837 | Val Loss: 0.7094
-  Ep  5/15 | Train Loss: 0.1609 | Val Loss: 0.7075
-  Ep 10/15 | Train Loss: 0.0848 | Val Loss: 0.7125
-  Ep 15/15 | Train Loss: 0.0655 | Val Loss: 0.7204
-  ⚡ Group 4: 60D Horizon (Embargo=60D) 訓練完成！耗時: 72.33 秒
-====================================================================================================
-📊 【Stage 2 三大替代方案消融檢定綜合報告】
-====================================================================================================
- 實驗組別名稱                          | 最終 Val Loss | 探針評估 (AUC / IC) | HAC p-val | 對比 Base (p-val)
-----------------------------------------------------------------------------------------------------
- Group 1: Raw 18D + BCE (Base)         |    0.8057    |    AUC = 0.5346     |  1.0000   | Reference Base
- Group 2: GICS-Neutral + BCE           |    0.8248    |    AUC = 0.5307     |  1.0000   | HAC p = 1.0000
- Group 3: GICS-Neutral + Soft-IC Loss  |    0.7044    |    IC  = +0.0641    |  0.0000   | HAC p = 0.1312
- Group 4: 60D Horizon (Embargo=60D)    |    0.7204    |    IC  = +0.1336    |  0.0000   | HAC p = 0.0944
-====================================================================================================
-
-  ✅ 【DIRECTION 1 FALSIFIED】GICS 產業中性化未帶來顯著增量，特徵噪音非源自板塊 Beta。
-  ⭐ 【DIRECTION 2 CONFIRMED】連續 Soft-IC 損失顯著優於二元分類，成功打破 ln(2) 停滯！
-  ⭐ 【DIRECTION 3 CONFIRMED】60D 中長週期在動態 Embargo 隔離下具備真實因果預測力！
-====================================================================================================
-
-📊 視覺化報告已儲存至: /home/andy/Documents/MARI_Quant_System/results/reports/Stage2_Smoke_Ablation.png
-=================================================================
-🎯 [Stage 2 SMOKE TEST] 執行完畢！
-=================================================================
->> 
