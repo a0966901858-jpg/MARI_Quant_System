@@ -1,7 +1,8 @@
 classdef GBDTExpertAgent < handle
     % =========================================================================
     % 類別：GBDTExpertAgent (顯性風險預測流與 SHAP 解釋器)
-    % 升級：Phase 15 (★ 崩盤正樣本分層時序 CV、Bootstrap 95% CI、Platt 機率校準)
+    % 升級：Phase 15 (★ 崩盤正樣本分層時序 CV、Bootstrap 95% CI、Platt 機率校準、
+    %       SHAP 單查詢點並行警告防禦版)
     % 職責：接收 DL 萃取之 Embedding 與擴充宏觀特徵，輸出 OOF 校準機率與 SHAP 歸因
     % =========================================================================
     
@@ -232,12 +233,11 @@ classdef GBDTExpertAgent < handle
             embargo = 20; % 20 天滾動特徵隔離期
             P_crash_oof_scores = zeros(numDays, 1, 'single');
             
-            % ★ Phase 15 (P1-3)：依據崩盤正樣本累積密度決定時序切分邊界 (Stratified Chronological Folds)
+            % 依據崩盤正樣本累積密度決定時序切分邊界 (Stratified Chronological Folds)
             pos_crash_indices = find(Y_Crash_1D == 1);
             num_pos_crash = length(pos_crash_indices);
             
             if num_pos_crash >= (K * 5)
-                % 確保每個驗證 Fold 均勻分配到等量的崩盤歷史日
                 pos_segment_idx = round(linspace(1, num_pos_crash, K + 1));
                 edges = pos_crash_indices(pos_segment_idx);
                 edges(1) = 1;
@@ -257,7 +257,6 @@ classdef GBDTExpertAgent < handle
                 num_val_pos = sum(Y_Crash_1D(val_mask) == 1);
                 fprintf('     - 正在訓練崩盤護欄 Fold %d/%d (驗證崩盤樣本: %d 天) ... ', k, K, num_val_pos);
                 
-                % 防呆：若訓練集正樣本過少則退回基礎權重
                 if sum(Y_Crash_1D(train_mask) == 1) < 5
                     mdl_crash_fold = fitcensemble(Macro_2D(train_mask, :), Y_categorical(train_mask), ...
                         'Method', 'LogitBoost', 'Learners', t_tree, 'NumLearningCycles', 30, ...
@@ -280,7 +279,6 @@ classdef GBDTExpertAgent < handle
                 if length(unique(val_crash_y)) > 1
                     try
                         [~,~,~,auc_c] = perfcurve(val_crash_y, p_c_fold, 1);
-                        % ★ Phase 15 (P1-3)：Bootstrap 95% 信賴區間計算
                         n_boot = 1000;
                         boot_aucs = zeros(n_boot, 1);
                         n_val = length(val_crash_y);
@@ -306,7 +304,7 @@ classdef GBDTExpertAgent < handle
             val_crash_true = double(Y_Crash_1D(eval_crash_mask));
             uncalibrated_pred = P_crash_oof_uncalibrated(eval_crash_mask);
             
-            % ★ Platt Scaling 事後機率校準
+            % Platt Scaling 事後機率校準
             fprintf('  -> 執行 Platt Scaling 事後機率校準 (Logistic Regression)...\n');
             try
                 obj.MdlPlatt = fitglm(uncalibrated_pred, val_crash_true, 'Distribution', 'binomial');
@@ -399,7 +397,7 @@ classdef GBDTExpertAgent < handle
         end
         
         % =========================================================
-        % 4. 決策可解釋性分析 (SHAP Value Attribution)
+        % 4. 決策可解釋性分析 (SHAP Value Attribution - 已修復並行警告)
         % =========================================================
         function explain_shapley(obj, X_query_raw, X_bg_raw, mode)
             fprintf('--- 啟動 %s 專家 SHAP 歸因分析 (K-Means 加速) ---\n', upper(mode));
@@ -422,8 +420,12 @@ classdef GBDTExpertAgent < handle
             X_query_tbl = array2table(double(X_query_raw), 'VariableNames', var_names);
             X_bg_tbl = array2table(bg_centroids, 'VariableNames', var_names);
             
+            % ★ 核心修復：動態判斷查詢點數量，避免單點查詢時傳入 UseParallel=true 引發警告
+            num_queries = size(X_query_raw, 1);
+            use_parallel_flag = (num_queries > 1);
+            
             explainer = shapley(target_mdl, X_bg_tbl);
-            shap_results = fit(explainer, X_query_tbl, 'UseParallel', true);
+            shap_results = fit(explainer, X_query_tbl, 'UseParallel', use_parallel_flag);
             
             fig_name = sprintf('SHAP 歸因分析 - %s', upper(mode));
             figure('Name', fig_name, 'Color', 'w', 'Position', [100, 100, 900, 600]);
