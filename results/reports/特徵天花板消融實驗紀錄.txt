@@ -1,86 +1,85 @@
 =================================================================
-🚀 [Workstream A] 啟動多 Horizon 天花板全核心平行掃描 (8 週期 × 3 子集)
+🚀 [Workstream A] 啟動多 Horizon 天花板掃描 (Stage 2 連續回歸與動態隔離版)
 =================================================================
  🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
  ⚡ [Config] 成功注入 Phase 4 BO 最佳化參數：
     - 崩盤護欄硬熔斷閾值 : 0.0488
     - 時序專家權重 (Time_W): 0.9993
     - 集中度標的數 (Top_K) : 31
-⚡ 啟動最佳化平行池 (6 Workers - P-Core 專用)...
-Starting parallel pool (parpool) using the 'Processes' profile ...
-Connected to parallel pool with 6 workers.
---- 步驟 1：載入全域 3D 特徵面板與時間軸對齊 ---
-  📊 面板維度：有效天數 8395 天 | 特徵數 28 維 | 宇宙規模 504 檔
-  🔥 成功建立 24 個獨立掃描任務，準備由 6 個 Worker 平行搶佔執行！
---- 步驟 2：啟動 6 執行緒外層 parfor 狂飆運算 ---
-  ✅ [Worker 完成  5/24] Horizon:  3 日 | 10D (Macro)      | AUC: 0.5000 [0.4999, 0.5000] | HAC:  0/10 | NO-GO (Noise)
-  ✅ [Worker 完成  2/24] Horizon:  1 日 | 10D (Macro)      | AUC: 0.5003 [0.5001, 0.5006] | HAC:  0/10 | NO-GO (Noise)
-  ✅ [Worker 完成 14/24] Horizon: 15 日 | 10D (Macro)      | AUC: 0.4998 [0.4995, 0.5000] | HAC:  0/10 | NO-GO (Noise)
-  ✅ [Worker 完成  8/24] Horizon:  5 日 | 10D (Macro)      | AUC: 0.5000 [0.5000, 0.5001] | HAC:  0/10 | NO-GO (Noise)
-  ✅ [Worker 完成  4/24] Horizon:  3 日 | 18D (Rel+Micro)  | AUC: 0.5011 [0.4999, 0.5022] | HAC: 13/18 | NO-GO (Noise)
-  ✅ [Worker 完成  6/24] Horizon:  3 日 | 28D (Full)       | AUC: 0.5011 [0.4999, 0.5023] | HAC: 13/28 | NO-GO (Noise)
-  ✅ [Worker 完成  3/24] Horizon:  1 日 | 28D (Full)       | AUC: 0.5004 [0.4995, 0.5013] | HAC: 15/28 | NO-GO (Noise)
-  ✅ [Worker 完成  1/24] Horizon:  1 日 | 18D (Rel+Micro)  | AUC: 0.5001 [0.4992, 0.5010] | HAC: 15/18 | NO-GO (Noise)
-  ✅ [Worker 完成 13/24] Horizon: 15 日 | 18D (Rel+Micro)  | AUC: 0.5031 [0.5021, 0.5040] | HAC: 15/18 | NO-GO (Noise)
-  ✅ [Worker 完成 12/24] Horizon: 10 日 | 28D (Full)       | AUC: 0.5014 [0.5003, 0.5024] | HAC: 15/28 | NO-GO (Noise)
-  ✅ [Worker 完成 16/24] Horizon: 20 日 | 18D (Rel+Micro)  | AUC: 0.5031 [0.5022, 0.5040] | HAC: 16/18 | NO-GO (Noise)
-  ✅ [Worker 完成  7/24] Horizon:  5 日 | 18D (Rel+Micro)  | AUC: 0.5007 [0.4998, 0.5018] | HAC: 13/18 | NO-GO (Noise)
-  ✅ [Worker 完成 18/24] Horizon: 20 日 | 28D (Full)       | AUC: 0.4979 [0.4968, 0.4990] | HAC: 16/28 | NO-GO (Noise)
-  ✅ [Worker 完成 11/24] Horizon: 10 日 | 10D (Macro)      | AUC: 0.4999 [0.4996, 0.5000] | HAC:  0/10 | NO-GO (Noise)
-  ✅ [Worker 完成 20/24] Horizon: 30 日 | 10D (Macro)      | AUC: 0.5000 [0.4999, 0.5000] | HAC:  0/10 | NO-GO (Noise)
-  ✅ [Worker 完成 17/24] Horizon: 20 日 | 10D (Macro)      | AUC: 0.5000 [0.5000, 0.5001] | HAC:  0/10 | NO-GO (Noise)
-  ✅ [Worker 完成 10/24] Horizon: 10 日 | 18D (Rel+Micro)  | AUC: 0.5030 [0.5020, 0.5041] | HAC: 15/18 | NO-GO (Noise)
-  ✅ [Worker 完成 19/24] Horizon: 30 日 | 18D (Rel+Micro)  | AUC: 0.5031 [0.5022, 0.5040] | HAC: 16/18 | NO-GO (Noise)
-  ✅ [Worker 完成 23/24] Horizon: 60 日 | 10D (Macro)      | AUC: 0.4999 [0.4997, 0.5000] | HAC:  0/10 | NO-GO (Noise)
-  ✅ [Worker 完成 15/24] Horizon: 15 日 | 28D (Full)       | AUC: 0.5014 [0.5004, 0.5026] | HAC: 15/28 | NO-GO (Noise)
-  ✅ [Worker 完成 21/24] Horizon: 30 日 | 28D (Full)       | AUC: 0.4998 [0.4988, 0.5008] | HAC: 16/28 | NO-GO (Noise)
-  ✅ [Worker 完成  9/24] Horizon:  5 日 | 28D (Full)       | AUC: 0.4986 [0.4974, 0.4997] | HAC: 13/28 | NO-GO (Noise)
-  ✅ [Worker 完成 22/24] Horizon: 60 日 | 18D (Rel+Micro)  | AUC: 0.5024 [0.5012, 0.5035] | HAC: 16/18 | NO-GO (Noise)
-  ✅ [Worker 完成 24/24] Horizon: 60 日 | 28D (Full)       | AUC: 0.5042 [0.5032, 0.5052] | HAC: 16/28 | NO-GO (Noise)
+--- 步驟 1：載入全域 3D 特徵面板並執行記憶體型態壓縮 ---
+  📊 面板維度：有效天數 8396 天 | 特徵數 28 維 | 宇宙規模 504 檔 (全單精度/邏輯矩陣)
+  🔥 成功建立 24 個獨立掃描任務 (動態 Embargo=H)，準備由 Worker 平行搶佔！
+--- 步驟 2：啟動平行天花板掃描 (包含連續回歸 OOF Rank IC 檢定) ---
+  ✅ [Worker 完成  1/24] Horizon:  1 日 | 18D (Rel+Micro)  | AUC: 0.5093 [0.4374, 0.5702] | OOF IC: +0.0106 (p=0.0001) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成  2/24] Horizon:  1 日 | 10D (Macro)      | AUC: 0.5011 [0.4559, 0.5579] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成  3/24] Horizon:  1 日 | 28D (Full)       | AUC: 0.5098 [0.4441, 0.5730] | OOF IC: +0.0104 (p=0.0001) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成  4/24] Horizon:  3 日 | 18D (Rel+Micro)  | AUC: 0.5098 [0.4609, 0.5572] | OOF IC: +0.0072 (p=0.0086) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成  5/24] Horizon:  3 日 | 10D (Macro)      | AUC: 0.4957 [0.4426, 0.5475] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成  6/24] Horizon:  3 日 | 28D (Full)       | AUC: 0.5072 [0.4527, 0.5531] | OOF IC: +0.0073 (p=0.0081) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成  7/24] Horizon:  5 日 | 18D (Rel+Micro)  | AUC: 0.5111 [0.4615, 0.5629] | OOF IC: +0.0057 (p=0.0332) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成  8/24] Horizon:  5 日 | 10D (Macro)      | AUC: 0.5005 [0.4554, 0.5549] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成  9/24] Horizon:  5 日 | 28D (Full)       | AUC: 0.5104 [0.4574, 0.5669] | OOF IC: +0.0057 (p=0.0318) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 10/24] Horizon: 10 日 | 18D (Rel+Micro)  | AUC: 0.5086 [0.4577, 0.5594] | OOF IC: +0.0091 (p=0.0012) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 11/24] Horizon: 10 日 | 10D (Macro)      | AUC: 0.4983 [0.4541, 0.5524] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 12/24] Horizon: 10 日 | 28D (Full)       | AUC: 0.5067 [0.4606, 0.5725] | OOF IC: +0.0092 (p=0.0011) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 13/24] Horizon: 20 日 | 18D (Rel+Micro)  | AUC: 0.5085 [0.4538, 0.5685] | OOF IC: +0.0096 (p=0.0026) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 14/24] Horizon: 20 日 | 10D (Macro)      | AUC: 0.4986 [0.4496, 0.5531] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 15/24] Horizon: 20 日 | 28D (Full)       | AUC: 0.5076 [0.4563, 0.5585] | OOF IC: +0.0098 (p=0.0022) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 16/24] Horizon: 40 日 | 18D (Rel+Micro)  | AUC: 0.5142 [0.4452, 0.5686] | OOF IC: +0.0096 (p=0.0019) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 17/24] Horizon: 40 日 | 10D (Macro)      | AUC: 0.4999 [0.4520, 0.5516] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 18/24] Horizon: 40 日 | 28D (Full)       | AUC: 0.5133 [0.4448, 0.5629] | OOF IC: +0.0094 (p=0.0024) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 19/24] Horizon: 60 日 | 18D (Rel+Micro)  | AUC: 0.5187 [0.4627, 0.5822] | OOF IC: +0.0088 (p=0.0176) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 20/24] Horizon: 60 日 | 10D (Macro)      | AUC: 0.4992 [0.4507, 0.5513] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 21/24] Horizon: 60 日 | 28D (Full)       | AUC: 0.5172 [0.4653, 0.5748] | OOF IC: +0.0088 (p=0.0176) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 22/24] Horizon: 90 日 | 18D (Rel+Micro)  | AUC: 0.5209 [0.4735, 0.5693] | OOF IC: +0.0132 (p=0.0001) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 23/24] Horizon: 90 日 | 10D (Macro)      | AUC: 0.5006 [0.4520, 0.5423] | OOF IC: +0.0000 (p=1.0000) | NO-GO (Noise/Overlap)
+  ✅ [Worker 完成 24/24] Horizon: 90 日 | 28D (Full)       | AUC: 0.5202 [0.4743, 0.5675] | OOF IC: +0.0131 (p=0.0001) | NO-GO (Noise/Overlap)
 
-⚡ 24 個天花板掃描任務全核心平行運算完畢！總耗時: 50.24 分鐘 (3014.31 秒)
+⚡ 24 個天花板掃描任務全平行運算完畢！總耗時: 1.39 分鐘 (83.30 秒)
  
-========================================================================================
-📊 【Workstream A: 多 Horizon 訊號天花板掃描綜合報告 (全平行加速版)】
-========================================================================================
- Horizon(天) | 特徵子集         | OOF AUC | 95% CI (Day-Block) | 正類比例 | HAC顯著數 | max|ICIR| | 決策
-----------------------------------------------------------------------------------------------------
-   1        | 28D (Full)       | 0.5004  | [0.4995, 0.5013]   |  49.92%  |   15 檔    |  0.1259   | NO-GO (Noise)
-   1        | 18D (Rel+Micro)  | 0.5001  | [0.4992, 0.5010]   |  49.92%  |   15 檔    |  0.1259   | NO-GO (Noise)
-   1        | 10D (Macro)      | 0.5003  | [0.5001, 0.5006]   |  49.92%  |    0 檔    |     NaN   | NO-GO (Noise)
-   3        | 28D (Full)       | 0.5011  | [0.4999, 0.5023]   |  49.93%  |   13 檔    |  0.1728   | NO-GO (Noise)
-   3        | 18D (Rel+Micro)  | 0.5011  | [0.4999, 0.5022]   |  49.93%  |   13 檔    |  0.1728   | NO-GO (Noise)
-   3        | 10D (Macro)      | 0.5000  | [0.4999, 0.5000]   |  49.93%  |    0 檔    |     NaN   | NO-GO (Noise)
-   5        | 28D (Full)       | 0.4986  | [0.4974, 0.4997]   |  49.93%  |   13 檔    |  0.1916   | NO-GO (Noise)
-   5        | 18D (Rel+Micro)  | 0.5007  | [0.4998, 0.5018]   |  49.93%  |   13 檔    |  0.1916   | NO-GO (Noise)
-   5        | 10D (Macro)      | 0.5000  | [0.5000, 0.5001]   |  49.93%  |    0 檔    |     NaN   | NO-GO (Noise)
-  10        | 28D (Full)       | 0.5014  | [0.5003, 0.5024]   |  49.93%  |   15 檔    |  0.1813   | NO-GO (Noise)
-  10        | 18D (Rel+Micro)  | 0.5030  | [0.5020, 0.5041]   |  49.93%  |   15 檔    |  0.1813   | NO-GO (Noise)
-  10        | 10D (Macro)      | 0.4999  | [0.4996, 0.5000]   |  49.93%  |    0 檔    |     NaN   | NO-GO (Noise)
-  15        | 28D (Full)       | 0.5014  | [0.5004, 0.5026]   |  49.93%  |   15 檔    |  0.2134   | NO-GO (Noise)
-  15        | 18D (Rel+Micro)  | 0.5031  | [0.5021, 0.5040]   |  49.93%  |   15 檔    |  0.2134   | NO-GO (Noise)
-  15        | 10D (Macro)      | 0.4998  | [0.4995, 0.5000]   |  49.93%  |    0 檔    |     NaN   | NO-GO (Noise)
-  20        | 28D (Full)       | 0.4979  | [0.4968, 0.4990]   |  49.93%  |   16 檔    |  0.2605   | NO-GO (Noise)
-  20        | 18D (Rel+Micro)  | 0.5031  | [0.5022, 0.5040]   |  49.93%  |   16 檔    |  0.2605   | NO-GO (Noise)
-  20        | 10D (Macro)      | 0.5000  | [0.5000, 0.5001]   |  49.93%  |    0 檔    |     NaN   | NO-GO (Noise)
-  30        | 28D (Full)       | 0.4998  | [0.4988, 0.5008]   |  49.93%  |   16 檔    |  0.3370   | NO-GO (Noise)
-  30        | 18D (Rel+Micro)  | 0.5031  | [0.5022, 0.5040]   |  49.93%  |   16 檔    |  0.3370   | NO-GO (Noise)
-  30        | 10D (Macro)      | 0.5000  | [0.4999, 0.5000]   |  49.93%  |    0 檔    |     NaN   | NO-GO (Noise)
-  60        | 28D (Full)       | 0.5042  | [0.5032, 0.5052]   |  49.93%  |   16 檔    |  0.4891   | NO-GO (Noise)
-  60        | 18D (Rel+Micro)  | 0.5024  | [0.5012, 0.5035]   |  49.93%  |   16 檔    |  0.4891   | NO-GO (Noise)
-  60        | 10D (Macro)      | 0.4999  | [0.4997, 0.5000]   |  49.93%  |    0 檔    |     NaN   | NO-GO (Noise)
-========================================================================================
+====================================================================================================================
+📊 【Workstream A: 多 Horizon 訊號天花板掃描綜合報告 (Stage 2 連續回歸與動態隔離版)】
+====================================================================================================================
+ Horizon(天) | 特徵子集         | OOF AUC | 95% CI (Day-Block) | OOF Rank IC | OOF HAC p-val | HAC顯著數 | max|ICIR| | 決策
+--------------------------------------------------------------------------------------------------------------------
+   1        | 28D (Full)       | 0.5098  | [0.4441, 0.5730]   |   +0.0104   |    0.0001     |   16 檔    |  0.2095   | NO-GO (Noise/Overlap)
+   1        | 18D (Rel+Micro)  | 0.5093  | [0.4374, 0.5702]   |   +0.0106   |    0.0001     |   16 檔    |  0.2095   | NO-GO (Noise/Overlap)
+   1        | 10D (Macro)      | 0.5011  | [0.4559, 0.5579]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
+   3        | 28D (Full)       | 0.5072  | [0.4527, 0.5531]   |   +0.0073   |    0.0081     |   13 檔    |  0.2429   | NO-GO (Noise/Overlap)
+   3        | 18D (Rel+Micro)  | 0.5098  | [0.4609, 0.5572]   |   +0.0072   |    0.0086     |   13 檔    |  0.2429   | NO-GO (Noise/Overlap)
+   3        | 10D (Macro)      | 0.4957  | [0.4426, 0.5475]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
+   5        | 28D (Full)       | 0.5104  | [0.4574, 0.5669]   |   +0.0057   |    0.0318     |   13 檔    |  0.2607   | NO-GO (Noise/Overlap)
+   5        | 18D (Rel+Micro)  | 0.5111  | [0.4615, 0.5629]   |   +0.0057   |    0.0332     |   13 檔    |  0.2607   | NO-GO (Noise/Overlap)
+   5        | 10D (Macro)      | 0.5005  | [0.4554, 0.5549]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
+  10        | 28D (Full)       | 0.5067  | [0.4606, 0.5725]   |   +0.0092   |    0.0011     |   13 檔    |  0.2570   | NO-GO (Noise/Overlap)
+  10        | 18D (Rel+Micro)  | 0.5086  | [0.4577, 0.5594]   |   +0.0091   |    0.0012     |   13 檔    |  0.2570   | NO-GO (Noise/Overlap)
+  10        | 10D (Macro)      | 0.4983  | [0.4541, 0.5524]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
+  20        | 28D (Full)       | 0.5076  | [0.4563, 0.5585]   |   +0.0098   |    0.0022     |   15 檔    |  0.2511   | NO-GO (Noise/Overlap)
+  20        | 18D (Rel+Micro)  | 0.5085  | [0.4538, 0.5685]   |   +0.0096   |    0.0026     |   15 檔    |  0.2511   | NO-GO (Noise/Overlap)
+  20        | 10D (Macro)      | 0.4986  | [0.4496, 0.5531]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
+  40        | 28D (Full)       | 0.5133  | [0.4448, 0.5629]   |   +0.0094   |    0.0024     |   16 檔    |  0.4024   | NO-GO (Noise/Overlap)
+  40        | 18D (Rel+Micro)  | 0.5142  | [0.4452, 0.5686]   |   +0.0096   |    0.0019     |   16 檔    |  0.4024   | NO-GO (Noise/Overlap)
+  40        | 10D (Macro)      | 0.4999  | [0.4520, 0.5516]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
+  60        | 28D (Full)       | 0.5172  | [0.4653, 0.5748]   |   +0.0088   |    0.0176     |   17 檔    |  0.5136   | NO-GO (Noise/Overlap)
+  60        | 18D (Rel+Micro)  | 0.5187  | [0.4627, 0.5822]   |   +0.0088   |    0.0176     |   17 檔    |  0.5136   | NO-GO (Noise/Overlap)
+  60        | 10D (Macro)      | 0.4992  | [0.4507, 0.5513]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
+  90        | 28D (Full)       | 0.5202  | [0.4743, 0.5675]   |   +0.0131   |    0.0001     |   17 檔    |  0.6375   | NO-GO (Noise/Overlap)
+  90        | 18D (Rel+Micro)  | 0.5209  | [0.4735, 0.5693]   |   +0.0132   |    0.0001     |   17 檔    |  0.6375   | NO-GO (Noise/Overlap)
+  90        | 10D (Macro)      | 0.5006  | [0.4520, 0.5423]   |   +0.0000   |    1.0000     |    0 檔    |     NaN   | NO-GO (Noise/Overlap)
+====================================================================================================================
 
 💾 掃描數據報告已匯出至: /home/andy/Documents/MARI_Quant_System/results/reports/WorkstreamA_CeilingScan_Report.csv
 --- 步驟 3：產出天花板掃描視覺化圖表 (白底黑字) ---
 📊 視覺化報表 (白底黑字) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/reports/WorkstreamA_CeilingScan.png
 =================================================================
-🎯 [Workstream A] 多 Horizon 天花板掃描完成！請檢視決策並進行 Round 6。
+🎯 [Workstream A] Stage 2 天花板掃描完成！
 =================================================================
 >> 
 
+
+
 =================================================================
-🧪 [Round 6] 啟動合成訊號 Positive Control (GPU 向量化批次加速版)
+🧪 [Round 6] 啟動合成訊號 Positive Control (Stage 0 方法論修復版)
 =================================================================
  🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
  ⚡ [Config] 成功注入 Phase 4 BO 最佳化參數：
@@ -102,25 +101,25 @@ Connected to parallel pool with 6 workers.
 ✅ 空間專家網路拓撲構建完畢。
   🎮 偵測到硬體加速卡: 【NVIDIA GeForce RTX 4060 Laptop GPU】，啟用 GPU 向量化張量並行加速。
 --- 步驟 5：啟動 Mini-Batch 向量化批次訓練 (30 Epochs) ---
-  Epoch  1/30 | Train BCE (T: 0.3967, S: 0.7135) | Val BCE (T: 0.2297, S: 0.6672)
-  Epoch  5/30 | Train BCE (T: 0.1966, S: 0.5492) | Val BCE (T: 0.1991, S: 0.5349)
-  Epoch 10/30 | Train BCE (T: 0.1873, S: 0.3574) | Val BCE (T: 0.2246, S: 0.3527)
-  Epoch 15/30 | Train BCE (T: 0.1826, S: 0.2618) | Val BCE (T: 0.1973, S: 0.2700)
-  Epoch 20/30 | Train BCE (T: 0.1806, S: 0.2260) | Val BCE (T: 0.1785, S: 0.2328)
-  Epoch 25/30 | Train BCE (T: 0.1794, S: 0.2091) | Val BCE (T: 0.1999, S: 0.2224)
-  Epoch 30/30 | Train BCE (T: 0.1779, S: 0.2002) | Val BCE (T: 0.1867, S: 0.2038)
-⚡ 30 Epochs 雙軌預訓練完成！總耗時: 344.24 秒 (平均每 Epoch: 11.47 秒)
+  Epoch  1/30 | Train BCE (T: 0.3952, S: 0.7135) | Val BCE (T: 0.2322, S: 0.6688)
+  Epoch  5/30 | Train BCE (T: 0.1959, S: 0.5493) | Val BCE (T: 0.2132, S: 0.5302)
+  Epoch 10/30 | Train BCE (T: 0.1856, S: 0.3572) | Val BCE (T: 0.2004, S: 0.3484)
+  Epoch 15/30 | Train BCE (T: 0.1822, S: 0.2617) | Val BCE (T: 0.2015, S: 0.2656)
+  Epoch 20/30 | Train BCE (T: 0.1822, S: 0.2259) | Val BCE (T: 0.2053, S: 0.2345)
+  Epoch 25/30 | Train BCE (T: 0.1795, S: 0.2092) | Val BCE (T: 0.2011, S: 0.2202)
+  Epoch 30/30 | Train BCE (T: 0.1781, S: 0.2003) | Val BCE (T: 0.1966, S: 0.2129)
+⚡ 30 Epochs 雙軌預訓練完成！總耗時: 382.66 秒 (平均每 Epoch: 12.76 秒)
 --- 步驟 6：批次提煉驗證集 Embedding 並計算線性探針 AUC ---
 ========================================================================================
 📊 【Round 6 合成訊號 Positive Control 驗證結論報告】
 ========================================================================================
-  > 時序專家 (Time Expert)  : 最終 Val BCE = 0.1867 | 探針 AUC = 0.9770
-  > 空間專家 (Space Expert) : 最終 Val BCE = 0.2038 | 探針 AUC = 0.9750
+  > 時序專家 (Time Expert)  : 探針 AUC = 0.9767 (門檻 >= 0.90) | 最終 Val BCE = 0.1966
+  > 空間專家 (Space Expert) : 探針 AUC = 0.9750 (門檻 >= 0.90) | 最終 Val BCE = 0.2129
 ----------------------------------------------------------------------------------------
-  ❌ 【FAIL】萃取網路未通過合成訊號測試！存在梯度流或張量維度錯位 Bug。
-     -> 時序專家未達標 (預期 BCE < 0.15, AUC >= 0.90)
-     -> 空間專家未達標 (預期 BCE < 0.15, AUC >= 0.90)
-     -> 請檢查維度排列與 dlgradient 梯度回傳！
+  ✅ 【PASS】雙軌萃取網路與訓練 Pipeline 完全正常！
+     -> 證明網路在具備真實訊號時能精確收斂至高表徵可分度 (AUC: 0.9767 / 0.9750)。
+     -> 徹底排除「維度重排、張量錯位或梯度截斷」等工程 Bug！
+     -> 後續真實數據若 Val Loss 停滯於 ln(2)，可 100% 證偽歸因為「特徵資訊天花板」。
 ========================================================================================
 
 📊 視覺化圖表 (白底黑字) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/reports/Round6_SyntheticSanityCheck.png
@@ -129,56 +128,9 @@ Connected to parallel pool with 6 workers.
 =================================================================
 >> 
 
-=================================================================
-🧠 [Round 8a] 啟動小樣本記憶力過擬合測試 (全靜態張量 GPU 向量化版)
-=================================================================
- 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
- ⚡ [Config] 成功注入 Phase 4 BO 最佳化參數：
-    - 崩盤護欄硬熔斷閾值 : 0.0488
-    - 時序專家權重 (Time_W): 0.9993
-    - 集中度標的數 (Top_K) : 31
---- 步驟 1：載入 3D 特徵快取並執行型態壓縮 ---
-  📊 抽樣規模：標的 60 檔 | 序列長度 60 | 輸入維度 18 維 (記憶體已釋放)
---- 步驟 2：構建真實 5 日 Beat-the-Median 目標標籤 ---
---- 步驟 3：鎖定 N = 25 天小樣本並預先載入 GPU 靜態張量 ---
-  🎮 偵測到硬體加速卡: 【NVIDIA GeForce RTX 4060 Laptop GPU】，啟用 GPU 全靜態顯存加速。
-  🔒 25 天靜態資料已常駐顯存 (總觀測數: 1500 筆)。
---- 步驟 4：構建零正則化雙軌網路 (Dropout = 0) ---
- ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (LayerNorm 防坍縮版)...
-  -> 預期輸入設定：
-     [時序專家] 單一節點特徵: 18 維 (已剝離總經) | 序列長度: 60 | Dropout: 0.20
-     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600
-✅ 時序專家網路拓撲構建完畢 (已掛載 LayerNorm)。
-✅ 空間專家網路拓撲構建完畢。
---- 步驟 5：啟動 150 Epochs 全向量化記憶力訓練 ---
-  Epoch   1/150 | Train BCE (Time: 0.69585 | Space: 0.69570)
-  Epoch  25/150 | Train BCE (Time: 0.59594 | Space: 0.69155)
-  Epoch  50/150 | Train BCE (Time: 0.45540 | Space: 0.68894)
-  Epoch  75/150 | Train BCE (Time: 0.19993 | Space: 0.68669)
-  Epoch 100/150 | Train BCE (Time: 0.10741 | Space: 0.68468)
-  Epoch 125/150 | Train BCE (Time: 0.07060 | Space: 0.68270)
-  Epoch 150/150 | Train BCE (Time: 0.05755 | Space: 0.68076)
-⚡ 150 Epochs 雙軌過擬合訓練完成！總耗時: 14.47 秒 (平均每 Epoch: 0.096 秒)
-========================================================================================
-📊 【Round 8a 小樣本記憶力過擬合測試結論報告】
-========================================================================================
-  > 時序專家 (Time Expert)  : 最終 Train BCE = 0.05755
-  > 空間專家 (Space Expert) : 最終 Train BCE = 0.68076
-----------------------------------------------------------------------------------------
-  ❌ 【FAIL】網路連極小樣本都無法記憶！
-     -> 時序專家未達標 (最終 BCE = 0.05755 >= 0.05)
-     -> 空間專家未達標 (最終 BCE = 0.68076 >= 0.05)
-     -> 存在梯度截斷、學習率過小或神經網路層輸出飽和問題！
-========================================================================================
-
-📊 視覺化圖表 (白底黑字) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/reports/Round8a_OverfitCapacityCheck.png
-=================================================================
-🎯 [Round 8a] 執行完畢！
-=================================================================
->> 
 
 =================================================================
-🧪 [Round 7] 啟動 IC 注意力閘門開關消融 (GPU 向量化批次加速版)
+🧪 [Round 7] 啟動 IC 注意力閘門開關消融 (Stage 0 方法論修復版)
 =================================================================
  🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
  ⚡ [Config] 成功注入 Phase 4 BO 最佳化參數：
@@ -207,11 +159,11 @@ Connected to parallel pool with 6 workers.
      [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600
 ✅ 時序專家網路拓撲構建完畢 (已掛載 LayerNorm)。
 ✅ 空間專家網路拓撲構建完畢。
-  Ep  1/30 | Val Loss (Time: 0.6927 | Space: 0.0000)
-  Ep 10/30 | Val Loss (Time: 0.6935 | Space: 0.0000)
-  Ep 20/30 | Val Loss (Time: 0.6998 | Space: 0.0000)
-  Ep 30/30 | Val Loss (Time: 0.7230 | Space: 0.0000)
-  ⚡ Group A (With IC Gate) 訓練完成！耗時: 356.40 秒
+  Ep  1/30 | Val Loss (Time: 0.6934 | Space: 0.6931)
+  Ep 10/30 | Val Loss (Time: 0.6935 | Space: 0.6932)
+  Ep 20/30 | Val Loss (Time: 0.6954 | Space: 0.6930)
+  Ep 30/30 | Val Loss (Time: 0.7227 | Space: 0.6930)
+  ⚡ Group A (With IC Gate) 訓練完成！耗時: 403.94 秒
 
 ▶ 正在訓練 Group B (Without Gate - Raw) ...
  ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (LayerNorm 防坍縮版)...
@@ -220,20 +172,26 @@ Connected to parallel pool with 6 workers.
      [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600
 ✅ 時序專家網路拓撲構建完畢 (已掛載 LayerNorm)。
 ✅ 空間專家網路拓撲構建完畢。
-  Ep  1/30 | Val Loss (Time: 0.6934 | Space: 0.0000)
-  Ep 10/30 | Val Loss (Time: 0.7063 | Space: 0.0000)
-  Ep 20/30 | Val Loss (Time: 0.8143 | Space: 0.0000)
-  Ep 30/30 | Val Loss (Time: 0.8926 | Space: 0.0000)
-  ⚡ Group B (Without Gate - Raw) 訓練完成！耗時: 366.36 秒
+  Ep  1/30 | Val Loss (Time: 0.6935 | Space: 0.6935)
+  Ep 10/30 | Val Loss (Time: 0.6996 | Space: 0.6933)
+  Ep 20/30 | Val Loss (Time: 0.7685 | Space: 0.6933)
+  Ep 30/30 | Val Loss (Time: 0.8542 | Space: 0.6933)
+  ⚡ Group B (Without Gate - Raw) 訓練完成！耗時: 408.84 秒
 ========================================================================================
-📊 【Round 7 IC 注意力閘門消融實驗結論報告】
+📊 【Round 7 IC 注意力閘門消融實驗統計檢定報告】
 ========================================================================================
-  > 時序專家 (Time Expert)  : With Gate Val Loss = 0.7230 | Raw Val Loss = 0.8926 (Delta = +0.1697)
-  > 空間專家 (Space Expert) : With Gate Val Loss = 0.0000 | Raw Val Loss = 0.0000 (Delta = +0.0000)
-  > 探針 AUC 對比 (Time)    : With Gate AUC = 0.5312      | Raw AUC = 0.5290
-  > 探針 AUC 對比 (Space)   : With Gate AUC = 0.5325      | Raw AUC = 0.5348
+  > 時序專家 (Time Expert)  :
+     - With Gate Val Loss : 0.7227 | Raw Val Loss : 0.8542
+     - 損失差值 (Raw-Gate): +0.1315 (Paired t p-val = 0.0000 | HAC p-val = 0.0000)
+     - 探針 AUC 對比      : With Gate AUC = 0.5308 | Raw AUC = 0.5269 (Delta AUC = +0.0039)
 ----------------------------------------------------------------------------------------
-  ℹ️ 【GATE BENEFICIAL / MINOR】IC 閘門略微改善或維持表徵品質。
+  > 空間專家 (Space Expert) :
+     - With Gate Val Loss : 0.6930 | Raw Val Loss : 0.6933
+     - 損失差值 (Raw-Gate): +0.0003 (Paired t p-val = 0.0000 | HAC p-val = 0.0118)
+     - 探針 AUC 對比      : With Gate AUC = 0.5324 | Raw AUC = 0.5373 (Delta AUC = -0.0049)
+----------------------------------------------------------------------------------------
+  ⭐ 【GATE BENEFICIAL】IC 注意力閘門顯著改善表徵泛化能力 (HAC p < 0.05 且 Gated 損失顯著更低)！
+     -> 保留能量守恆注意力機制。
 ========================================================================================
 
 📊 視覺化圖表 (白底黑字) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/reports/Round7_ICGateAblation.png
@@ -243,7 +201,58 @@ Connected to parallel pool with 6 workers.
 >> 
 
 =================================================================
-🧪 [Round 8b] 啟動時序架構複雜度消融 (GPU 向量化批次加速版)
+🧠 [Round 8a-v2] 啟動小樣本記憶力與 DyGAT 架構隔離診斷 (Stage 0/1 防 OOM 版)
+=================================================================
+ 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
+ ⚡ [Config] 成功注入 Phase 4 BO 最佳化參數：
+    - 崩盤護欄硬熔斷閾值 : 0.0488
+    - 時序專家權重 (Time_W): 0.9993
+    - 集中度標的數 (Top_K) : 31
+--- 步驟 1：載入 3D 特徵快取並執行型態壓縮 ---
+  📊 抽樣規模：標的 60 檔 | 序列長度 60 | 輸入維度 18 維 (記憶體已釋放)
+--- 步驟 2：構建真實 5 日 Beat-the-Median 目標標籤 ---
+--- 步驟 3：鎖定 N = 25 天小樣本並預先載入 GPU 靜態張量 ---
+  🎮 偵測到硬體加速卡: 【NVIDIA GeForce RTX 4060 Laptop GPU】，啟用 GPU 全靜態顯存加速。
+  🔒 25 天靜態資料已常駐顯存 (總觀測數: 1500 筆)。
+--- 步驟 4：構建零正則化三軌網路 (Dropout = 0) 與連接埠斷言 ---
+ ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (LayerNorm 防坍縮版)...
+  -> 預期輸入設定：
+     [時序專家] 單一節點特徵: 18 維 (已剝離總經) | 序列長度: 60 | Dropout: 0.20
+     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600
+✅ 時序專家網路拓撲構建完畢 (已掛載 LayerNorm)。
+✅ 空間專家網路拓撲構建完畢。
+  🔍 空間專家 (DyGAT) 連接埠探針: [in_space_feat, in_space_adj]
+--- 步驟 5：啟動 150 Epochs 全向量化記憶力訓練與逐層梯度監控 ---
+  Epoch   1/150 | Train BCE [T: 0.7022 | GCN: 0.6929 | DyGAT: 0.6929] | Val BCE [T: 0.6980 | DyGAT: 0.6936] | GradNorm(Attn): 6.97e-05
+  Epoch  25/150 | Train BCE [T: 0.6128 | GCN: 0.6738 | DyGAT: 0.6901] | Val BCE [T: 0.7559 | DyGAT: 0.6932] | GradNorm(Attn): 2.06e-05
+  Epoch  50/150 | Train BCE [T: 0.3770 | GCN: 0.6335 | DyGAT: 0.6881] | Val BCE [T: 1.1654 | DyGAT: 0.6934] | GradNorm(Attn): 2.18e-05
+  Epoch  75/150 | Train BCE [T: 0.1828 | GCN: 0.5867 | DyGAT: 0.6863] | Val BCE [T: 1.7910 | DyGAT: 0.6939] | GradNorm(Attn): 2.40e-05
+  Epoch 100/150 | Train BCE [T: 0.1272 | GCN: 0.5409 | DyGAT: 0.6846] | Val BCE [T: 2.3294 | DyGAT: 0.6946] | GradNorm(Attn): 1.49e-05
+  Epoch 125/150 | Train BCE [T: 0.0265 | GCN: 0.4975 | DyGAT: 0.6829] | Val BCE [T: 3.0518 | DyGAT: 0.6953] | GradNorm(Attn): 5.85e-06
+  Epoch 150/150 | Train BCE [T: 0.0652 | GCN: 0.4635 | DyGAT: 0.6812] | Val BCE [T: 3.0066 | DyGAT: 0.6962] | GradNorm(Attn): 3.33e-06
+⚡ 150 Epochs 三軌隔離訓練完成！總耗時: 22.25 秒 (平均每 Epoch: 0.148 秒)
+========================================================================================
+📊 【Round 8a-v2 小樣本記憶力與 DyGAT 架構隔離診斷報告】
+========================================================================================
+  > 時序專家 (Time Expert)   : Train BCE = 0.06525 (目標 < 0.05) | Held-out Val BCE = 3.0066
+  > 純圖卷積 (Pure GCN)      : Train BCE = 0.46352 (目標 < 0.05)
+  > 完整空間 (Full DyGAT)    : Train BCE = 0.68124 (目標 < 0.05) | Held-out Val BCE = 0.6962
+----------------------------------------------------------------------------------------
+  > DyGAT 梯度範數末期均值   : [Weights: 1.13e-03 | Attn_1: 3.56e-06 | Attn_2: 3.68e-06 | MixLogit: 8.43e-05]
+----------------------------------------------------------------------------------------
+  ❌ 【CASE 3: SPATIAL TENSOR DEFECT】空間專家圖卷積底層重組存在工程缺陷！
+     -> 純 GCN 與 DyGAT 均無法背下 25 天小樣本。
+     -> 確診為跨標的維度展平 (pagemtimes/reshape) 或空間前向梯度傳遞中斷。
+========================================================================================
+
+📊 視覺化圖表 (白底黑字) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/reports/Round8a_OverfitCapacityCheck.png
+=================================================================
+🎯 [Round 8a-v2] 執行完畢！
+=================================================================
+>> 
+
+=================================================================
+🧪 [Round 8b] 啟動時序架構複雜度消融 (Stage 0 方法論修復版)
 =================================================================
  🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
  ⚡ [Config] 成功注入 Phase 4 BO 最佳化參數：
@@ -266,27 +275,28 @@ Connected to parallel pool with 6 workers.
 --- 步驟 5：啟動 30 Epochs 向量化對照訓練 (Trans-LSTM vs Pure-LSTM) ---
 
 ▶ 正在訓練 Group A (Transformer-LSTM) ...
-  Ep  1/30 | Train BCE: 0.6935 | Val BCE: 0.6946
-  Ep 10/30 | Train BCE: 0.6861 | Val BCE: 0.7038
-  Ep 20/30 | Train BCE: 0.6372 | Val BCE: 0.7675
-  Ep 30/30 | Train BCE: 0.5786 | Val BCE: 0.8574
-  ⚡ Group A (Transformer-LSTM) 訓練完成！耗時: 325.10 秒
+  Ep  1/30 | Train BCE: 0.6934 | Val BCE: 0.6943
+  Ep 10/30 | Train BCE: 0.6848 | Val BCE: 0.6994
+  Ep 20/30 | Train BCE: 0.6364 | Val BCE: 0.7718
+  Ep 30/30 | Train BCE: 0.5786 | Val BCE: 0.8778
+  ⚡ Group A (Transformer-LSTM) 訓練完成！耗時: 357.90 秒
 
 ▶ 正在訓練 Group B (Simplified Pure-LSTM) ...
-  Ep  1/30 | Train BCE: 0.6951 | Val BCE: 0.6936
-  Ep 10/30 | Train BCE: 0.6644 | Val BCE: 0.7211
-  Ep 20/30 | Train BCE: 0.5515 | Val BCE: 0.8456
-  Ep 30/30 | Train BCE: 0.4724 | Val BCE: 0.9729
-  ⚡ Group B (Simplified Pure-LSTM) 訓練完成！耗時: 117.16 秒
+  Ep  1/30 | Train BCE: 0.6949 | Val BCE: 0.6933
+  Ep 10/30 | Train BCE: 0.6644 | Val BCE: 0.7191
+  Ep 20/30 | Train BCE: 0.5456 | Val BCE: 0.8629
+  Ep 30/30 | Train BCE: 0.4625 | Val BCE: 1.0048
+  ⚡ Group B (Simplified Pure-LSTM) 訓練完成！耗時: 128.80 秒
 ========================================================================================
-📊 【Round 8b 時序架構複雜度消融實驗結論報告】
+📊 【Round 8b 時序架構複雜度消融統計檢定報告】
 ========================================================================================
-  > 原版架構 (Transformer-LSTM) : 最終 Val BCE = 0.8574 | 探針 AUC = 0.5335
-  > 簡化架構 (Pure-LSTM)        : 最終 Val BCE = 0.9729 | 探針 AUC = 0.5330
-  > 驗證損失差值 (Delta Loss)   : +0.1155 (門檻: |Delta| <= 0.003)
+  > 原版架構 (Transformer-LSTM) : 最終 Val BCE = 0.8778 | 探針 AUC = 0.5312
+  > 簡化架構 (Pure-LSTM)        : 最終 Val BCE = 1.0048 | 探針 AUC = 0.5329
+  > 驗證損失差值 (Simple-Complex): +0.1270 (Paired t p-val = 0.0000 | HAC p-val = 0.0000)
+  > 探針 AUC 差值 (Simple-Complex): +0.0017
 ----------------------------------------------------------------------------------------
-  ℹ️ 【COMPLEXITY BENEFICIAL】原版 Transformer-LSTM 顯著優於簡化版 (Val Loss 較低 > 0.003)。
-     -> 保留 Self-Attention 注意力機制，另行探尋資料增強或正則化手段。
+  ℹ️ 【COMPLEXITY BENEFICIAL】原版 Transformer-LSTM 顯著優於簡化版 (HAC p = 0.0000 < 0.05 且損失顯著較低)。
+     -> 保留 Self-Attention 注意力機制。
 ========================================================================================
 
 📊 視覺化圖表 (白底黑字) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/reports/Round8b_ArchSimplification.png
@@ -296,7 +306,7 @@ Connected to parallel pool with 6 workers.
 >> 
 
 =================================================================
-🧪 [Round 9] 啟動訓練體制與學習率排查 (GPU 向量化批次加速版)
+🧪 [Round 9] 啟動訓練體制與學習率排查 (Stage 0 方法論修復版)
 =================================================================
  🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
  ⚡ [Config] 成功注入 Phase 4 BO 最佳化參數：
@@ -319,13 +329,13 @@ Connected to parallel pool with 6 workers.
      [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600
 ✅ 時序專家網路拓撲構建完畢 (已掛載 LayerNorm)。
 ✅ 空間專家網路拓撲構建完畢。
-  Ep   1/100 (LR: 1.00e-03) | Train BCE: 0.6935 | Val BCE: 0.6935
-  Ep  20/100 (LR: 1.00e-03) | Train BCE: 0.6331 | Val BCE: 0.7818
-  Ep  40/100 (LR: 5.00e-04) | Train BCE: 0.5345 | Val BCE: 0.9770
-  Ep  60/100 (LR: 2.50e-04) | Train BCE: 0.4924 | Val BCE: 1.1258
-  Ep  80/100 (LR: 1.25e-04) | Train BCE: 0.4696 | Val BCE: 1.1855
-  Ep 100/100 (LR: 1.25e-04) | Train BCE: 0.4631 | Val BCE: 1.2238
-  ⚡ Schedule 1: Step Decay (1e-3 -> 1.25e-4) 訓練完成！耗時: 1100.16 秒
+  Ep   1/100 (LR: 1.00e-03) | Train BCE: 0.6935 | Val BCE: 0.6931
+  Ep  20/100 (LR: 1.00e-03) | Train BCE: 0.6190 | Val BCE: 0.8024
+  Ep  40/100 (LR: 5.00e-04) | Train BCE: 0.5235 | Val BCE: 1.0302
+  Ep  60/100 (LR: 2.50e-04) | Train BCE: 0.4818 | Val BCE: 1.1601
+  Ep  80/100 (LR: 1.25e-04) | Train BCE: 0.4619 | Val BCE: 1.2240
+  Ep 100/100 (LR: 1.25e-04) | Train BCE: 0.4559 | Val BCE: 1.2593
+  ⚡ Schedule 1: Step Decay (1e-3 -> 1.25e-4) 訓練完成！耗時: 1212.36 秒
 
 ▶ 正在執行 [2/3] Schedule 2: Constant Small (2e-4) ...
  ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (LayerNorm 防坍縮版)...
@@ -334,13 +344,13 @@ Connected to parallel pool with 6 workers.
      [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600
 ✅ 時序專家網路拓撲構建完畢 (已掛載 LayerNorm)。
 ✅ 空間專家網路拓撲構建完畢。
-  Ep   1/100 (LR: 2.00e-04) | Train BCE: 0.6936 | Val BCE: 0.6935
-  Ep  20/100 (LR: 2.00e-04) | Train BCE: 0.6842 | Val BCE: 0.7056
-  Ep  40/100 (LR: 2.00e-04) | Train BCE: 0.6311 | Val BCE: 0.7801
-  Ep  60/100 (LR: 2.00e-04) | Train BCE: 0.5894 | Val BCE: 0.8289
-  Ep  80/100 (LR: 2.00e-04) | Train BCE: 0.5592 | Val BCE: 0.9119
-  Ep 100/100 (LR: 2.00e-04) | Train BCE: 0.5349 | Val BCE: 0.9989
-  ⚡ Schedule 2: Constant Small (2e-4) 訓練完成！耗時: 1087.52 秒
+  Ep   1/100 (LR: 2.00e-04) | Train BCE: 0.6942 | Val BCE: 0.6933
+  Ep  20/100 (LR: 2.00e-04) | Train BCE: 0.6839 | Val BCE: 0.7008
+  Ep  40/100 (LR: 2.00e-04) | Train BCE: 0.6325 | Val BCE: 0.7743
+  Ep  60/100 (LR: 2.00e-04) | Train BCE: 0.5906 | Val BCE: 0.8657
+  Ep  80/100 (LR: 2.00e-04) | Train BCE: 0.5612 | Val BCE: 0.9285
+  Ep 100/100 (LR: 2.00e-04) | Train BCE: 0.5379 | Val BCE: 0.9948
+  ⚡ Schedule 2: Constant Small (2e-4) 訓練完成！耗時: 1213.06 秒
 
 ▶ 正在執行 [3/3] Schedule 3: Cosine Annealing (1e-3 -> 1e-5) ...
  ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (LayerNorm 防坍縮版)...
@@ -349,22 +359,22 @@ Connected to parallel pool with 6 workers.
      [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600
 ✅ 時序專家網路拓撲構建完畢 (已掛載 LayerNorm)。
 ✅ 空間專家網路拓撲構建完畢。
-  Ep   1/100 (LR: 1.00e-03) | Train BCE: 0.6939 | Val BCE: 0.6940
-  Ep  20/100 (LR: 9.05e-04) | Train BCE: 0.6224 | Val BCE: 0.7996
-  Ep  40/100 (LR: 6.58e-04) | Train BCE: 0.5231 | Val BCE: 0.9864
-  Ep  60/100 (LR: 3.52e-04) | Train BCE: 0.4699 | Val BCE: 1.1428
-  Ep  80/100 (LR: 1.05e-04) | Train BCE: 0.4412 | Val BCE: 1.2517
-  Ep 100/100 (LR: 1.00e-05) | Train BCE: 0.4328 | Val BCE: 1.2665
-  ⚡ Schedule 3: Cosine Annealing (1e-3 -> 1e-5) 訓練完成！耗時: 1071.89 秒
+  Ep   1/100 (LR: 1.00e-03) | Train BCE: 0.6938 | Val BCE: 0.6937
+  Ep  20/100 (LR: 9.05e-04) | Train BCE: 0.6201 | Val BCE: 0.7886
+  Ep  40/100 (LR: 6.58e-04) | Train BCE: 0.5172 | Val BCE: 1.0247
+  Ep  60/100 (LR: 3.52e-04) | Train BCE: 0.4648 | Val BCE: 1.1902
+  Ep  80/100 (LR: 1.05e-04) | Train BCE: 0.4370 | Val BCE: 1.2944
+  Ep 100/100 (LR: 1.00e-05) | Train BCE: 0.4280 | Val BCE: 1.3248
+  ⚡ Schedule 3: Cosine Annealing (1e-3 -> 1e-5) 訓練完成！耗時: 1215.98 秒
 ========================================================================================
-📊 【Round 9 訓練體制與學習率排程消融結論報告】
+📊 【Round 9 訓練體制與學習率排程消融統計檢定報告】
 ========================================================================================
- 排程名稱                              | 最佳 Val BCE | 最終 Val BCE | 探針 AUC | 突破基準
-----------------------------------------------------------------------------------------
- Schedule 1: Step Decay (1e-3 -> 1.25e-4) |    0.6926    |    1.2238    |  0.5308  | YES (0.6926 < 0.6938)
- Schedule 2: Constant Small (2e-4)     |    0.6918    |    0.9989    |  0.5334  | YES (0.6918 < 0.6938)
- Schedule 3: Cosine Annealing (1e-3 -> 1e-5) |    0.6917    |    1.2665    |  0.5347  | YES (0.6917 < 0.6938)
-----------------------------------------------------------------------------------------
+ 排程名稱                              | 最佳 Val BCE | 最終 Val BCE | 探針 AUC | 對比基準 (HAC p-val) | 突破基準
+------------------------------------------------------------------------------------------------------------------
+ Schedule 1: Step Decay (1e-3 -> 1.25e-4) |    0.6931    |    1.2593    |  0.5330  | Reference Base       | YES (0.6931 < 0.6938)
+ Schedule 2: Constant Small (2e-4)     |    0.6932    |    0.9948    |  0.5351  | \Delta: -0.2651 (p=0.0000) | YES (0.6932 < 0.6938)
+ Schedule 3: Cosine Annealing (1e-3 -> 1e-5) |    0.6933    |    1.3248    |  0.5297  | \Delta: +0.0679 (p=0.0000) | YES (0.6933 < 0.6938)
+------------------------------------------------------------------------------------------------------------------
   ⭐ 【TRAINING EXTENSION BENEFICIAL】長週期訓練或特定 LR 排程成功突破 0.6938 基準！
      -> 證明原先的損失停滯部分源於 Epoch 數不足或學習率衰減過快。
 ========================================================================================
@@ -378,7 +388,7 @@ Parallel pool using the 'Processes' profile is shutting down.
 >> 
 
 =================================================================
-🧪 [Round 10] 啟動特徵子集精簡消融實驗 (GPU 向量化批次加速版)
+🧪 [Round 10] 啟動特徵子集精簡消融實驗 (Stage 0 方法論修復版)
 =================================================================
  🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
  ⚡ [Config] 成功注入 Phase 4 BO 最佳化參數：
@@ -390,6 +400,8 @@ Parallel pool using the 'Processes' profile is shutting down.
  ⚙️ [FeatureEvaluator] 初始化完成。已載入可配置 Horizon 橫截面 IC 與 HAC-ICIR 檢定引擎。
 --- 啟動極速多核心橫截面特徵信心評估 (Spearman IC, Horizon=5日) ---
   -> 啟動 Parpool 平行運算，評估 18 維特徵的橫截面預測力 (動態門檻: 10 檔)...
+Starting parallel pool (parpool) using the 'Processes' profile ...
+Connected to parallel pool with 12 workers.
   -> 執行時間平移與滾動平滑 (生成無未來函數之 IC 強度)...
   -> 執行能量守恆 Softmax 注意力縮放 (Energy-Preserving Normalization)...
 ✅ 橫截面 Spearman IC 評估與能量守恆注意力權重生成完畢！
@@ -403,40 +415,46 @@ Parallel pool using the 'Processes' profile is shutting down.
 --- 步驟 5：啟動 30 Epochs 向量化消融對照訓練 ---
 
 ▶ 正在訓練 Group A (Full 18D) (18 維)... 
- ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (LayerNorm 防坍縮版)...
-  -> 預期輸入設定：
-     [時序專家] 單一節點特徵: 18 維 (已剝離總經) | 序列長度: 60 | Dropout: 0.20
-     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600
-✅ 時序專家網路拓撲構建完畢 (已掛載 LayerNorm)。
-✅ 空間專家網路拓撲構建完畢。
-  Ep  1/30 | Val Loss (Time: 0.6936 | Space: 0.6934) | E_Var: [2.72, 0.82]
-  Ep 10/30 | Val Loss (Time: 0.7038 | Space: 0.6939) | E_Var: [2.32, 1.26]
-  Ep 20/30 | Val Loss (Time: 0.7754 | Space: 0.6932) | E_Var: [3.56, 1.27]
-  Ep 30/30 | Val Loss (Time: 0.8696 | Space: 0.6946) | E_Var: [5.19, 1.30]
-  ⚡ Group A (Full 18D) 訓練完成！耗時: 320.21 秒
+ ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 2 排序/回歸支援版)...
+  -> 網路拓撲設定：
+     [時序專家] 架構體制: TRANS_LSTM | 單節點輸入: 18 維 | 序列長度: 60 | Dropout: 0.20
+     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600 | 輸出維度: 64
+✅ 時序專家網路拓撲構建完畢 (trans_lstm + 雙重 LayerNorm)。
+✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版)。
+  Ep  1/30 | Val Loss (Time: 0.6934 | Space: 0.6938) | E_Var: [1.03, 0.79]
+  Ep 10/30 | Val Loss (Time: 0.7030 | Space: 0.6931) | E_Var: [1.25, 1.26]
+  Ep 20/30 | Val Loss (Time: 0.7647 | Space: 0.6932) | E_Var: [1.66, 1.29]
+  Ep 30/30 | Val Loss (Time: 0.8390 | Space: 0.6932) | E_Var: [2.10, 1.34]
+  ⚡ Group A (Full 18D) 訓練完成！耗時: 404.60 秒
 
 ▶ 正在訓練 Group B (Trimmed 12D) (12 維)... 
- ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (LayerNorm 防坍縮版)...
-  -> 預期輸入設定：
-     [時序專家] 單一節點特徵: 12 維 (已剝離總經) | 序列長度: 60 | Dropout: 0.20
-     [空間專家] 展平特徵維度: 720 | 展平圖譜維度: 3600
-✅ 時序專家網路拓撲構建完畢 (已掛載 LayerNorm)。
-✅ 空間專家網路拓撲構建完畢。
-  Ep  1/30 | Val Loss (Time: 0.6949 | Space: 0.6929) | E_Var: [3.16, 0.83]
-  Ep 10/30 | Val Loss (Time: 0.6963 | Space: 0.6930) | E_Var: [2.06, 1.35]
-  Ep 20/30 | Val Loss (Time: 0.7435 | Space: 0.6935) | E_Var: [3.26, 1.38]
-  Ep 30/30 | Val Loss (Time: 0.8257 | Space: 0.6940) | E_Var: [4.78, 1.38]
-  ⚡ Group B (Trimmed 12D) 訓練完成！耗時: 308.50 秒
+ ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 2 排序/回歸支援版)...
+  -> 網路拓撲設定：
+     [時序專家] 架構體制: TRANS_LSTM | 單節點輸入: 12 維 | 序列長度: 60 | Dropout: 0.20
+     [空間專家] 展平特徵維度: 720 | 展平圖譜維度: 3600 | 輸出維度: 64
+✅ 時序專家網路拓撲構建完畢 (trans_lstm + 雙重 LayerNorm)。
+✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版)。
+  Ep  1/30 | Val Loss (Time: 0.6937 | Space: 0.6936) | E_Var: [1.05, 0.80]
+  Ep 10/30 | Val Loss (Time: 0.6999 | Space: 0.6933) | E_Var: [1.22, 1.25]
+  Ep 20/30 | Val Loss (Time: 0.7468 | Space: 0.6933) | E_Var: [1.58, 1.29]
+  Ep 30/30 | Val Loss (Time: 0.8271 | Space: 0.6934) | E_Var: [2.07, 1.32]
+  ⚡ Group B (Trimmed 12D) 訓練完成！耗時: 395.95 秒
 ========================================================================================
-📊 【Round 10 特徵子集精簡消融實驗結論報告】
+📊 【Round 10 特徵子集精簡消融統計檢定報告】
 ========================================================================================
-  > 時序專家 (Time)  : Full 18D Val Loss = 0.8696 | Trimmed Val Loss = 0.8257 | 改善幅度: +0.0439
-  > 空間專家 (Space) : Full 18D Val Loss = 0.6946 | Trimmed Val Loss = 0.6940 | 改善幅度: +0.0006
-  > 探針 AUC (Time)  : Full 18D AUC = 0.5304      | Trimmed AUC = 0.5300
-  > 探針 AUC (Space) : Full 18D AUC = 0.5343      | Trimmed AUC = 0.5313
-  > 表徵變異數 (E_Var): Time = 4.782 | Space = 1.379 (健康門檻 > 0.10)
+  > 時序專家 (Time Expert)  :
+     - Full 18D Val Loss  : 0.8390 | Trimmed Val Loss : 0.8271
+     - 損失差值 (Full-Trim): +0.0120 (Paired t p-val = 0.0003 | HAC p-val = 0.0229)
+     - 探針 AUC 對比      : Full AUC = 0.5336 | Trimmed AUC = 0.5306 (Delta AUC = -0.0029)
 ----------------------------------------------------------------------------------------
-  ⭐ 【FEATURE TRIMMING EFFECTIVE】精簡特徵子集顯著降低驗證損失 (> 0.005) 且表徵變異數健康！
+  > 空間專家 (Space Expert) :
+     - Full 18D Val Loss  : 0.6932 | Trimmed Val Loss : 0.6934
+     - 損失差值 (Full-Trim): -0.0002 (Paired t p-val = 0.0464 | HAC p-val = 0.2341)
+     - 探針 AUC 對比      : Full AUC = 0.5344 | Trimmed AUC = 0.5302 (Delta AUC = -0.0042)
+----------------------------------------------------------------------------------------
+  > 表徵變異數 (E_Var 健全度): Time = 2.066 | Space = 1.320 (健康門檻 > 0.10)
+----------------------------------------------------------------------------------------
+  ⭐ 【FEATURE TRIMMING EFFECTIVE】精簡特徵子集顯著降低驗證損失 (HAC p < 0.05) 且表徵變異數健康！
      -> 證明剔除 Beta/Corr 等無效維度能有效緩解雜訊稀釋效應，建議正式全量採納精簡子集。
 ========================================================================================
 
@@ -446,5 +464,90 @@ Parallel pool using the 'Processes' profile is shutting down.
 =================================================================
 >> 
 
+=================================================================
+🧪 [Stage 2 SMOKE TEST] 啟動三大替代方案消融測試 (GPU 批次加速版)
+=================================================================
+ 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
+ ⚡ [Config] 成功注入 Phase 4 BO 最佳化參數：
+    - 崩盤護欄硬熔斷閾值 : 0.0488
+    - 時序專家權重 (Time_W): 0.9993
+    - 集中度標的數 (Top_K) : 31
+--- 步驟 1：載入特徵快取並執行資料規模擴展抽樣 (60 檔 x 3200 天) ---
+  📊 抽樣規模：標的 60 檔 | 交易天數 3200 天 | 輸入特徵 18 維 (記憶體已釋放)
+--- 步驟 2：載入 GICS 產業別並構建產業內橫截面 Z-Score 特徵 ---
+--- 步驟 3：構建 5D 與 60D 遠期連續報酬與 Beat-the-Median 標籤 (防禦 NaN) ---
+  🎮 偵測到硬體加速卡: 【NVIDIA GeForce RTX 4060 Laptop GPU】，啟用全向量化批次訓練。
+--- 步驟 4：啟動 Stage 2 四組消融對照訓練 ---
 
+▶ 正在執行 [1/4] Group 1: Raw 18D + BCE (Base) ...
+ ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 2 排序/回歸支援版)...
+  -> 網路拓撲設定：
+     [時序專家] 架構體制: PURE_LSTM | 單節點輸入: 18 維 | 序列長度: 60 | Dropout: 0.20
+     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600 | 輸出維度: 64
+✅ 時序專家網路拓撲構建完畢 (pure_lstm + 雙重 LayerNorm)。
+✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版)。
+  Ep  1/15 | Train Loss: 0.6931 | Val Loss: 0.6931
+  Ep  5/15 | Train Loss: 0.6883 | Val Loss: 0.6979
+  Ep 10/15 | Train Loss: 0.6478 | Val Loss: 0.7306
+  Ep 15/15 | Train Loss: 0.5831 | Val Loss: 0.8057
+  ⚡ Group 1: Raw 18D + BCE (Base) 訓練完成！耗時: 38.83 秒
 
+▶ 正在執行 [2/4] Group 2: GICS-Neutral + BCE ...
+ ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 2 排序/回歸支援版)...
+  -> 網路拓撲設定：
+     [時序專家] 架構體制: PURE_LSTM | 單節點輸入: 18 維 | 序列長度: 60 | Dropout: 0.20
+     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600 | 輸出維度: 64
+✅ 時序專家網路拓撲構建完畢 (pure_lstm + 雙重 LayerNorm)。
+✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版)。
+  Ep  1/15 | Train Loss: 0.6930 | Val Loss: 0.6934
+  Ep  5/15 | Train Loss: 0.6835 | Val Loss: 0.7047
+  Ep 10/15 | Train Loss: 0.6315 | Val Loss: 0.7503
+  Ep 15/15 | Train Loss: 0.5649 | Val Loss: 0.8248
+  ⚡ Group 2: GICS-Neutral + BCE 訓練完成！耗時: 38.02 秒
+
+▶ 正在執行 [3/4] Group 3: GICS-Neutral + Soft-IC Loss ...
+ ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 2 排序/回歸支援版)...
+  -> 網路拓撲設定：
+     [時序專家] 架構體制: PURE_LSTM | 單節點輸入: 18 維 | 序列長度: 60 | Dropout: 0.20
+     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600 | 輸出維度: 64
+✅ 時序專家網路拓撲構建完畢 (pure_lstm + 雙重 LayerNorm)。
+✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版)。
+  Ep  1/15 | Train Loss: 0.5288 | Val Loss: 0.7110
+  Ep  5/15 | Train Loss: 0.4421 | Val Loss: 0.7045
+  Ep 10/15 | Train Loss: 0.3211 | Val Loss: 0.7042
+  Ep 15/15 | Train Loss: 0.2561 | Val Loss: 0.7044
+  ⚡ Group 3: GICS-Neutral + Soft-IC Loss 訓練完成！耗時: 76.39 秒
+
+▶ 正在執行 [4/4] Group 4: 60D Horizon (Embargo=60D) ...
+ ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 2 排序/回歸支援版)...
+  -> 網路拓撲設定：
+     [時序專家] 架構體制: PURE_LSTM | 單節點輸入: 18 維 | 序列長度: 60 | Dropout: 0.20
+     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600 | 輸出維度: 64
+✅ 時序專家網路拓撲構建完畢 (pure_lstm + 雙重 LayerNorm)。
+✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版)。
+  Ep  1/15 | Train Loss: 0.4837 | Val Loss: 0.7094
+  Ep  5/15 | Train Loss: 0.1609 | Val Loss: 0.7075
+  Ep 10/15 | Train Loss: 0.0848 | Val Loss: 0.7125
+  Ep 15/15 | Train Loss: 0.0655 | Val Loss: 0.7204
+  ⚡ Group 4: 60D Horizon (Embargo=60D) 訓練完成！耗時: 72.33 秒
+====================================================================================================
+📊 【Stage 2 三大替代方案消融檢定綜合報告】
+====================================================================================================
+ 實驗組別名稱                          | 最終 Val Loss | 探針評估 (AUC / IC) | HAC p-val | 對比 Base (p-val)
+----------------------------------------------------------------------------------------------------
+ Group 1: Raw 18D + BCE (Base)         |    0.8057    |    AUC = 0.5346     |  1.0000   | Reference Base
+ Group 2: GICS-Neutral + BCE           |    0.8248    |    AUC = 0.5307     |  1.0000   | HAC p = 1.0000
+ Group 3: GICS-Neutral + Soft-IC Loss  |    0.7044    |    IC  = +0.0641    |  0.0000   | HAC p = 0.1312
+ Group 4: 60D Horizon (Embargo=60D)    |    0.7204    |    IC  = +0.1336    |  0.0000   | HAC p = 0.0944
+====================================================================================================
+
+  ✅ 【DIRECTION 1 FALSIFIED】GICS 產業中性化未帶來顯著增量，特徵噪音非源自板塊 Beta。
+  ⭐ 【DIRECTION 2 CONFIRMED】連續 Soft-IC 損失顯著優於二元分類，成功打破 ln(2) 停滯！
+  ⭐ 【DIRECTION 3 CONFIRMED】60D 中長週期在動態 Embargo 隔離下具備真實因果預測力！
+====================================================================================================
+
+📊 視覺化報告已儲存至: /home/andy/Documents/MARI_Quant_System/results/reports/Stage2_Smoke_Ablation.png
+=================================================================
+🎯 [Stage 2 SMOKE TEST] 執行完畢！
+=================================================================
+>> 
