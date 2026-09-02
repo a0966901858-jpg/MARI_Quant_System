@@ -1,9 +1,10 @@
 classdef FeatureEvaluator < handle
     % =========================================================================
     % 類別：FeatureEvaluator (特徵信心評估器、ICIR 穩定性健檢與共線性診斷中心)
-    % 升級：Phase 15.5 (★ 支援自定義 Horizon 遠期報酬、Newey-West HAC 顯著性檢定)
+    % 升級：Phase 15.5 Task A 修復版 (★ report_icir_ranking 支援 horizon 貫穿、
+    %       HAC max_lag 強制頻寬下限防禦、相容歷史字串標籤呼叫)
     % 職責：
-    %   1. 計算每日橫截面 Spearman Rank IC (支援 1D/5D 靈活 Horizon 對齊)
+    %   1. 計算每日橫截面 Spearman Rank IC (支援 1D/5D/60D 靈活 Horizon 對齊)
     %   2. 評估特徵長週期 ICIR 並透過 Newey-West HAC 校正序列自相關，檢驗方向交易邊際
     %   3. 評估全特徵相關係數矩陣，自動標記 |corr| > 0.85 的高度共線性特徵對
     % =========================================================================
@@ -30,7 +31,7 @@ classdef FeatureEvaluator < handle
             % X_denoised_3D: [Days, Feats, NumTickers]
             % Prices_Active: [Days, NumTickers]
             % Expert_Active: [Days, NumTickers] (活躍標的遮罩)
-            % horizon:       預測遠期天數 (預設 = 1，向前相容特徵閘門；健檢時可傳入 5)
+            % horizon:       預測遠期天數 (預設 = 1，向前相容特徵閘門；健檢時可傳入 5 或 60)
             % 輸出維度：
             % IC_Weights_2D: [Days, Feats] (每日各特徵的能量守恆注意力權重，均值維持 1.0)
             % Raw_IC_Weight: [Days, Feats] (各特徵歷史滾動平均 |IC|，供特徵閘門聚焦使用)
@@ -142,14 +143,34 @@ classdef FeatureEvaluator < handle
         end
         
         % =====================================================================
-        % ★ Phase 15.5：特徵訊號方向穩定性 ICIR 排行榜 (整合 Newey-West HAC 檢定)
+        % ★ Phase 15.5 Task A：特徵訊號方向穩定性 ICIR 排行榜 (整合 Newey-West HAC 檢定)
         % =====================================================================
-        function [icir_table, max_icir] = report_icir_ranking(obj, Daily_IC, feat_names, min_icir_threshold, horizon_label)
+        function [icir_table, max_icir] = report_icir_ranking(obj, Daily_IC, feat_names, min_icir_threshold, horizon, horizon_label)
+            % -----------------------------------------------------------------
+            % 參數處理：相容歷史呼叫格式 (horizon_label 作為第 5 引數傳入)
+            % -----------------------------------------------------------------
             if nargin < 4 || isempty(min_icir_threshold)
                 min_icir_threshold = 0.05; 
             end
-            if nargin < 5 || isempty(horizon_label)
-                horizon_label = '1D';
+            if nargin < 5 || isempty(horizon)
+                horizon = 1;
+            end
+            
+            % 解析 horizon 與 horizon_label，兼顧數值型與字串型輸入
+            if ischar(horizon) || isstring(horizon)
+                temp_str = char(horizon);
+                parsed_h = sscanf(temp_str, '%d');
+                if ~isempty(parsed_h)
+                    H_num = max(1, parsed_h);
+                else
+                    H_num = 1;
+                end
+                horizon_label = temp_str;
+            else
+                H_num = max(1, round(horizon));
+                if nargin < 6 || isempty(horizon_label)
+                    horizon_label = sprintf('%dD', H_num);
+                end
             end
             
             if isprop(obj.ConfigObj, 'Lookback')
@@ -168,56 +189,61 @@ classdef FeatureEvaluator < handle
             std_ic  = std(valid_ic_window, 0, 1, 'omitnan');
             icir    = mean_ic ./ (std_ic + 1e-8);
             
-            % ★ 呼叫 Newey-West HAC 檢定校正序列自相關
+            % ★ Task A 修復：顯式貫穿 max_lag = max(H, auto_bandwidth) 校正自相關
             t_hac = zeros(numFeats, 1);
             p_hac = ones(numFeats, 1);
+            lag_used = zeros(numFeats, 1);
             
             for j = 1:numFeats
                 ic_series = valid_ic_window(:, j);
-                ic_clean = ic_series(~isnan(ic_series));
-                if length(ic_clean) > 10
+                ic_clean = ic_series(~isnan(ic_series) & ~isinf(ic_series));
+                n_eff = length(ic_clean);
+                if n_eff > 10
+                    auto_lag = max(1, floor(4 * (n_eff / 100)^(2/9)));
+                    hac_lag = max(H_num, auto_lag); % 強制頻寬下限對齊標籤長度 H
+                    lag_used(j) = hac_lag;
                     try
-                        [t_hac(j), p_hac(j)] = hac_significance_test(ic_clean);
+                        [t_hac(j), p_hac(j)] = hac_significance_test(ic_clean, hac_lag);
                     catch
-                        % 若未掛載 utils 則退回粗略近似並給予提示
-                        n_eff = length(ic_clean);
                         t_hac(j) = icir(j) * sqrt(n_eff);
                         p_hac(j) = 2 * (1 - normcdf(abs(t_hac(j))));
                     end
+                else
+                    lag_used(j) = H_num;
                 end
             end
             
             [sorted_icir, sort_idx] = sort(abs(icir), 'descend');
             
-            fprintf('\n========================================================================================\n');
-            fprintf('📊 【Phase 15.5 特徵訊號方向穩定性健檢：%s Horizon HAC-ICIR 排行榜】\n', horizon_label);
-            fprintf('========================================================================================\n');
+            fprintf('\n====================================================================================================\n');
+            fprintf('📊 【Phase 15.5 特徵訊號方向穩定性健檢：%s Horizon HAC-ICIR 排行榜 (Task A 修復版)】\n', horizon_label);
+            fprintf('====================================================================================================\n');
             for i = 1:length(sorted_icir)
                 j = sort_idx(i);
                 sig_flag = '';
                 if p_hac(j) < 0.05
                     sig_flag = '⭐ p<0.05 (HAC)';
                 end
-                fprintf('  [%2d] %-16s | mean(IC)=%+.4f  std(IC)=%.4f  ICIR=%+.4f | HAC t=%+7.3f  p=%.4f  %s\n', ...
-                    i, feat_names{j}, mean_ic(j), std_ic(j), icir(j), t_hac(j), p_hac(j), sig_flag);
+                fprintf('  [%2d] %-16s | mean(IC)=%+.4f  std(IC)=%.4f  ICIR=%+.4f | HAC t=%+7.3f  p=%.4f (lag=%d)  %s\n', ...
+                    i, feat_names{j}, mean_ic(j), std_ic(j), icir(j), t_hac(j), p_hac(j), lag_used(j), sig_flag);
             end
-            fprintf('----------------------------------------------------------------------------------------\n');
+            fprintf('----------------------------------------------------------------------------------------------------\n');
             
             max_icir = max(abs(icir));
             sig_count = sum(p_hac < 0.05 & abs(icir) >= min_icir_threshold);
             
             if sig_count == 0
-                warning(['⚠️ 警告：經 Newey-West HAC 校正後，無任何特徵在 |ICIR| >= %.4f 下具備統計顯著性 (p < 0.05)！\n' ...
+                warning(['⚠️ 警告：經 Newey-West HAC (lag=%d) 校正後，無任何特徵在 |ICIR| >= %.4f 下具備統計顯著性 (p < 0.05)！\n' ...
                          '   代表特徵雖有短暫相關，但方向長期頻繁反轉，不具備穩定交易邊際。\n' ...
-                         '   此結果與 GBDT AUC≈0.50、DSR=0.0000 的結論完全吻合！'], min_icir_threshold);
+                         '   此結果與 GBDT AUC≈0.50、DSR=0.0000 的結論完全吻合！'], H_num, min_icir_threshold);
             else
-                fprintf('  ✅ 通過穩定性健檢：共 %d 個特徵通過 HAC 顯著性檢定且 |ICIR| >= %.4f。\n', ...
-                    sig_count, min_icir_threshold);
+                fprintf('  ✅ 通過穩定性健檢：共 %d 個特徵通過 HAC 顯著性檢定 (lag=%d) 且 |ICIR| >= %.4f。\n', ...
+                    sig_count, H_num, min_icir_threshold);
             end
-            fprintf('========================================================================================\n\n');
+            fprintf('====================================================================================================\n\n');
             
-            icir_table = table(feat_names(:), mean_ic(:), std_ic(:), icir(:), t_hac(:), p_hac(:), ...
-                'VariableNames', {'Feature', 'Mean_IC', 'Std_IC', 'ICIR', 'HAC_T_Stat', 'HAC_P_Value'});
+            icir_table = table(feat_names(:), mean_ic(:), std_ic(:), icir(:), t_hac(:), p_hac(:), lag_used(:), ...
+                'VariableNames', {'Feature', 'Mean_IC', 'Std_IC', 'ICIR', 'HAC_T_Stat', 'HAC_P_Value', 'HAC_Lag'});
         end
         
         % =====================================================================
@@ -247,9 +273,9 @@ classdef FeatureEvaluator < handle
             fprintf('=================================================================\n\n');
         end
         
-        % =====================================================================
+        % =========================================================
         % 全特徵 Pairwise 相關係數共線性診斷
-        % =====================================================================
+        % =========================================================
         function [corr_matrix, high_corr_pairs] = diagnose_collinearity(~, X_3D, Expert_Active, feat_names)
             disp('--- 啟動全特徵 Pairwise 相關性共線性診斷 (Collinearity Audit) ---');
             
