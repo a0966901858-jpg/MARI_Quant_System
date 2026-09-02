@@ -295,3 +295,18 @@
 --- 步驟 6：產出 P2-4 VQ-VAE 降噪消融實驗報表 (白底黑字) ---
 📊 視覺化圖表 (白底黑字) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/reports/P2_4_VQVAE_Ablation.png
 >> 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
