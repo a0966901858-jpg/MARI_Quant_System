@@ -1,7 +1,8 @@
 classdef Config < handle
     % =========================================================================
     % 類別: Config (系統全域超參數與路徑配置中心)
-    % 升級: Phase 15.5 (★ 新增空間專家訓練開關 EnableSpaceExpertTraining、表徵變異數保底)
+    % 升級: Phase 15.5 Stage 4 規範版 (★ 新增 SpaceExpertMixMode 空間混合模式、
+    %       ProjectDir 相容別名、EnableSpaceExpertTraining 維持可開
     % 職責: 作為 MARI 量化系統的超參數與組態單一真理來源 (Single Source of Truth)
     % =========================================================================
     
@@ -10,6 +11,7 @@ classdef Config < handle
     % ---------------------------------------------------------
     properties (SetAccess = private)
         ProjectRoot      % 專案根目錄路徑
+        ProjectDir       % 專案根目錄路徑 (相容性別名)
         DataDir          % 靜態與基礎資料夾
         CacheDir         % 存放降噪與特徵工程後的 .mat 快取
         DataLakeDir      % 存放 Python 爬蟲輸出的 Parquet 原始長表
@@ -31,10 +33,13 @@ classdef Config < handle
     % ---------------------------------------------------------
     properties
         % --- 0. 模組執行開關 (Module Execution Flags) ---
-        % ★ Phase 15.5 新增：空間專家訓練加速開關
-        % 設為 false 時可跳過 Phase 1 DyGAT 圖譜構建與 Phase 2 空間網路訓練，大幅加速迭代
-        % 正式定稿或生成完整論文對照報告時請設回 true
+        % ★ 空間專家訓練開關：維持可開以支援空間專家獨立消融驗證
         EnableSpaceExpertTraining = true 
+        
+        % ★ Stage 4 核心新增：空間專家混合模式 ('gcn_only' | 'dynamic')
+        % 依據 Round 8a-v2 空間專家診斷與計劃書 §6.3 規範，預設採 'gcn_only'
+        % 徹底繞過動態注意力分支以解決梯度消失問題，保留純靜態 GCN 空間拓撲聚合
+        SpaceExpertMixMode = 'gcn_only'
         
         % --- 1. 特徵工程與雙軌萃取器 (Phase 1 & 2) ---
         NumMacroFeatures = 10    % 宏觀特徵維度 (VIX_Proxy, R20, R60, Breadth, Real_VIX, VRP, T10Y2Y, HY, DGS10, UNRATE)
@@ -102,7 +107,8 @@ classdef Config < handle
                 obj.ProjectRoot = fullfile(obj.ProjectRoot, '..');
             end
             
-            % 映射全域標準化路徑
+            % 映射全域標準化路徑 (含相容別名 ProjectDir)
+            obj.ProjectDir  = obj.ProjectRoot;
             obj.DataDir     = fullfile(obj.ProjectRoot, 'data');
             obj.CacheDir    = fullfile(obj.ProjectRoot, 'data', 'cache');
             obj.DataLakeDir = fullfile(obj.ProjectRoot, 'data', 'data_lake');
