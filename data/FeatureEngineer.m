@@ -2,7 +2,7 @@
 classdef FeatureEngineer < handle
     % =========================================================================
     % 模組：FeatureEngineer.m 
-    % 升級：Phase 15.5 Stage 2 (★ GICS 產業內橫截面 Z-Score 中性化 + 退縮保護版)
+    % 升級：Phase 15.5 Stage 2 (★ GICS 產業內橫截面 Z-Score 中性化 + 動態防呆路徑 + 退縮保護版)
     % 職責：計算無未來函數之相對/微觀/宏觀特徵、產業中性化特徵標準化與 DyGAT 時變共整合圖譜
     % =========================================================================
     
@@ -62,44 +62,58 @@ classdef FeatureEngineer < handle
             end
             
             % -------------------------------------------------------------
-            % 載入 GICS 產業別映射表 (Stage 2: 產業中性化前置)
+            % 載入 GICS 產業別映射表 (★ Stage 2: 動態自適應路徑防呆解析)
             % -------------------------------------------------------------
             disp(' -> 載入 GICS 產業別映射表以支援產業內橫截面中性化...');
-            universePath = fullfile(obj.ConfigObj.ProjectDir, 'data', 'crawlers', 'us_universe.csv');
-            if ~exist(universePath, 'file')
-                potentialPaths = {
-                    fullfile(fileparts(mfilename('fullpath')), 'crawlers', 'us_universe.csv'), ...
-                    fullfile(fileparts(obj.ConfigObj.DataLakeDir), 'crawlers', 'us_universe.csv')
-                };
-                for p = 1:length(potentialPaths)
-                    if exist(potentialPaths{p}, 'file')
-                        universePath = potentialPaths{p};
-                        break;
-                    end
+            currentClassDir = fileparts(mfilename('fullpath')); % 位於專案 data/ 目錄
+            
+            potentialPaths = { ...
+                fullfile(currentClassDir, 'crawlers', 'us_universe.csv'), ...
+                fullfile(fileparts(currentClassDir), 'data', 'crawlers', 'us_universe.csv'), ...
+                fullfile(fileparts(obj.ConfigObj.DataLakeDir), 'crawlers', 'us_universe.csv'), ...
+                fullfile(obj.ConfigObj.DataLakeDir, '..', 'crawlers', 'us_universe.csv'), ...
+                fullfile(pwd, 'data', 'crawlers', 'us_universe.csv') ...
+            };
+            
+            if isprop(obj.ConfigObj, 'ProjectDir') && ~isempty(obj.ConfigObj.ProjectDir)
+                potentialPaths = [fullfile(obj.ConfigObj.ProjectDir, 'data', 'crawlers', 'us_universe.csv'), potentialPaths];
+            end
+            
+            universePath = '';
+            for p = 1:length(potentialPaths)
+                if exist(potentialPaths{p}, 'file')
+                    universePath = potentialPaths{p};
+                    break;
                 end
             end
             
             sector_map = repmat({'Unknown'}, 1, obj.NumTickers);
-            if exist(universePath, 'file')
+            if ~isempty(universePath) && exist(universePath, 'file')
                 try
                     u_tbl = readtable(universePath, 'TextType', 'string');
                     if ismember('GICS_Sector', u_tbl.Properties.VariableNames)
-                        [lia, loc] = ismember(string(ticker_list), string(u_tbl.Ticker));
+                        cfg_tickers = replace(string(ticker_list), '.', '-');
+                        csv_tickers = replace(string(u_tbl.Ticker), '.', '-');
+                        [lia, loc] = ismember(cfg_tickers, csv_tickers);
+                        
                         valid_loc = loc(lia);
                         valid_idx = find(lia);
                         for k = 1:length(valid_idx)
-                            s_val = char(u_tbl.GICS_Sector(valid_loc(k)));
-                            if ~isempty(strtrim(s_val))
-                                sector_map{valid_idx(k)} = strtrim(s_val);
+                            sec_str = u_tbl.GICS_Sector(valid_loc(k));
+                            if ~ismissing(sec_str) && strlength(strtrim(sec_str)) > 0
+                                sector_map{valid_idx(k)} = char(strtrim(sec_str));
                             end
                         end
-                        fprintf('    🏷️ 成功識別 %d 檔標的之 GICS 板塊標籤。\n', sum(~strcmp(sector_map, 'Unknown')));
+                        fprintf('    🏷️ 成功識別 %d 檔標的之 GICS 板塊標籤 (來源: %s)。\n', ...
+                            sum(~strcmp(sector_map, 'Unknown')), universePath);
+                    else
+                        warning('⚠️ us_universe.csv 中未找到 GICS_Sector 欄位，請確認 hybrid_crawler.py 是否已更新。');
                     end
                 catch ME
                     warning('⚠️ 讀取 GICS 產業表失敗: %s，將回退至全截面基準。', ME.message);
                 end
             else
-                warning('⚠️ 找不到 us_universe.csv，將回退至全截面標準化。');
+                warning('⚠️ 未能定位 us_universe.csv，將回退至全截面標準化。');
             end
             
             sectors_cat = categorical(sector_map);
@@ -169,7 +183,7 @@ classdef FeatureEngineer < handle
             % -------------------------------------------------------------
             % 特徵標準化 (★ Stage 2: GICS 產業內 Z-Score + 退縮保護)
             % -------------------------------------------------------------
-            disp(' -> 執行特徵標準化 (★ GICS 產業內橫截面 Z-Score + 巨集滾動標準化)...');
+            disp(' -> 執行特徵標準化 (★ GICS 產業內橫截面 Z-Score + 宏觀滾動標準化)...');
             X_norm_3D = zeros(size(X_raw_3D), 'single'); 
             
             % 1. 宏觀指標維持時序滾動 Z-Score
@@ -180,7 +194,7 @@ classdef FeatureEngineer < handle
             macro_norm(isnan(macro_norm)) = 0;
             
             min_cs_samples = max(10, floor(obj.NumTickers * 0.05));
-            min_sector_samples = 4; % 產業內至少需 4 檔活躍標的，否則退縮回退至全市場
+            min_sector_samples = 4; % 產業內至少需 4 檔活躍標的，否則退縮回退至全市場基準
             cs_feat_indices = [idx_rel, idx_micro];
             
             for t = 1:numDays
@@ -188,19 +202,16 @@ classdef FeatureEngineer < handle
                 n_act = sum(act_mask);
                 
                 if n_act >= min_cs_samples
-                    % 計算當日全市場基準 (作為小樣本產業回退的 Fallback)
+                    % 預設以全市場基準填入 (作為小樣本或未分類標的之 Fallback)
                     vals_all = X_raw_3D(t, cs_feat_indices, act_mask);
                     mu_all = mean(vals_all, 3, 'omitnan');
                     std_all = std(vals_all, 0, 3, 'omitnan') + 1e-8;
-                    
-                    % 預設以全市場基準填入
                     X_norm_3D(t, cs_feat_indices, act_mask) = (vals_all - mu_all) ./ std_all;
                     
                     % 逐板塊執行產業內中性化
                     for s = 1:length(unique_sectors)
                         s_name = unique_sectors{s};
-                        % 排除非股票類別或未知標的
-                        if strcmp(s_name, 'Unknown') || strcmp(s_name, 'Macro') || strcmp(s_name, 'Safe Haven')
+                        if ismember(s_name, {'Unknown', 'Macro', 'Safe Haven', 'Broad Market Index'})
                             continue;
                         end
                         
@@ -292,7 +303,7 @@ classdef FeatureEngineer < handle
                         num_pairs = max_eg_tests;
                     end
                     
-                    % ★ Phase 15 (P1-2)：先收集所有候選配對 p-value
+                    % 收集所有候選配對 p-value
                     p_values = NaN(num_pairs, 1);
                     for k = 1:num_pairs
                         idx_A = valid_idx(row_idx(k));
@@ -305,7 +316,7 @@ classdef FeatureEngineer < handle
                         p_values(k) = pVal;
                     end
                     
-                    % ★ Phase 15 (P1-2)：執行 Benjamini-Hochberg FDR 多重比較校正 (q = 0.05)
+                    % 執行 Benjamini-Hochberg FDR 多重比較校正 (q = 0.05)
                     fdr_q = 0.05;
                     [sorted_p, ~] = sort(p_values);
                     m = length(sorted_p);
@@ -314,7 +325,7 @@ classdef FeatureEngineer < handle
                     if any(below)
                         p_threshold = sorted_p(find(below, 1, 'last'));
                     else
-                        p_threshold = 0; % 無配對通過校正
+                        p_threshold = 0;
                     end
                     significant_mask = p_values <= p_threshold;
                     
@@ -347,7 +358,7 @@ classdef FeatureEngineer < handle
                 end
             end
             
-            disp('✅ 3D 特徵面板 (產業中性化) 與 BH-FDR 降噪圖譜提取完畢！');
+            disp('✅ 3D 特徵面板 (GICS 產業中性化) 與 BH-FDR 降噪圖譜提取完畢！');
         end  
         
         %% --- 內部特徵計算函數 ---
