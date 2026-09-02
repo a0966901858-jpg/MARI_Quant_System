@@ -2,7 +2,7 @@ classdef BuildDecoupledExtractors
     % =========================================================================
     % 模組：BuildDecoupledExtractors.m
     % 升級：Phase 15.5 Stage 2 (★ 排序型/回歸型損失函數庫、純量截面 Soft-IC、
-    %       架構多態切換、LayerNorm 輸出鎖定、無 Linter 警告)
+    %       修復 dlarray 格式宣告錯誤、架構多態切換、LayerNorm 輸出鎖定)
     % 職責：構建雙軌時空特徵萃取網路，並提供支援因果律訓練之可微分排序與回歸損失引擎
     % =========================================================================
     
@@ -40,7 +40,6 @@ classdef BuildDecoupledExtractors
                 obj.ArchType = 'trans_lstm';
             end
             
-            % 剝離 Macro 特徵，預設保留 18 維微觀/相對特徵
             if nargin >= 2 && ~isempty(totalFeats)
                 obj.TotalNodeFeats = totalFeats;
             else
@@ -60,12 +59,8 @@ classdef BuildDecoupledExtractors
         end
         
         function [net_time, net_space] = buildNetworks(obj)
-            % -------------------------------------------------------------
-            % 1. 時序專家拓撲構建
-            % -------------------------------------------------------------
             switch obj.ArchType
                 case 'pure_lstm'
-                    % Round 8b 驗證之輕量化無注意力架構 (節省 VRAM、無過擬合瓶頸)
                     layers_time = [
                         sequenceInputLayer(obj.TotalNodeFeats, 'Name', 'in_time', 'Normalization', 'none')
                         fullyConnectedLayer(64, 'Name', 'fc_in', 'WeightsInitializer', 'he')
@@ -77,7 +72,6 @@ classdef BuildDecoupledExtractors
                         layerNormalizationLayer('Name', 'ln_time_out')
                     ];
                 otherwise
-                    % 原版 Transformer-LSTM 架構 (掛載雙層 LayerNorm)
                     layers_time = [
                         sequenceInputLayer(obj.TotalNodeFeats, 'Name', 'in_time')
                         fullyConnectedLayer(128, 'Name', 'proj_fc')
@@ -93,9 +87,6 @@ classdef BuildDecoupledExtractors
             net_time = dlnetwork(layers_time);
             fprintf('✅ 時序專家網路拓撲構建完畢 (%s + 雙重 LayerNorm)。\n', obj.ArchType);
             
-            % -------------------------------------------------------------
-            % 2. 空間專家拓撲構建 (雙輸入接口)
-            % -------------------------------------------------------------
             lgraph_space = layerGraph();
             feat_input = featureInputLayer(obj.FlattenedFeatDim, 'Name', 'in_space_feat');
             adj_input  = featureInputLayer(obj.FlattenedAdjDim, 'Name', 'in_space_adj');
@@ -113,7 +104,6 @@ classdef BuildDecoupledExtractors
             disp('✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版)。');
         end
         
-        % 提供向後相容別名函式
         function [net_time, net_space] = build(obj)
             [net_time, net_space] = obj.buildNetworks();
         end
@@ -124,16 +114,18 @@ classdef BuildDecoupledExtractors
     % =====================================================================
     methods (Static)
         % -----------------------------------------------------------------
-        % 1. 每日橫截面 Soft-IC 損失 (Differentiable Cross-Sectional IC Loss)
-        % 核心邏輯：在每個 Batch 內部按日分割，對當日活躍標的計算預測值與真實報酬之
-        %           去中心化餘弦相似度 (Pearson IC)，回傳負均值以最大化選股相關性。
+        % 1. 每日橫截面 Soft-IC 損失 (修復 dlarray 宣告錯誤)
         % -----------------------------------------------------------------
         function loss = compute_soft_ic_loss(y_pred, y_true, act_mask, sample_T, B)
+            if isgpuarray(y_pred) && ~isgpuarray(y_true)
+                y_true = gpuArray(y_true);
+            end
+            
             y_p_mat = reshape(y_pred, sample_T, B);
             y_t_mat = reshape(y_true, sample_T, B);
             act_mat = reshape(act_mask, sample_T, B);
             
-            ic_sum = dlarray(0, 'single');
+            ic_sum = 0;
             valid_days = 0;
             
             for b = 1:B
@@ -156,27 +148,28 @@ classdef BuildDecoupledExtractors
             end
             
             if valid_days > 0
-                loss = -(ic_sum / valid_days); % 最小化負 IC 等價於最大化 IC
+                loss = -(ic_sum / valid_days);
             else
-                loss = dlarray(0, 'single');
+                loss = sum(y_pred, 'all') * 0;
             end
         end
         
         % -----------------------------------------------------------------
-        % 2. 每日橫截面 Pairwise Ranking 損失 (RankNet Smooth Logistic Loss)
-        % 核心邏輯：消除中位數硬切雜訊，若同一天內標的 i 實質跑贏標的 j，
-        %           則推動預測分數差 (pred_i - pred_j) 向上，採用平滑 Softplus 梯度。
+        % 2. 每日橫截面 Pairwise Ranking 損失 (修復 dlarray 宣告錯誤)
         % -----------------------------------------------------------------
         function loss = compute_pairwise_ranking_loss(y_pred, y_true, act_mask, sample_T, B, margin)
             if nargin < 6 || isempty(margin)
-                margin = 0.01; % 報酬差值顯著性防死區門檻 (1%)
+                margin = 0.01;
+            end
+            if isgpuarray(y_pred) && ~isgpuarray(y_true)
+                y_true = gpuArray(y_true);
             end
             
             y_p_mat = reshape(y_pred, sample_T, B);
             y_t_mat = reshape(y_true, sample_T, B);
             act_mat = reshape(act_mask, sample_T, B);
             
-            total_rank_loss = dlarray(0, 'single');
+            total_rank_loss = 0;
             total_pairs = 0;
             
             for b = 1:B
@@ -186,18 +179,15 @@ classdef BuildDecoupledExtractors
                     yp = y_p_mat(m_b, b);
                     yt = y_t_mat(m_b, b);
                     
-                    % 構建截面配對差分矩陣
                     diff_t = yt - yt';
                     diff_p = yp - yp';
                     
-                    % 僅對真實報酬差異顯著之對象計算排序損失 (避免雜訊對沖)
                     pair_mask = diff_t > margin;
                     n_pairs = sum(pair_mask, 'all');
                     
                     if n_pairs > 0
-                        % RankNet 平滑損失: log(1 + exp(-(pred_i - pred_j)))
                         pair_losses = log(1 + exp(-diff_p(pair_mask)));
-                        total_rank_loss = total_rank_loss + sum(pair_losses);
+                        total_rank_loss = total_rank_loss + sum(pair_losses, 'all');
                         total_pairs = total_pairs + n_pairs;
                     end
                 end
@@ -206,18 +196,19 @@ classdef BuildDecoupledExtractors
             if total_pairs > 0
                 loss = total_rank_loss / total_pairs;
             else
-                loss = dlarray(0, 'single');
+                loss = sum(y_pred, 'all') * 0;
             end
         end
         
         % -----------------------------------------------------------------
         % 3. 複合連續回歸損失 (Huber Continuous Return + Soft-IC Regularizer)
-        % 核心邏輯：直接以連續未來報酬為目標，融合 Huber 穩健振幅損失與
-        %           橫截面單調性 (1 - IC) 正則項，兼顧極端值防禦與選股排序能力。
         % -----------------------------------------------------------------
         function loss = compute_continuous_return_loss(y_pred, y_true, act_mask, sample_T, B, ic_weight)
             if nargin < 6 || isempty(ic_weight)
                 ic_weight = 0.5;
+            end
+            if isgpuarray(y_pred) && ~isgpuarray(y_true)
+                y_true = gpuArray(y_true);
             end
             
             yp = y_pred(act_mask);
@@ -225,16 +216,14 @@ classdef BuildDecoupledExtractors
             yp = yp(:);
             yt = yt(:);
             
-            % 1. 穩健 Huber 損失 (平滑 L1，過濾肥尾異常值)
-            delta = 0.05; % 5% 報酬門檻
+            delta = 0.05;
             err = abs(yp - yt);
             is_small = err <= delta;
-            huber = mean(is_small .* (0.5 * err.^2) + (~is_small) .* (delta * (err - 0.5 * delta)));
+            huber = mean(is_small .* (0.5 * err.^2) + (~is_small) .* (delta * (err - 0.5 * delta)), 'all');
             
-            % 2. 截面 Soft-IC 損失
             ic_loss = BuildDecoupledExtractors.compute_soft_ic_loss(y_pred, y_true, act_mask, sample_T, B);
             
-            loss = huber + ic_weight * (1.0 + ic_loss); % 使整體損失 >= 0
+            loss = huber + ic_weight * (1.0 + ic_loss);
         end
     end
 end
