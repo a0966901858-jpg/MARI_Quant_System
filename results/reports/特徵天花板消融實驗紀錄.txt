@@ -292,53 +292,59 @@ Connected to parallel pool with 6 workers.
 >> 
 
 =================================================================
-🧠 [Round 8a-v2] 啟動小樣本記憶力與 DyGAT 架構隔離診斷 (Stage 0/1 防 OOM 版)
+🧠 [Round 8a-v3] 啟動空間專家幾何容量與注意力解耦隔離診斷 (4 軌對照版)
 =================================================================
  🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
  ⚡ [Config] 成功注入 Phase 4 BO 最佳化參數：
-    - 崩盤護欄硬熔斷閾值 : 0.0488
-    - 時序專家權重 (Time_W): 0.9993
-    - 集中度標的數 (Top_K) : 31
+    - 崩盤護欄硬熔斷閾值 : 0.0485
+    - 時序專家權重 (Time_W): 0.9989
+    - 集中度標的數 (Top_K) : 39
 --- 步驟 1：載入 3D 特徵快取並執行型態壓縮 ---
   📊 抽樣規模：標的 60 檔 | 序列長度 60 | 輸入維度 18 維 (記憶體已釋放)
 --- 步驟 2：構建真實 5 日 Beat-the-Median 目標標籤 ---
 --- 步驟 3：鎖定 N = 25 天小樣本並預先載入 GPU 靜態張量 ---
   🎮 偵測到硬體加速卡: 【NVIDIA GeForce RTX 4060 Laptop GPU】，啟用 GPU 全靜態顯存加速。
   🔒 25 天靜態資料已常駐顯存 (總觀測數: 1500 筆)。
---- 步驟 4：構建零正則化三軌網路 (Dropout = 0) 與連接埠斷言 ---
- ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (LayerNorm 防坍縮版)...
-  -> 預期輸入設定：
-     [時序專家] 單一節點特徵: 18 維 (已剝離總經) | 序列長度: 60 | Dropout: 0.20
-     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600
-✅ 時序專家網路拓撲構建完畢 (已掛載 LayerNorm)。
-✅ 空間專家網路拓撲構建完畢。
-  🔍 空間專家 (DyGAT) 連接埠探針: [in_space_feat, in_space_adj]
---- 步驟 5：啟動 150 Epochs 全向量化記憶力訓練與逐層梯度監控 ---
-  Epoch   1/150 | Train BCE [T: 0.7022 | GCN: 0.6929 | DyGAT: 0.6929] | Val BCE [T: 0.6980 | DyGAT: 0.6936] | GradNorm(Attn): 6.97e-05
-  Epoch  25/150 | Train BCE [T: 0.6128 | GCN: 0.6738 | DyGAT: 0.6901] | Val BCE [T: 0.7559 | DyGAT: 0.6932] | GradNorm(Attn): 2.06e-05
-  Epoch  50/150 | Train BCE [T: 0.3770 | GCN: 0.6335 | DyGAT: 0.6881] | Val BCE [T: 1.1654 | DyGAT: 0.6934] | GradNorm(Attn): 2.18e-05
-  Epoch  75/150 | Train BCE [T: 0.1828 | GCN: 0.5867 | DyGAT: 0.6863] | Val BCE [T: 1.7910 | DyGAT: 0.6939] | GradNorm(Attn): 2.40e-05
-  Epoch 100/150 | Train BCE [T: 0.1272 | GCN: 0.5409 | DyGAT: 0.6846] | Val BCE [T: 2.3294 | DyGAT: 0.6946] | GradNorm(Attn): 1.49e-05
-  Epoch 125/150 | Train BCE [T: 0.0265 | GCN: 0.4975 | DyGAT: 0.6829] | Val BCE [T: 3.0518 | DyGAT: 0.6953] | GradNorm(Attn): 5.85e-06
-  Epoch 150/150 | Train BCE [T: 0.0652 | GCN: 0.4635 | DyGAT: 0.6812] | Val BCE [T: 3.0066 | DyGAT: 0.6962] | GradNorm(Attn): 3.33e-06
-⚡ 150 Epochs 三軌隔離訓練完成！總耗時: 22.25 秒 (平均每 Epoch: 0.148 秒)
+--- 步驟 4：構建零正則化四軌解耦對照網路 (Dropout = 0) ---
+ ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (Stage 4 空間混合模式支援版)...
+  -> 網路拓撲設定：
+     [時序專家] 架構體制: PURE_LSTM | 單節點輸入: 18 維 | 序列長度: 60 | Dropout: 0.20
+     [空間專家] 展平特徵維度: 1080 | 展平圖譜維度: 3600 | 輸出維度: 64 | 混合模式: GCN_ONLY
+✅ 時序專家網路拓撲構建完畢 (pure_lstm + 雙重 LayerNorm)。
+✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版, 模式: GCN_ONLY)。
+✅ 四軌網路建構完畢！
+   -> G1: Time (Pure LSTM)
+   -> G2: 2-Layer Pure GCN (Manual Depth Bound)
+   -> G3: 1-Layer GCN Only (GraphSpatialFusionLayer, MixMode=gcn_only)
+   -> G4: 1-Layer Full DyGAT (GraphSpatialFusionLayer, MixMode=dynamic)
+--- 步驟 5：啟動 150 Epochs 四軌向量化過擬合對照訓練 ---
+  Epoch   1/150 | BCE [Time: 0.6935 | 2L-GCN: 0.6937 | 1L-GCN: 0.6940 | 1L-Dyn: 0.6928] | Dyn-Attn-Grad: 5.57e-05
+  Epoch  25/150 | BCE [Time: 0.5634 | 2L-GCN: 0.6727 | 1L-GCN: 0.6912 | 1L-Dyn: 0.6900] | Dyn-Attn-Grad: 3.22e-05
+  Epoch  50/150 | BCE [Time: 0.3049 | 2L-GCN: 0.6420 | 1L-GCN: 0.6889 | 1L-Dyn: 0.6875] | Dyn-Attn-Grad: 3.54e-05
+  Epoch  75/150 | BCE [Time: 0.2195 | 2L-GCN: 0.5951 | 1L-GCN: 0.6867 | 1L-Dyn: 0.6853] | Dyn-Attn-Grad: 2.16e-05
+  Epoch 100/150 | BCE [Time: 0.1477 | 2L-GCN: 0.5399 | 1L-GCN: 0.6847 | 1L-Dyn: 0.6832] | Dyn-Attn-Grad: 2.65e-05
+  Epoch 125/150 | BCE [Time: 0.1179 | 2L-GCN: 0.4882 | 1L-GCN: 0.6827 | 1L-Dyn: 0.6811] | Dyn-Attn-Grad: 2.71e-05
+  Epoch 150/150 | BCE [Time: 0.1122 | 2L-GCN: 0.4515 | 1L-GCN: 0.6808 | 1L-Dyn: 0.6790] | Dyn-Attn-Grad: 3.61e-05
+⚡ 150 Epochs 四軌隔離訓練完成！總耗時: 10.28 秒
 ========================================================================================
-📊 【Round 8a-v2 小樣本記憶力與 DyGAT 架構隔離診斷報告】
+📊 【Round 8a-v3 空間專家幾何容量與注意力機制解耦診斷報告】
 ========================================================================================
-  > 時序專家 (Time Expert)   : Train BCE = 0.06525 (目標 < 0.05) | Held-out Val BCE = 3.0066
-  > 純圖卷積 (Pure GCN)      : Train BCE = 0.46352 (目標 < 0.05)
-  > 完整空間 (Full DyGAT)    : Train BCE = 0.68124 (目標 < 0.05) | Held-out Val BCE = 0.6962
+  > Group 1: 時序專家 (Pure LSTM)     : Train BCE = 0.11224 (目標 < 0.05) | Held-out Val = 1.4079
+  > Group 2: 手動雙層 (2-Layer Pure GCN): Train BCE = 0.45148 (目標 < 0.05)
+  > Group 3: 單層靜態 (1-Layer GCN-Only): Train BCE = 0.68079 (目標 < 0.05)
+  > Group 4: 單層動態 (1-Layer Dynamic) : Train BCE = 0.67899 (目標 < 0.05) | Held-out Val = 0.6980
 ----------------------------------------------------------------------------------------
-  > DyGAT 梯度範數末期均值   : [Weights: 1.13e-03 | Attn_1: 3.56e-06 | Attn_2: 3.68e-06 | MixLogit: 8.43e-05]
+  > G4 (Dynamic)  梯度範數末期均值: [Weights: 1.49e-03 | Attn_1: 3.24e-05 | Attn_2: 2.70e-05 | MixLogit: 1.12e-04]
+  > G3 (GCN-only) 梯度範數末期均值: [Weights: 1.34e-03 | Attn_1: 0.00e+00 | Attn_2: 0.00e+00 | MixLogit: 0.00e+00]
 ----------------------------------------------------------------------------------------
-  ❌ 【CASE 3: SPATIAL TENSOR DEFECT】空間專家圖卷積底層重組存在工程缺陷！
-     -> 純 GCN 與 DyGAT 均無法背下 25 天小樣本。
-     -> 確診為跨標的維度展平 (pagemtimes/reshape) 或空間前向梯度傳遞中斷。
+  ❌ 【CASE 4: SPATIAL TENSOR DEFECT】空間專家圖張量存在底層工程缺陷！
+     -> 連手動雙層 GCN 亦無法過擬合小樣本。
+     -> 確診為度數矩陣正規化或維度重組中斷了空間前向梯度傳導。
 ========================================================================================
 
-📊 視覺化圖表 (白底黑字) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/reports/Round8a_OverfitCapacityCheck.png
+📊 視覺化圖表已儲存至: /home/andy/Documents/MARI_Quant_System/results/reports/Round8a_OverfitCapacityCheck.png
 =================================================================
-🎯 [Round 8a-v2] 執行完畢！
+🎯 [Round 8a-v3] 診斷完畢！
 =================================================================
 >> 
 
