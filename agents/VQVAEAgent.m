@@ -2,15 +2,16 @@
 classdef VQVAEAgent < handle
     % =========================================================================
     % 類別：VQVAEAgent (向量量化降噪代理人)
-    % 升級：Phase 14.20 (★ 核心修復：修正 STE 梯度穿透數值分離、徹底根絕表徵坍塌)
+    % 升級：Phase 15.5 (★ 支援 mrg32k3a 獨立隨機子串流、顯式串流解析防呆、
+    %       STE 梯度穿透數值分離、徹底根絕表徵坍塌)
     % 職責：針對高頻動能特徵 (R1, R5, R20) 進行離散化降噪，消除市場微觀雜訊
     % =========================================================================
     
     % 宣告類別屬性 (Properties)
     properties
         ConfigObj       % 全域設定檔參考
+        RandStream      % 隨機數串流物件 (支援 mrg32k3a 獨立子串流)
         Encoder         % 編碼器神經網路 (將連續特徵壓縮至潛在空間)
-        RandStream
         Decoder         % 解碼器神經網路 (將離散化後的潛在特徵還原)
         Quantizer       % 向量量化器 (負責維護 Codebook/字典，並將連續向量離散化)
         
@@ -24,11 +25,13 @@ classdef VQVAEAgent < handle
     end
     
     methods
-        % 建構子：初始化代理人與外部依賴
-        function obj = VQVAEAgent(configObj)
+        % 建構子：初始化代理人與外部依賴 (支援 stream 顯式傳入)
+        function obj = VQVAEAgent(configObj, stream)
             obj.ConfigObj = configObj;
             % 映射到 FeatureEngineer 輸出的矩陣，微觀特徵 1~3 (R1, R5, R20) 對應 3D 張量的第 4 到 6 維通道
-                obj.TargetFeatIdx = 4:6; 
+            obj.TargetFeatIdx = 4:6; 
+            
+            % ★ 核心修復 1：綁定隨機數串流 (優先級：外部傳入 > Config > Global)
             if nargin >= 2 && ~isempty(stream)
                 obj.RandStream = stream;
             elseif ~isempty(configObj) && ismethod(configObj, 'getRandStream')
@@ -36,6 +39,7 @@ classdef VQVAEAgent < handle
             else
                 obj.RandStream = RandStream.getGlobalStream();
             end
+            
             % 實例化外部的 EMA 向量量化器 (EMAQuantizer)
             % 傳入潛在空間維度 (DLatent)、字典大小 (KCodebook) 以及 EMA 平滑衰減係數 (Gamma)
             obj.Quantizer = EMAQuantizer(configObj.VQ_DLatent, ...
@@ -77,8 +81,20 @@ classdef VQVAEAgent < handle
         
         % 模型預訓練函數
         % 強制傳入 Expert_Active_IS 作為訓練集真實遮罩，避免模型學習到停牌補 0 的無效特徵
-        function train(obj, X_norm_3D_IS, Expert_Active_IS, epochs)
-            if nargin < 4, epochs = 30; end % 預設訓練週期為 30 Epochs
+        function train(obj, X_norm_3D_IS, Expert_Active_IS, epochs, stream)
+            if nargin < 4 || isempty(epochs), epochs = 30; end
+            
+            % ★ 核心修復 2：解析隨機數串流 s (防禦未傳入 stream 時變數未定義錯誤)
+            if nargin >= 5 && ~isempty(stream)
+                s = stream;
+            elseif ~isempty(obj.RandStream)
+                s = obj.RandStream;
+            elseif ~isempty(obj.ConfigObj) && ismethod(obj.ConfigObj, 'getRandStream')
+                s = obj.ConfigObj.getRandStream(1);
+            else
+                s = RandStream.getGlobalStream();
+            end
+            
             disp('--- 啟動 VQ-VAE 降噪器預訓練 (STE 梯度與 EMA 字典聯合更新) ---');
             
             % 從 3D 原始張量中，萃取出指定的 3 維高頻動能特徵
@@ -110,6 +126,7 @@ classdef VQVAEAgent < handle
             
             % 開始 Epoch 迴圈
             for ep = 1:epochs
+                % ★ 核心修復 3：使用受控的隨機串流 s 進行打散
                 idx_shuffle = randperm(s, total_samples);
                 ep_recon_loss = 0;  % 記錄當前 Epoch 的總重構損失
                 ep_commit_loss = 0; % 記錄當前 Epoch 的總承諾損失 (Commitment Loss)
