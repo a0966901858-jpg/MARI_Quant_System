@@ -1,0 +1,20 @@
+# 永豐證券官方 API (未來實盤與 Tick 資料擷取)
+shioaji
+
+# Yahoo Finance API (精確獲取美股長天期前復權歷史 K 線)
+yfinance
+
+# 資料處理與時間序列管理核心
+pandas
+
+# Parquet 檔案格式引擎 (高壓縮率與讀寫效能，跨語言對接必備)
+pyarrow
+
+# 向量化資料庫引擎 (處理 Master Timeline SQL 關聯對齊)
+duckdb
+
+# 環境變數管理 (安全隱藏 API Keys 與機密路徑)
+python-dotenv
+
+# 網路請求自動重試機制 (防禦 API Rate Limit 與網路波動，確保無頭排程穩定執行)
+tenacity
