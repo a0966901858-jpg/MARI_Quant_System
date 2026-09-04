@@ -1,8 +1,9 @@
 classdef Config < handle
     % =========================================================================
     % 類別: Config (系統全域超參數與路徑配置中心)
-    % 升級: Phase 15.5 Stage 4 規範版 (★ 新增 mrg32k3a 獨立子串流隨機數引擎、
-    %       DSR 熔斷防禦載入、學術中立 Fallback 基線、SpaceExpertMixMode 空間混合模式)
+    % 升級: Phase 15.5 生產基準版 (★ 統一 60D 基準線全域參數單一來源、
+    %       PurgeEmbargo/HACLag 阻斷長週期重疊標籤洩漏、RebalanceStride 平抑換手摩擦、
+    %       mrg32k3a 獨立子串流隨機數引擎、DSR 熔斷防禦載入、SpaceExpertMixMode 空間模式)
     % 職責: 作為 MARI 量化系統的超參數與組態單一真理來源 (Single Source of Truth)
     % =========================================================================
     
@@ -33,30 +34,31 @@ classdef Config < handle
     % ---------------------------------------------------------
     properties
         % --- 0. 模組執行開關 (Module Execution Flags) ---
-        % 空間專家訓練開關：維持可開以支援空間專家獨立消融驗證
-        EnableSpaceExpertTraining = true 
+        EnableSpaceExpertTraining = true  % 空間專家訓練開關
+        SpaceExpertMixMode = 'gcn_only'   % 空間專家混合模式 ('gcn_only' | 'dynamic')
         
-        % 空間專家混合模式 ('gcn_only' | 'dynamic')
-        % 依據 Round 8a 空間專家診斷與計劃書 §6.3 規範，預設採 'gcn_only'
-        SpaceExpertMixMode = 'gcn_only'
+        % --- 0.5 全域訊號與預測週期基準 (★ Unified 60D Baseline) ---
+        Horizon         = 60     % 全域超額報酬預測跨度 (Direction 2 基準線: 60 日)
+        PurgeEmbargo    = 60     % 時序交叉驗證隔離期 (Embargo >= Horizon，杜絕標籤洩漏)
+        HACLag          = 60     % Newey-West HAC 滯後階數 (強制 lag >= Horizon 校正自相關)
+        RebalanceStride = 20     % 回測調倉步進天數 (建議 20 日滾動月換手，避免每日雜訊換手吞噬收益)
         
         % --- 1. 特徵工程與雙軌萃取器 (Phase 1 & 2) ---
         NumMacroFeatures = 10    % 宏觀特徵維度 (VIX_Proxy, R20, R60, Breadth, Real_VIX, VRP, T10Y2Y, HY, DGS10, UNRATE)
         NumMicroFeatures = 15    % 微觀特徵維度 (含特質波動度、Amihud流動性、52週新高、MACD柱狀圖)
         NumCointFeatures = 3     % 協整相對特徵 (Beta, Corr, Relative Strength)
-        % 總節點特徵數 = 10 + 15 + 3 = 28 維
         
-        SeqLen = 60              % LSTM 時序專家回溯視窗長度 (對齊一季 60 個交易日)
+        SeqLen = 60              % LSTM 時序專家回溯視窗長度 (對齊 60 個交易日)
         Lookback = 60            % 相關性圖譜與 IC 檢定的歷史滾動視窗
         
-        % 雙軌萃取器正則化超參數與變異數保底 (VICReg 風格)
-        DL_DropoutRate = 0.2             % Transformer-LSTM Dropout 機率 (抑制過擬合)
+        % 雙軌萃取器正則化超參數與變異數保底
+        DL_DropoutRate = 0.2             % Transformer-LSTM Dropout 機率
         DL_L2_Regularization = 1e-5      % 降低 L2 懲罰，避免主導弱梯度訊號
         DL_VarianceFloorLambda = 0.05    % 表徵變異數保底正則化係數
         DL_VarianceFloorTarget = 1.0     % 每個 embedding 維度跨樣本標準差的目標下限
         DL_EarlyStoppingPatience = 5     % 早停容忍輪數
         
-        % --- 2. VQ-VAE 向量量化降噪器 (Phase 2) ---
+        % --- 2. VQ-VAE 向量量化降噪器 (Phase 1) ---
         VQ_DLatent = 3           % 潛在空間維度
         VQ_KCodebook = 256       % 編碼簿大小
         VQ_Gamma = 0.99          % EMA 衰減率
@@ -64,7 +66,7 @@ classdef Config < handle
         
         % --- 3. 顯性風險預測流 (GBDT Experts - Phase 3) ---
         GBDT_NumCycles = 50      % 決策樹森林基學習器數量
-        GBDT_LearnRate = 0.1     % LogitBoost 學習率
+        GBDT_LearnRate = 0.1     % LogitBoost / LSBoost 學習率
         GBDT_MaxDepth = 5        % 單一決策樹最大深度
         
         % --- 4. HRL 總管狀態與決策空間 (Phase 5) ---
@@ -91,7 +93,7 @@ classdef Config < handle
         
         % --- 7. 工程衛生與隨機種子 ---
         RNG_Seed      = 42          % 全域隨機種子 (確保實驗可重現)
-        RNG_Generator = 'mrg32k3a'  % ★ 升級為支援 2^127 獨立子串流 (Sub-streams) 之平行隨機數生成器
+        RNG_Generator = 'mrg32k3a'  % 支援 2^127 獨立子串流之平行隨機數生成器
     end
     
     methods
@@ -125,7 +127,7 @@ classdef Config < handle
             obj.loadUniverse();
             obj.loadBOParams();
             
-            % ★ 統一初始化主執行緒隨機數生成器 (Substream = 1)
+            % 統一初始化主執行緒隨機數生成器 (Substream = 1)
             obj.initRNG(1);
         end
         
