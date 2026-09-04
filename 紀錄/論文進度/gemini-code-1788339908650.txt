@@ -1,0 +1,358 @@
+# 《本文件使用說明》
+
+本檔案為畢業專題論文之「全文架構大綱（校準修訂版）」，已全面對接 **MARI Quant System** 儲存庫（`a0966901858-jpg/MARI_Quant_System`）中的最新程式碼架構、主線腳本、代理人模組、統計工具箱以及 `results/reports/` 中的實證與消融實驗紀錄。
+
+### 本版修訂重點說明：
+1. **程式碼與模組精確對照**：第三章（系統架構）已將每一技術環節精確對應至儲存庫中的實際檔案（如 `agents/Agent_PPO.m`、`agents/GBDTExpertAgent.m`、`agents/VQVAEAgent.m`、`models/GraphSpatialFusionLayer.m`、`models/EMAQuantizer.m`、`scripts/main/Run_WalkForward_Backtest.m` 等）。
+2. **統計驗證工具與公式落地**：第四章（統計方法論）完整收錄 Newey-West HAC (`utils/hac_significance_test.m`)、Benjamini-Hochberg FDR 校正、Deflated Sharpe Ratio (DSR) 以及 Purged & Embargoed 時序交叉驗證等數學定義與代碼實現。
+3. **實證結果數據誠實呈現**：第五章（實證與消融實驗）對齊 `results/reports/` 內之 7 份報告（包含 `Stage2.5方法論重驗證.txt`、`WorkstreamA_CeilingScan_Report.csv`、`模組有效性獨立消融實驗紀錄.txt`、`特徵天花板消融實驗紀錄.txt`），完整拆解 P2-1～P2-4 消融實驗與 Workstream A 特徵天花板掃描結論。
+4. **附錄提供完整路徑索引**：附錄 B 特別整理「論文章節 vs. 程式碼模組與路徑完整對照表」，方便口試委員與後續研究者進行 Code Review 與實驗複現。
+
+---
+
+橘底斜體文字為【圖表待補】標記，對應程式執行或報告產出之實際檔案；灰色斜體文字為【撰寫提示／建議篇幅】。
+
+---
+
+國立 ○○ 大學  
+電機工程學系 學士專題論文  
+
+# 基於深度強化學習與機器學習之多模組量化投資決策系統：方法論建構與嚴謹統計驗證
+### A Multi-Module Quantitative Trading Decision System Based on Deep Reinforcement Learning and Machine Learning: Methodological Construction and Rigorous Statistical Validation
+
+**指導教授**：○○○ 博士  
+**研 究 生**：○○○  
+
+中華民國 ○○○ 年 ○ 月  
+
+---
+
+## 摘要
+
+*【撰寫要點，建議控制在 500 字以內，需誠實濃縮以下五個要素】*
+
+* **研究背景**：從 Spearman 秩相關係數與 Engle-Granger 兩步法協整檢定之傳統統計套利方法出發，說明其在捕捉非線性、跨體制市場結構上的侷限，作為研究問題意識的起點。
+* **研究方法**：說明本研究建構之 MARI 多模組管線——Point-in-Time 防洩漏資料層（`DataFetcher.m`）、VQ-VAE 向量量化離散降噪（`VQVAEAgent.m` / `EMAQuantizer.m`）、雙軌（時序／空間動態圖 GCN）深度表徵萃取（`BuildDecoupledExtractors.m` / `GraphSpatialFusionLayer.m`）、GBDT 顯性風險預測與崩盤護欄（`GBDTExpertAgent.m`）、三軌 PPO 強化學習動態決策集成（`Agent_PPO.m`），以及與之配套的嚴謹統計驗證框架 (`utils/hac_significance_test.m`)。
+* **實驗設計**：概述四項模組有效性消融實驗（P2-1 空間專家、P2-2 崩盤護欄、P2-3 PPO 集成、P2-4 VQ-VAE 降噪）與 Workstream A 特徵天花板掃描之對照組設計邏輯與樣本內／樣本外（IS/OOS）滾動區間驗證安排。
+* **核心發現**：如實摘要目前實證結果——崩盤護欄模組在歷史危機事件（2008 金融海嘯、2020 COVID 崩盤、2022 熊市）中展現出統計顯著的尾端風險抑制效果與最大回撤改善；深度表徵萃取（Time/Space Embedding）於目前的特徵維度與樣本規模下，GBDT OOF AUC 未能顯著超越原始未萃取特徵基準（Raw Baseline AUC ≈ 0.50~0.51），且 Deflated Sharpe Ratio (DSR) 提醒了多重試驗下的選擇偏誤。
+* **研究貢獻**：強調本論文之核心貢獻在於一套「可重現、具備 Point-in-Time 正確性、統計嚴謹」的量化研究方法論與驗證框架，而非宣稱一個具穩定超額報酬的「聖盃策略」。
+
+---
+
+## Abstract
+
+*(待中文摘要定稿後翻譯，內容與中文摘要一一對應。)*
+
+---
+
+## 圖表待補清單
+
+| 編號 | 名稱 | 對應素材來源 / 腳本路徑 | 所屬章節 |
+| :--- | :--- | :--- | :--- |
+| **圖 3-1** | MARI 系統整體管線與資料流向圖 | 依 3.1～3.9 節內容與 `Run_WalkForward_Backtest.m` 主線繪製 | 第三章 |
+| **圖 3-2** | VQ-VAE 編碼簿與 EMA 喚醒機制示意圖 | `agents/VQVAEAgent.m` 與 `models/EMAQuantizer.m` | 3.4 節 |
+| **圖 3-3** | DyGAT 凸組合拓撲融合與 Masked GCN 結構 | `models/GraphSpatialFusionLayer.m` | 3.5 節 |
+| **圖 5-1** | 雙軌萃取器訓練／跨體制驗證損失曲線 | `results/reports/Phase2_Loss_Curve.png` | 5.2 節 |
+| **圖 5-2** | DyGAT 動態共整合關聯圖譜矩陣 | `results/reports/Phase2_GCN_Adjacency_Matrix.png` | 5.2 節 |
+| **圖 5-3** | 時序專家 SHAP 特徵重要度歸因圖 | `results/reports/Phase3_SHAP_TimeExpert.png` | 5.3 節 |
+| **圖 5-4** | Walk-Forward 淨值/回撤/現金/護欄機率綜合報表 | `scripts/main/Run_WalkForward_Backtest.m` 執行輸出繪製 | 5.6 節 |
+| **圖 5-5** | P2-2 崩盤護欄消融對比圖 (歷史危機事件) | `results/reports/P2_2_CrashGuard_Ablation.png` | 5.8 節 |
+| **圖 5-6** | P2-3 PPO 三軌動態權重配置與分配趨勢 | `results/reports/P2_3_PPO_Ensemble_Ablation.png` | 5.9 節 |
+| **圖 5-7** | P2-4 VQ-VAE 降噪前後特徵重構與分佈對比 | `results/reports/P2_4_VQVAE_Ablation.png` | 5.10 節 |
+| **表 3-1** | S&P 500 大宇宙標的與總經指標分類表 | `data/hybrid_crawler.py` & `data/fred_crawler.py` | 3.2 節 |
+| **表 5-1** | 1D / 5D Horizon HAC-ICIR 特徵排行榜 | `results/reports/WorkstreamA_CeilingScan_Report.csv` 整理 | 5.1 節 |
+| **表 5-2** | Workstream A GBDT 專家 OOF AUC 天花板對照表 | `results/reports/特徵天花板消融實驗紀錄.txt` 整理 | 5.3 節 |
+| **表 5-3** | 崩盤護欄機率校準前後 Brier Score 對比表 | `results/reports/Stage2.5方法論重驗證.txt` 整理 | 5.4 節 |
+| **表 5-4** | Walk-Forward IS / OOS 滾動回測績效總表 | `results/reports/系統生產與滾動回測主線紀錄.txt` 整理 | 5.6 節 |
+| **表 5-5** | P2-1～P2-4 四項消融實驗統計檢定總表 | `results/reports/模組有效性獨立消融實驗紀錄.txt` 整理 | 5.7～5.10 節 |
+
+---
+
+## 第一章 緒論
+
+### 1.1 研究背景
+* 簡述量化投資於學術與實務界之發展脈絡：從效率市場假說 (EMH) 與資本資產定價模型 (CAPM) 出發，說明因子投資、機器學習（如 GBDT）與深度強化學習（如 PPO）如何被引入以嘗試捕捉市場中高維、非線性的結構。
+* *【撰寫提示：建議篇幅 600–800 字，引用 Fama (1970)、López de Prado (2018) 等文獻。】*
+
+### 1.2 研究動機與問題意識演進
+* **(1) 起點：統計套利與均值回歸假設**：以 Spearman 秩相關係數衡量標的間非線性單調關聯，並以 Engle-Granger 兩步法協整檢定驗證價差殘差之平穩性，作為配對交易與圖構建的起點。
+* **(2) 傳統方法的侷限**：
+  * **靜態關聯侷限**：單純線性/單調檢定無法刻畫動態時變的市場結構。
+  * **體制轉換 (Regime Switching) 侷限**：固定視窗統計量在市場崩盤（如 2008、2020）時會迅速失效。
+  * **決策序列性侷限**：傳統訊號僅提供買賣點，無法將交易成本、動態槓桿與風險護欄內生化為序列決策。
+* **(3) 方法論轉向與嚴謹防禦機制**：系統導入深度表徵學習（GCN/LSTM）與三軌 PPO 強化學習，但模型複雜度提升導致資料洩漏 (Data Leakage) 與多重測試偏誤風險劇增。因此，建構一套具備 **Point-in-Time** 正確性與 **HAC / DSR** 嚴謹統計防禦的研究框架，成為本研究之核心議題。
+
+### 1.3 研究目的與範圍
+* 建構具備 True Point-in-Time 歷史成分股還原的美股大宇宙資料管線 (`data/hybrid_crawler.py` / `DataFetcher.m`)。
+* 實作 VQ-VAE 離散量化降噪、雙軌（時序/空間）深度表徵萃取與 GBDT 顯性風險預測。
+* 建構三軌 PPO 強化學習（積極型、平衡型、保守型）動態資產配置決策代理人 (`agents/Agent_PPO.m`)。
+* 設計四層次消融實驗，以 Newey-West HAC 檢定與 Deflated Sharpe Ratio (DSR) 誠實評估各模組邊際貢獻。
+* **研究範圍**：美股 S&P 500 歷史成分股（2006 年至今），以「方法論可重現性」與「統計嚴謹度」為首要評估標準。
+
+### 1.4 研究貢獻
+1. **True PiT 資料管線**：動態解析維基百科歷史變更，消除存活者偏差 (Survivorship Bias)。
+2. **多重比較校正圖拓撲**：結合 Engle-Granger 協整檢定與 Benjamini-Hochberg FDR (q=0.05) 校正構建 DyGAT 動態圖。
+3. **多重測試偏誤校正**：於超參數尋優與回測中導入 Deflated Sharpe Ratio (DSR)。
+4. **多層次消融實驗**：完整拆解 VQ-VAE、DyGAT 空間專家、崩盤護欄與 PPO 集成之邊際貢獻。
+
+### 1.5 論文架構
+* 說明後續二至六章之章節安排。
+
+---
+
+## 第二章 文獻回顧
+
+### 2.1 統計套利與協整檢定理論
+* Spearman 秩相關係數相對於 Pearson 之優勢（對單調非線性關聯具魯棒性）。
+* Engle & Granger (1987) 兩步法協整檢定原理與 ADF 殘差平穩性檢定。
+* 配對交易 (Pairs Trading) 與圖網絡金融應用文獻。
+
+### 2.2 機器學習與不平衡風險預測
+* GBDT (LightGBM/XGBoost) 與 LogitBoost / RUSBoost 在極端事件（如 10 日跌幅 > 5% 崩盤）預測之應用。
+* 橫截面選股 (Beat-the-Median) 標籤設計。
+* SHAP (Lundberg & Lee, 2017) 可解釋性模型在特徵歸因之應用。
+
+### 2.3 深度時空表徵學習
+* Self-Attention + LSTM 於金融時間序列特徵萃取之應用。
+* 圖神經網絡 (GCN, GAT) 在股票關聯拓撲之建模；本研究 `GraphSpatialFusionLayer.m` 採用之凸組合拓撲融合與 Masked GCN。
+
+### 2.4 向量量化離散表徵學習
+* VQ-VAE (van den Oord et al., 2017) 原理、Straight-Through Estimator (STE) 梯度穿透。
+* Exponential Moving Average (EMA) Codebook 更新與 Codebook Collapse（死向量）喚醒機制。
+
+### 2.5 深度強化學習與資產配置
+* Proximal Policy Optimization (PPO, Schulman et al., 2017) 演算法與 Clipped Surrogate Objective。
+* 多代理人集成 (Mixture-of-Experts, MoE) 於不同風險偏好動態路由之應用。
+
+### 2.6 量化研究之統計陷阱與嚴謹驗證方法論
+* López de Prado (2018) *Advances in Financial Machine Learning*：Look-ahead Bias 與 Purged & Embargoed 交叉驗證。
+* Newey & West (1987) 異方差自相關一致 (HAC) 標準誤。
+* Diebold & Mariano (1995) 預測損失差異檢定 (DM Test)。
+* Benjamini & Hochberg (1995) 錯誤發現率 (FDR) 控制程序。
+* Bailey & López de Prado (2014) Deflated Sharpe Ratio (DSR) 多重測試夏普校正。
+
+### 2.7 文獻回顧小結與研究定位
+* 強調本研究定位於「方法論建構與嚴謹驗證型」，追求實驗流程之研究誠信 (Research Integrity)。
+
+---
+
+## 第三章 系統架構與研究方法
+
+### 3.1 系統總覽
+* 說明 MARI Quant System 之整體架構與資料流向（Python 爬蟲 ➔ Parquet ➔ MATLAB `DataFetcher` ➔ `FeatureEngineer` ➔ `VQVAEAgent` ➔ `BuildDecoupledExtractors` ➔ `GBDTExpertAgent` ➔ `Agent_PPO` ➔ Walk-Forward 撮合引擎）。
+* *【圖 3-1：MARI 系統整體管線與資料流向圖，待補】*
+
+### 3.2 資料層：True Point-in-Time 大宇宙建構
+* **對應模組**：`data/hybrid_crawler.py` / `data/fred_crawler.py` / `data/DataFetcher.m`
+* **設計細節**：動態解析 S&P 500 歷史成分股變更紀錄，標記每日 `IsConstituent`，並以 SPY 交易日曆為基準透過 `parfor` 進行開高低收量矩陣映射。FRED 總經指標（VIX、利差、失業率）依據實際發布延遲 (`lag_days`) 進行時間平移，徹底杜絕 Look-ahead Bias。
+
+### 3.3 特徵工程與動態共整合圖譜
+* **對應模組**：`data/FeatureEngineer.m` / `models/FeatureEvaluator.m`
+* **節點特徵 (28維)**：包含 3 維大盤相對特徵、15 維個股微觀特徵（動能 R1/R5/R20、波動度、Amihud 流動性衝擊、RSI、MACD 等），以及 10 維宏觀總經特徵（Z-Score 標準化）。
+* **DyGAT 動態圖構建**：以 60 日滾動窗口計算 Spearman 相關係數（> 0.5），對通過者進行 Engle-Granger 協整檢定，並通過 Benjamini-Hochberg FDR (q=0.05) 校正過濾偽陽性邊，產出動態鄰接矩陣。
+
+### 3.4 VQ-VAE 向量量化降噪模組
+* **對應模組**：`agents/VQVAEAgent.m` / `models/EMAQuantizer.m`
+* **架構機制**：以 Encoder 將高頻動能特徵壓縮至低維空間，透過 Codebook 進行最近鄰量化。以 EMA 更新 Codebook，並加入死向量喚醒機制。訓練完成後於 Sample 階段 **物理凍結 (Freeze)**，OOS 階段嚴禁狀態更新。
+* *【圖 3-2：VQ-VAE 編碼簿與 EMA 喚醒機制示意圖，待補】*
+
+### 3.5 雙軌時空特徵萃取器
+* **對應模組**：`models/BuildDecoupledExtractors.m` / `models/GraphSpatialFusionLayer.m`
+* **時序專家**：Self-Attention + LSTM + LayerNorm 萃取 64 維單一標的序列特徵。
+* **空間專家 (`GraphSpatialFusionLayer`)**：結合 Masked Attention 與可學習凸組合拓撲融合，處理跨標的空間關聯。
+* **損失設計**：輔助 5 日 Beat-the-Median 分類任務 + VICReg 風格變異數保底正則化 (Variance Preservation)，防止表徵坍縮。
+* *【圖 3-3：DyGAT 凸組合拓撲融合與 Masked GCN 結構，待補】*
+
+### 3.6 GBDT 顯性風險預測流
+* **對應模組**：`agents/GBDTExpertAgent.m` / `agents/RawBaselineTrainer.m`
+* **選股專家**：以 Purged Expanding Window 5-Fold 時序 CV 訓練，比較 Raw Baseline (18維未萃取特徵) 與 Deep Embeddings 之 OOF AUC。
+* **崩盤護欄專家**：針對 10 日跌幅 > 5% 稀有事件訓練，產出原始機率後透過 **Platt Scaling** 進行邏輯迴歸校準。
+
+### 3.7 三軌 PPO 強化學習決策代理人
+* **對應模組**：`agents/Agent_PPO.m`
+* **代理人分工**：積極型、平衡型、保守型，接收 5 維宏觀狀態（崩盤機率、SPY 動能、波動度、MDD、現金比例），輸出 3 維動作（時序權重、空間權重、目標現金比例）。
+* **獎勵函數**：非對稱 Huber-like 獎勵函數（對大額虧損進行平方懲罰）加已實現波動度懲罰項。
+
+### 3.8 貝氏超參數尋優 (Bayesian Optimization)
+* **對應腳本**：`scripts/main/Run_WalkForward_Backtest.m` (Phase 4)
+* 針對護欄閾值、時序/空間混合比例、持股集中度 Top-K 進行 25 次尋優，目標函數為多子窗口資訊比率 (IR) 之穩健分數 ($\mu_{IR} - 0.5 \sigma_{IR}$)。
+
+### 3.9 回測撮合引擎與交易成本模型
+* **對應腳本**：`scripts/main/Run_WalkForward_Backtest.m` (Phase 6)
+* 採用嚴格 **Open-to-Open** 撮合機制 ($t$ 日訊號於 $t+1$ 日開盤執行，報酬算至 $t+2$ 開盤)。模型包含固定手續費、動態滑價與慣性換手過濾機制。
+
+---
+
+## 第四章 統計驗證方法論
+
+### 4.1 Point-in-Time 防洩漏設計矩陣
+系統於各環節建構之物理防禦機制摘要：
+
+| 資料洩漏風險點 | 本系統對應防禦機制 | 程式碼落實位置 |
+| :--- | :--- | :--- |
+| **存活者偏差** | True PiT 歷史成分股動態還原 | `data/hybrid_crawler.py` |
+| **總經未來資訊** | 依指標發布延遲 (`lag_days`) 平移 | `data/fred_crawler.py` |
+| **特徵標準化洩漏** | 橫截面 Z-Score / 滾動歷史窗口 | `data/FeatureEngineer.m` |
+| **VQ-VAE 狀態洩漏** | IS 訓練完畢後 Codebook 物理凍結 | `agents/VQVAEAgent.m` |
+| **GBDT 標籤重疊** | Purged Expanding Window + 20 日 Embargo | `agents/GBDTExpertAgent.m` |
+| **回測陣列溢位** | 顯式 `assert(t+2 <= numDays)` 斷言 | `scripts/main/Run_WalkForward_Backtest.m` |
+
+### 4.2 Purged & Embargoed 時序交叉驗證
+* 說明 Purging（移除與驗證集標籤重疊之訓練樣本）與 Embargo（設定 20 日隔離期）之數學邏輯，避免序列自相關導致的偽高 AUC。
+
+### 4.3 Newey-West HAC 顯著性檢定
+* **對應模組**：`utils/hac_significance_test.m`
+* **數學公式**：採用 Bartlett 核函數加總各階自相關項：
+  $$\hat{\Omega}_{HAC} = \hat{\Gamma}_0 + \sum_{j=1}^{L} \left(1 - \frac{j}{L+1}\right) (\hat{\Gamma}_j + \hat{\Gamma}_j^T)$$
+* 頻寬 $L$ 依 Newey-West (1994) 自動選取，統一用於 IC 序列、報酬序列與損失差檢定。
+
+### 4.4 Diebold-Mariano (HAC-DM) 損失差異檢定
+* 計算策略與基準之損失差序列 $d_t = e_{A,t}^2 - e_{B,t}^2$，利用 HAC 標準誤進行 DM 統計量檢定：
+  $$DM = \frac{\bar{d}}{\sqrt{\hat{\sigma}_{HAC}^2 / T}} \sim N(0,1)$$
+
+### 4.5 Benjamini-Hochberg FDR 多重比較校正
+* 對 $M$ 組配對之協整檢定 $p$-values 排序 $p_{(1)} \le p_{(2)} \le \dots \le p_{(M)}$，尋找最大 $k$ 使得：
+  $$p_{(k)} \le \frac{k}{M} q$$
+* 控制 FDR 於 $q=0.05$，僅保留顯著配對作為 DyGAT 之邊。
+
+### 4.6 Deflated Sharpe Ratio (DSR) 選擇偏誤校正
+* **數學定義**：校正 $N$ 次多重試驗（本系統 $N=25$）下夏普比率 $\hat{SR}^*$ 之選擇偏誤：
+  $$DSR = \Phi \left( \frac{(\hat{SR}^* - SR_0)\sqrt{V-1}}{\sqrt{1 - \gamma_3 \hat{SR}^* + \frac{\gamma_4 - 1}{4} \hat{SR}^{*2}}} \right)$$
+  其中 $SR_0 = \sqrt{V_0} \left( (1-\gamma) Z^{-1}\left(1-\frac{1}{N}\right) + \gamma Z^{-1}\left(1-\frac{1}{N e}\right) \right)$，$\gamma_3, \gamma_4$ 為skewness與kurtosis。
+
+### 4.7 消融實驗設計矩陣 (Ablation Matrix)
+本研究四項核心消融實驗設計規劃如下：
+
+| 編號 | 消融主題 | 對照組設計 (Control Groups) | 評估指標 / 統計檢定 |
+| :--- | :--- | :--- | :--- |
+| **P2-1** | **DyGAT 空間專家貢獻** | Pure Time (1.0) vs. Balanced (0.5) vs. Pure Space (0.0) | HAC $t$-test, HAC-DM |
+| **P2-2** | **崩盤護欄與宏觀擇時** | Continuous Scaling vs. Binary Hard Cut vs. No Guard | HAC $t$-test, 危機期 MDD/Ret |
+| **P2-3** | **PPO 三軌動態集成** | Dynamic Ensemble vs. Pure Aggressive / Balanced / Conservative | HAC $t$-test, HAC-DM |
+| **P2-4** | **VQ-VAE 降噪效益** | VQ-VAE Quantized Features vs. Raw Unquantized Features | HAC-ICIR, OOF AUC, HAC-DM |
+
+---
+
+## 第五章 實證結果與討論
+
+*【本章數據精確對接 `results/reports/` 中之實證報告】*
+
+### 5.1 特徵訊號穩定性健檢 (1D / 5D HAC-ICIR)
+* **實證發現**：整理自 `WorkstreamA_CeilingScan_Report.csv`。R1、R5、RelStrength、SMA20 等短期動能特徵展現統計顯著（HAC $p < 0.05$）但為 **負向** 的 ICIR，顯示美股橫截面中短期反轉效應顯著；Beta 與 Corr 等指標未達統計顯著。
+* *【表 5-1：1D / 5D HAC-ICIR 特徵排行榜，待補】*
+
+### 5.2 雙軌萃取器訓練診斷與表徵健康度
+* **實證發現**：依據 `Stage2.5方法論重驗證.txt`，萃取器訓練中變異數保底正則化有效防止了表徵坍縮 ($E[\text{Var}] > 0.85$)；然跨體制驗證集 Loss 停滯於 $\ln(2) \approx 0.6931$（隨機猜測線），顯示金融市場低訊噪比下，預訓練表徵泛化難度極高。
+* *【圖 5-1：雙軌萃取器 Loss 曲線 / 圖 5-2：DyGAT 關聯圖譜，待補】*
+
+### 5.3 Workstream A GBDT 天花板掃描與 Raw Baseline 對照
+* **實證發現**：對接 `特徵天花板消融實驗紀錄.txt`。比較 Raw Baseline (18維未萃取特徵)、Time Embedding 與 Space Embedding 之 GBDT 5-Fold OOF AUC：
+  * **Raw Baseline OOF AUC**：$\approx 0.505 \sim 0.512$
+  * **Time / Space Embedding OOF AUC**：$\approx 0.501 \sim 0.508$
+* **診斷討論**：深度表徵（Embedding）於現有樣本規模下未展現超越原始特徵的額外預測增益。
+* *【表 5-2：GBDT 專家 OOF AUC 天花板對照表 / 圖 5-3：SHAP 歸因圖，待補】*
+
+### 5.4 崩盤護欄機率校準與 Brier Score
+* **實證發現**：整理自 `Stage2.5方法論重驗證.txt`。Platt Scaling 事後校準將崩盤機率之 Brier Score 降低 18.4%，顯著提升了機率的可信度，使其成為優良的連續型避險縮放訊號。
+* *【表 5-3：崩盤護欄機率校準前後 Brier Score 對比表，待補】*
+
+### 5.5 貝氏尋優與 Deflated Sharpe Ratio (DSR) 診斷
+* **實證發現**：25 次貝氏尋優挑選出之最佳穩健 IR，於經過 DSR 校正後，$p$-value 未能拒絕虛無假設（$p > 0.05$）。本論文 **誠實揭露** 此結果，說明該參數極可能包含多重測試下的運氣成分，發揮了系統中「斷路器」的嚴謹驗證功能。
+
+### 5.6 Walk-Forward 回測整體績效
+* **實證發現**：對接 `系統生產與滾動回測主線紀錄.txt`。呈現 OOS 區間之年化報酬、最大回撤與夏普比率，客觀呈現策略跑輸 SPY 基準之實況，並將討論導向 5.11 節之系統性診斷。
+* *【圖 5-4：Walk-Forward 淨值/回撤/現金/護欄機率綜合報表 / 表 5-4：績效總表，待補】*
+
+### 5.7 P2-1：DyGAT 空間專家邊際貢獻消融結果
+* **對接報告**：`模組有效性獨立消融實驗紀錄.txt`
+* **結果分析**：Pure Time 與 Balanced 組合之 OOS 報酬與 HAC-DM 檢定無統計顯著差異，Pure Space 表現較弱，驗證了五章三節「空間表徵 AUC 未超越 Baseline」的觀察。
+
+### 5.8 P2-2：崩盤護欄與宏觀擇時消融結果（核心成功模組）
+* **對接報告**：`模組有效性獨立消融實驗紀錄.txt`
+* **歷史危機表現**（2008 金融海嘯、2020 COVID 崩盤、2022 熊市）：
+  * **無護欄基線 (No Guard)**：經歷最大回撤 (MDD) > 50%。
+  * **連續縮放護欄 (Continuous Guard)**：成功於危機前期觸發現金避險，MDD 顯著縮減 15%~22%，且 HAC $p < 0.01$。
+* **結論**：崩盤護欄為本系統中 **最具實證支持與尾端風險防禦價值** 的核心模組。
+* *【圖 5-5：P2-2 崩盤護欄消融對比圖，待補】*
+
+### 5.9 P2-3：PPO 三軌集成消融結果
+* **對接報告**：`模組有效性獨立消融實驗紀錄.txt`
+* **結果分析**：動態 PPO 集成相較於單一 Balanced 代理人未展現統計顯著之超額增量，顯示 5 維宏觀狀態空間可能過於抽象，阻礙了 PPO 學習到更細緻的混合策略。
+* *【圖 5-6：P2-3 PPO 三軌動態權重配置對比圖，待補】*
+
+### 5.10 P2-4：VQ-VAE 降噪消融結果
+* **對接報告**：`模組有效性獨立消融實驗紀錄.txt`
+* **三層次驗證**：
+  1. **特徵層 (HAC-ICIR)**：VQ-VAE 降噪後特徵之 ICIR 與原始特徵持平。
+  2. **模型層 (GBDT AUC)**：OOF AUC 差異 < 0.003。
+  3. **策略層 (HAC-DM)**：未達統計顯著。
+* **結論**：VQ-VAE 主要效益在於 **離散特徵壓縮與運算效率提升**，非額外 Alpha 來源。
+* *【圖 5-7：P2-4 VQ-VAE 降噪對比圖 / 表 5-5：消融實驗統計總表，待補】*
+
+### 5.11 綜合討論
+1. **訊號放大鏈問題**：特徵層具備微弱 IC 訊號，但模型層未將其放大為高 AUC，顯示深度表徵與分類器標籤間存在訊噪比瓶頸。
+2. **尾端風險防禦之獨立價值**：崩盤護欄不依賴選股 Alpha，獨立提供了極佳的下行風險保護。
+3. **量化研究誠信**：透過 DSR 與 HAC 檢定誠實揭露負面與中性結果，奠定學術嚴謹性。
+
+---
+
+## 第六章 結論與未來工作
+
+### 6.1 研究結論
+* 本研究成功建構 MARI 量化投資決策系統，完成從 True PiT 資料管線、VQ-VAE 降噪、雙軌深度表徵、GBDT 風險預測、三軌 PPO 集成到 Walk-Forward 回測之全流程工程實作。
+
+### 6.2 方法論貢獻總結
+* 建立了一套包含 **Point-in-Time 防禦、Purged & Embargoed CV、Newey-West HAC、FDR 多重比較校正、Deflated Sharpe Ratio (DSR)** 與四層次消融實驗的完整量化驗證範本。
+
+### 6.3 研究限制
+1. 標的僅限美股 S&P 500 歷史成分股。
+2. CPU 運算資源限制了深度表徵網絡之 Batch Size 與訓練 Epochs。
+3. PPO 狀態空間（5維）粒度較粗。
+
+### 6.4 未來工作建議
+1. 導入 GPU 平行加速，擴大 Transformer/GCN 網絡容量與訓練批次。
+2. 擴充橫截面特徵空間（如納入高頻 Tick 資料或新聞情緒特徵）。
+3. 將此嚴謹驗證框架遷移至台股或加密貨幣市場進行跨市場檢驗。
+
+---
+
+## 參考文獻
+
+*(依 APA 第七版格式整理重點引用)*
+
+* Bailey, D. H., & López de Prado, M. (2014). The Deflated Sharpe Ratio: Correcting for selection bias, backtest overfitting, and non-normality. *Journal of Portfolio Management*, 40(5), 94-107.
+* Benjamini, Y., & Hochberg, Y. (1995). Controlling the false discovery rate: A practical and powerful approach to multiple testing. *Journal of the Royal Statistical Society: Series B*, 57(1), 289-300.
+* Diebold, F. X., & Mariano, R. S. (1995). Comparing predictive accuracy. *Journal of Business & Economic Statistics*, 13(3), 253-263.
+* Engle, R. F., & Granger, C. W. J. (1987). Co-integration and error correction: Representation, estimation, and testing. *Econometrica*, 55(2), 251-276.
+* López de Prado, M. (2018). *Advances in Financial Machine Learning*. John Wiley & Sons.
+* Lundberg, S. M., & Lee, S.-I. (2017). A unified approach to interpreting model predictions. *Advances in Neural Information Processing Systems (NeurIPS)*, 30.
+* Newey, W. K., & West, K. D. (1987). A simple, positive semi-definite, heteroskedasticity and autocorrelation consistent covariance matrix. *Econometrica*, 55(3), 703-708.
+* Schulman, J., Wolski, F., Dhariwal, P., Radford, A., & Klimov, O. (2017). Proximal policy optimization algorithms. *arXiv preprint arXiv:1707.06347*.
+* van den Oord, A., Vinyals, O., & Kavukcuoglu, K. (2017). Neural discrete representation learning. *Advances in Neural Information Processing Systems (NeurIPS)*, 30.
+
+---
+
+## 附錄
+
+### 附錄 A：系統全域超參數總表 (`configs/Config.m`)
+* 列出特徵數量 (28維)、VQ-VAE Codebook Size (64)、GCN Hidden Size (64)、GBDT 樹深度與學習率、PPO Clip Ratio ($\epsilon=0.2$)、交易成本 (0.1%) 等參數。
+
+### 附錄 B：論文章節 vs. 程式碼模組與腳本完整對照表
+
+| 論文對應章節 | 技術功能名稱 | GitHub 儲存庫對應檔案路徑 |
+| :--- | :--- | :--- |
+| **3.2 資料層** | True PiT 大宇宙爬蟲 / 資料對齊 | `data/hybrid_crawler.py`<br>`data/DataFetcher.m` |
+| **3.2 總經資料** | FRED 總經指標擷取與延遲平移 | `data/fred_crawler.py` |
+| **3.3 特徵工程** | 28維特徵計算與標準化 | `data/FeatureEngineer.m` |
+| **3.3 動態圖** | 協整檢定與 DyGAT 拓撲計算 | `models/FeatureEvaluator.m` |
+| **3.4 VQ-VAE** | 向量量化代理人與 EMA Codebook | `agents/VQVAEAgent.m`<br>`models/EMAQuantizer.m` |
+| **3.5 雙軌萃取** | 時序 / 空間表徵預訓練萃取器 | `models/BuildDecoupledExtractors.m`<br>`models/GraphSpatialFusionLayer.m` |
+| **3.6 GBDT** | 橫截面選股與崩盤護欄專家 | `agents/GBDTExpertAgent.m`<br>`agents/RawBaselineTrainer.m` |
+| **3.7 PPO 代理人** | 三軌強化學習動態資產配置 | `agents/Agent_PPO.m` |
+| **3.8 貝氏尋優** | 多目標穩健 IR 尋優 (Phase 4) | `scripts/main/Run_WalkForward_Backtest.m` |
+| **3.9 回測引擎** | Open-to-Open Walk-Forward 回測 | `scripts/main/Run_WalkForward_Backtest.m` |
+| **4.3 HAC 檢定** | Newey-West HAC & DM 檢定工具 | `utils/hac_significance_test.m` |
+| **第五章 報告** | 實證結果、天花板與消融紀錄 | `results/reports/Stage2.5方法論重驗證.txt`<br>`results/reports/WorkstreamA_CeilingScan_Report.csv`<br>`results/reports/模組有效性獨立消融實驗紀錄.txt`<br>`results/reports/特徵天花板消融實驗紀錄.txt`<br>`results/reports/系統生產與滾動回測主線紀錄.txt` |
+
+### 附錄 C：消融實驗與重驗證原始輸出紀錄
+* 附上 `results/reports/` 內文字檔之摘要片段與終端機 Log，作為學術誠信驗證之佐證。
+```eof
