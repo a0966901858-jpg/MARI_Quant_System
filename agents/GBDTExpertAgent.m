@@ -1,14 +1,15 @@
 classdef GBDTExpertAgent < handle
     % =========================================================================
     % 類別：GBDTExpertAgent (顯性風險預測流、LSBoost 連續迴歸選股與 SHAP 解釋器)
-    % 升級：Phase 15.5 (★ 支援 mrg32k3a 獨立隨機子串流、Platt 校準 500 次 Bootstrap
-    %       與時間衰減加權抽樣跨平台確定性對齊、LSBoost 連續迴歸與 OOF 排序得分)
+    % 升級：Phase 15.5 (★ 屬性更名為 RngStream 消除命名遮蔽警告、
+    %       徹底修復 RandStream 類別靜態調用、Platt 校準 500 次 Bootstrap 與
+    %       時間衰減加權抽樣跨平台確定性對齊、LSBoost 連續迴歸與 OOF 排序得分)
     % 職責：接收 DL 萃取之表徵與宏觀特徵，輸出 OOF/OOS 連續排序得分與崩盤校準機率
     % =========================================================================
     
     properties
         ConfigObj           % 全域設定檔參考
-        RandStream          % 隨機數串流物件 (支援 mrg32k3a 獨立子串流)
+        RngStream           % 隨機數串流物件 (支援 mrg32k3a 獨立子串流，避免與內建類別同名)
         MdlTime             % 最終時序專家 GBDT 迴歸模型 (LSBoost)
         MdlSpace            % 最終空間專家 GBDT 迴歸模型 (LSBoost)
         MdlCrash            % 最終崩盤護欄 GBDT 分類模型 (RUSBoost)
@@ -25,11 +26,11 @@ classdef GBDTExpertAgent < handle
             
             % 綁定隨機數串流
             if nargin >= 2 && ~isempty(stream)
-                obj.RandStream = stream;
+                obj.RngStream = stream;
             elseif ~isempty(configObj) && ismethod(configObj, 'getRandStream')
-                obj.RandStream = configObj.getRandStream(1);
+                obj.RngStream = configObj.getRandStream(1);
             else
-                obj.RandStream = [];
+                obj.RngStream = [];
             end
             
             fprintf(' ⚙️ [GBDTExpertAgent] 實例化完成。已啟動 LSBoost 連續選股迴歸、折外 Rank IC 監控與 Platt 校準 (mrg32k3a 串流版)。\n');
@@ -47,9 +48,9 @@ classdef GBDTExpertAgent < handle
                 s = obj.resolveStream(stream);
             end
             
-            % ★ 同步全域串流，確保 fitrensemble / RUSBoost 內部抽樣完全確定性
-            old_stream = obj.RandStream.setGlobalStream(s);
-            cleanupObj = onCleanup(@() obj.RandStream.setGlobalStream(old_stream));
+            % ★ 核心修復：使用類別名稱 RandStream 呼叫靜態方法 setGlobalStream
+            old_stream = RandStream.setGlobalStream(s);
+            cleanupObj = onCleanup(@() RandStream.setGlobalStream(old_stream));
             
             disp('--- 啟動 GBDT 雙軌橫截面專家訓練 (LSBoost 連續迴歸與 OOF Rank IC 即時監控) ---');
             
@@ -122,9 +123,9 @@ classdef GBDTExpertAgent < handle
                 train_idx = find(train_mask);
                 val_idx   = find(val_mask);
                 
-                % ★ 注入串流進行無放回訓練抽樣
+                % 注入串流進行無放回訓練抽樣
                 if length(train_idx) > max_train_samples
-                    train_idx = randsample(s, train_idx, max_train_samples, false);
+                    train_idx = train_idx(randsample(s, length(train_idx), max_train_samples, false));
                 end
                 
                 X_T_train = X_time_flat(train_idx, :);
@@ -228,7 +229,7 @@ classdef GBDTExpertAgent < handle
                 end
             end
             
-            % ★ 核心修復：使用 mrg32k3a 串流進行時間衰減加權抽樣
+            % 使用 mrg32k3a 串流進行時間衰減加權抽樣
             fprintf('  -> 訓練最終全域橫截面模型 (LSBoost 時間衰減加權抽樣版)...\n');
             time_idx_of_sample = double(row_mapping(:, 1));
             half_life_days = 756; 
@@ -256,8 +257,9 @@ classdef GBDTExpertAgent < handle
                 s = obj.resolveStream(stream);
             end
             
-            old_stream = obj.RandStream.setGlobalStream(s);
-            cleanupObj = onCleanup(@() obj.RandStream.setGlobalStream(old_stream));
+            % ★ 核心修復：使用類別名稱 RandStream 呼叫靜態方法
+            old_stream = RandStream.setGlobalStream(s);
+            cleanupObj = onCleanup(@() RandStream.setGlobalStream(old_stream));
             
             disp('--- 啟動崩盤護欄 GBDT 訓練 (正樣本分層時序 OOF、Bootstrap 95% CI 與 Platt 校準) ---');
             
@@ -315,8 +317,6 @@ classdef GBDTExpertAgent < handle
                 if length(unique(val_crash_y)) > 1
                     try
                         [~,~,~,auc_c] = perfcurve(val_crash_y, p_c_fold, 1);
-                        
-                        % ★ 核心修復：使用 mrg32k3a 串流執行 500 次 Bootstrap AUC 重抽樣
                         n_boot = 500;
                         boot_aucs = zeros(n_boot, 1);
                         n_val = length(val_crash_y);
@@ -420,8 +420,9 @@ classdef GBDTExpertAgent < handle
                 s = obj.resolveStream(stream);
             end
             
-            old_stream = obj.RandStream.setGlobalStream(s);
-            cleanupObj = onCleanup(@() obj.RandStream.setGlobalStream(old_stream));
+            % ★ 核心修復：使用類別名稱 RandStream 呼叫靜態方法
+            old_stream = RandStream.setGlobalStream(s);
+            cleanupObj = onCleanup(@() RandStream.setGlobalStream(old_stream));
             
             fprintf('--- 啟動 %s 專家 SHAP 歸因分析 (K-Means 加速) ---\n', upper(mode));
             
@@ -466,12 +467,13 @@ classdef GBDTExpertAgent < handle
         function s = resolveStream(obj, stream_in)
             if nargin >= 2 && ~isempty(stream_in)
                 s = stream_in;
-            elseif ~isempty(obj.RandStream)
-                s = obj.RandStream;
+            elseif ~isempty(obj.RngStream)
+                s = obj.RngStream;
             elseif ~isempty(obj.ConfigObj) && ismethod(obj.ConfigObj, 'getRandStream')
                 s = obj.ConfigObj.getRandStream(1);
             else
-                s = obj.RandStream.getGlobalStream();
+                % ★ 核心修復：使用類別名稱 RandStream 呼叫靜態方法
+                s = RandStream.getGlobalStream();
             end
         end
         
