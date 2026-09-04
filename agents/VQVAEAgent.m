@@ -92,7 +92,7 @@ classdef VQVAEAgent < handle
             elseif ~isempty(obj.ConfigObj) && ismethod(obj.ConfigObj, 'getRandStream')
                 s = obj.ConfigObj.getRandStream(1);
             else
-                s = RandStream.getGlobalStream();
+                s = obj.RandStream.getGlobalStream();
             end
             
             disp('--- 啟動 VQ-VAE 降噪器預訓練 (STE 梯度與 EMA 字典聯合更新) ---');
