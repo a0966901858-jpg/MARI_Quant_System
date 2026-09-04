@@ -1,14 +1,16 @@
 classdef RawBaselineTrainer < handle
     % =========================================================================
     % 類別：RawBaselineTrainer (原始特徵 GBDT 基準評估引擎)
-    % 升級：Phase 15.5 Task B' (★ 支援外部注入 RandStream / mrg32k3a 獨立子串流、
+    % 升級：Phase 15.5 Task B' (★ 屬性更名為 RngStream 徹底根除命名遮蔽警告、
+    %       修復 RandStream.setGlobalStream 靜態類別調用語法、
+    %       支援外部注入 mrg32k3a 獨立子串流、
     %       randsample 訓練抽樣與 Day-Block Bootstrap 完全確定性重現、
     %       修復 uint16 傳入 linspace 之型態相容性、防禦整數下溢截斷)
     % =========================================================================
     
     properties
         ConfigObj           % 全域設定檔參考
-        RandStream          % 隨機數串流物件 (支援 mrg32k3a 獨立子串流)
+        RngStream           % 隨機數串流物件 (支援 mrg32k3a 獨立子串流，避免與內建類別同名)
         NumFolds            % 時序交叉驗證折數 (預設 = 5)
         EmbargoDays         % 訓練集與驗證集隔離間隔 (預設 = 20)
         MaxTrainSamples     % 單一 Fold 最大訓練抽樣上限 (防 OOM)
@@ -31,11 +33,11 @@ classdef RawBaselineTrainer < handle
             
             % 綁定隨機數串流
             if nargin >= 2 && ~isempty(stream)
-                obj.RandStream = stream;
+                obj.RngStream = stream;
             elseif ~isempty(configObj) && ismethod(configObj, 'getRandStream')
-                obj.RandStream = configObj.getRandStream(1);
+                obj.RngStream = configObj.getRandStream(1);
             else
-                obj.RandStream = [];
+                obj.RngStream = [];
             end
         end
         
@@ -50,9 +52,9 @@ classdef RawBaselineTrainer < handle
                 s = obj.resolveStream(stream);
             end
             
-            % 同步全域串流以防下游第三方工具箱隱式依賴
-            old_stream = obj.RandStream.setGlobalStream(s);
-            cleanupObj = onCleanup(@() obj.RandStream.setGlobalStream(old_stream));
+            % ★ 核心修復 1：使用類別名稱 RandStream 靜態調用 setGlobalStream
+            old_stream = RandStream.setGlobalStream(s);
+            cleanupObj = onCleanup(@() RandStream.setGlobalStream(old_stream));
             
             valid_mask = ~isnan(Y_bin_flat) & ~isinf(Y_bin_flat) & all(~isnan(X_flat) & ~isinf(X_flat), 2);
             X_clean = X_flat(valid_mask, :);
@@ -149,8 +151,9 @@ classdef RawBaselineTrainer < handle
                 s = obj.resolveStream(stream);
             end
             
-            old_stream = obj.RandStream.setGlobalStream(s);
-            cleanupObj = onCleanup(@() obj.RandStream.setGlobalStream(old_stream));
+            % ★ 核心修復 2：使用類別名稱 RandStream 靜態調用 setGlobalStream
+            old_stream = RandStream.setGlobalStream(s);
+            cleanupObj = onCleanup(@() RandStream.setGlobalStream(old_stream));
             
             valid_mask = ~isnan(Y_cont_flat) & ~isinf(Y_cont_flat) & all(~isnan(X_flat) & ~isinf(X_flat), 2);
             X_clean = X_flat(valid_mask, :);
@@ -242,12 +245,13 @@ classdef RawBaselineTrainer < handle
         function s = resolveStream(obj, stream_in)
             if nargin >= 2 && ~isempty(stream_in)
                 s = stream_in;
-            elseif ~isempty(obj.RandStream)
-                s = obj.RandStream;
+            elseif ~isempty(obj.RngStream)
+                s = obj.RngStream;
             elseif ~isempty(obj.ConfigObj) && ismethod(obj.ConfigObj, 'getRandStream')
                 s = obj.ConfigObj.getRandStream(1);
             else
-                s = obj.RandStream.getGlobalStream();
+                % ★ 核心修復 3：使用類別名稱 RandStream 靜態調用 getGlobalStream
+                s = RandStream.getGlobalStream();
             end
         end
     end
