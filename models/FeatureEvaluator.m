@@ -2,7 +2,7 @@ classdef FeatureEvaluator < handle
     % =========================================================================
     % 類別：FeatureEvaluator (特徵信心評估器、ICIR 穩定性健檢與共線性診斷中心)
     % 升級：Phase 15.5 Task A 修復版 (★ report_icir_ranking 支援 horizon 貫穿、
-    %       HAC max_lag 強制頻寬下限防禦、相容歷史字串標籤呼叫)
+    %       HAC max_lag 強制頻寬下限防禦、格式化純量強制截斷防溢出)
     % 職責：
     %   1. 計算每日橫截面 Spearman Rank IC (支援 1D/5D/60D 靈活 Horizon 對齊)
     %   2. 評估特徵長週期 ICIR 並透過 Newey-West HAC 校正序列自相關，檢驗方向交易邊際
@@ -26,18 +26,6 @@ classdef FeatureEvaluator < handle
         % 核心運算：計算無未來函數的動態特徵權重 (支援 horizon 參數與 Daily_IC 回傳)
         % =========================================================
         function [IC_Weights_2D, Raw_IC_Weight, Daily_IC] = compute_confidence(obj, X_denoised_3D, Prices_Active, Expert_Active, horizon)
-            % -----------------------------------------------------------------
-            % 函數輸入維度：
-            % X_denoised_3D: [Days, Feats, NumTickers]
-            % Prices_Active: [Days, NumTickers]
-            % Expert_Active: [Days, NumTickers] (活躍標的遮罩)
-            % horizon:       預測遠期天數 (預設 = 1，向前相容特徵閘門；健檢時可傳入 5 或 60)
-            % 輸出維度：
-            % IC_Weights_2D: [Days, Feats] (每日各特徵的能量守恆注意力權重，均值維持 1.0)
-            % Raw_IC_Weight: [Days, Feats] (各特徵歷史滾動平均 |IC|，供特徵閘門聚焦使用)
-            % Daily_IC:      [Days, Feats] (每日橫截面帶符號 Spearman Rank IC)
-            % -----------------------------------------------------------------
-            
             if nargin < 5 || isempty(horizon)
                 horizon = 1; % 預設沿用 1 日遠期報酬
             end
@@ -104,7 +92,7 @@ classdef FeatureEvaluator < handle
                 Daily_IC(:, k) = feat_ic_col;
             end
             
-            %% 3. ★ 零洩漏時間平移 (Zero-Leakage Time-Shift 特徵閘門強度)
+            %% 3. 零洩漏時間平移
             disp('  -> 執行時間平移與滾動平滑 (生成無未來函數之 IC 強度)...');
             Raw_IC_Weight = zeros(numDays, numFeats, 'single');
             
@@ -115,7 +103,7 @@ classdef FeatureEvaluator < handle
                 Raw_IC_Weight(t, :) = mean_abs_ic;
             end
             
-            %% 4. ★ 能量守恆 Softmax 注意力縮放 (維持特徵尺度均值為 1.0)
+            %% 4. 能量守恆 Softmax 注意力縮放
             disp('  -> 執行能量守恆 Softmax 注意力縮放 (Energy-Preserving Normalization)...');
             temperature = 1.0; 
             IC_Weights_2D = ones(numDays, numFeats, 'single');
@@ -132,7 +120,6 @@ classdef FeatureEvaluator < handle
                     exp_vals = exp((norm_ic - max_z) / temperature);
                     softmax_prob = exp_vals ./ (sum(exp_vals) + 1e-8);
                     
-                    % 保能量乘法縮放：sum(weights) = numFeats，平均權重 = 1.0
                     IC_Weights_2D(t, :) = softmax_prob .* numFeats;
                 else
                     IC_Weights_2D(t, :) = 1.0;
@@ -143,12 +130,9 @@ classdef FeatureEvaluator < handle
         end
         
         % =====================================================================
-        % ★ Phase 15.5 Task A：特徵訊號方向穩定性 ICIR 排行榜 (整合 Newey-West HAC 檢定)
+        % 特徵訊號方向穩定性 ICIR 排行榜 (整合 Newey-West HAC 檢定)
         % =====================================================================
         function [icir_table, max_icir] = report_icir_ranking(obj, Daily_IC, feat_names, min_icir_threshold, horizon, horizon_label)
-            % -----------------------------------------------------------------
-            % 參數處理：相容歷史呼叫格式 (horizon_label 作為第 5 引數傳入)
-            % -----------------------------------------------------------------
             if nargin < 4 || isempty(min_icir_threshold)
                 min_icir_threshold = 0.05; 
             end
@@ -156,18 +140,21 @@ classdef FeatureEvaluator < handle
                 horizon = 1;
             end
             
-            % 解析 horizon 與 horizon_label，兼顧數值型與字串型輸入
+            % 強制將門檻轉換為純量數值，防禦向量傳入導致格式化輸出循環展開
+            min_icir_val = double(min_icir_threshold(1));
+            
+            % 解析 horizon 與 horizon_label
             if ischar(horizon) || isstring(horizon)
                 temp_str = char(horizon);
                 parsed_h = sscanf(temp_str, '%d');
                 if ~isempty(parsed_h)
-                    H_num = max(1, parsed_h);
+                    H_num = max(1, parsed_h(1));
                 else
                     H_num = 1;
                 end
                 horizon_label = temp_str;
             else
-                H_num = max(1, round(horizon));
+                H_num = max(1, round(double(horizon(1))));
                 if nargin < 6 || isempty(horizon_label)
                     horizon_label = sprintf('%dD', H_num);
                 end
@@ -189,7 +176,6 @@ classdef FeatureEvaluator < handle
             std_ic  = std(valid_ic_window, 0, 1, 'omitnan');
             icir    = mean_ic ./ (std_ic + 1e-8);
             
-            % ★ Task A 修復：顯式貫穿 max_lag = max(H, auto_bandwidth) 校正自相關
             t_hac = zeros(numFeats, 1);
             p_hac = ones(numFeats, 1);
             lag_used = zeros(numFeats, 1);
@@ -200,7 +186,7 @@ classdef FeatureEvaluator < handle
                 n_eff = length(ic_clean);
                 if n_eff > 10
                     auto_lag = max(1, floor(4 * (n_eff / 100)^(2/9)));
-                    hac_lag = max(H_num, auto_lag); % 強制頻寬下限對齊標籤長度 H
+                    hac_lag = max(H_num, auto_lag);
                     lag_used(j) = hac_lag;
                     try
                         [t_hac(j), p_hac(j)] = hac_significance_test(ic_clean, hac_lag);
@@ -230,15 +216,19 @@ classdef FeatureEvaluator < handle
             fprintf('----------------------------------------------------------------------------------------------------\n');
             
             max_icir = max(abs(icir));
-            sig_count = sum(p_hac < 0.05 & abs(icir) >= min_icir_threshold);
+            sig_count = sum(p_hac < 0.05 & abs(icir(:)) >= min_icir_val);
             
-            if sig_count == 0
-                warning(['⚠️ 警告：經 Newey-West HAC (lag=%d) 校正後，無任何特徵在 |ICIR| >= %.4f 下具備統計顯著性 (p < 0.05)！\n' ...
-                         '   代表特徵雖有短暫相關，但方向長期頻繁反轉，不具備穩定交易邊際。\n' ...
-                         '   此結果與 GBDT AUC≈0.50、DSR=0.0000 的結論完全吻合！'], H_num, min_icir_threshold);
+            % 顯式防禦，避免非純量進入格式化字串
+            sig_count_scalar = double(sig_count(1));
+            display_lag_scalar = double(H_num(1));
+            
+            if sig_count_scalar == 0
+                fprintf('  ⚠️ 警告：經 Newey-West HAC (lag=%d) 校正後，無任何特徵在 |ICIR| >= %.4f 下具備統計顯著性 (p < 0.05)！\n', ...
+                    display_lag_scalar, min_icir_val);
+                fprintf('     代表特徵雖有短暫相關，但方向長期頻繁反轉，不具備穩定交易邊際。\n');
             else
                 fprintf('  ✅ 通過穩定性健檢：共 %d 個特徵通過 HAC 顯著性檢定 (lag=%d) 且 |ICIR| >= %.4f。\n', ...
-                    sig_count, H_num, min_icir_threshold);
+                    sig_count_scalar, display_lag_scalar, min_icir_val);
             end
             fprintf('====================================================================================================\n\n');
             
