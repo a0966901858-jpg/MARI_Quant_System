@@ -1,9 +1,9 @@
 classdef GraphSpatialFusionLayer < nnet.layer.Layer
     % =========================================================================
     % 類別：GraphSpatialFusionLayer (時空圖神經網路動態/靜態空間拓撲融合卷積層)
-    % 升級：Phase 15.5 Stage 4 規範版 (★ 強制單位自環 A + I_N 杜絕節點自身特徵抹除、
-    %       Kipf-Welling 對稱正規化 D^-1/2 * A_tilde * D^-1/2、He 權重初始化、
-    %       MixMode = 'gcn_only' | 'dynamic' 嚴格架構隔離)
+    % 升級：Phase 15.5 深度學習相容版 (★ 修復 eye 語法對 dlarray 之相容性、
+    %       支援雙輸入 InputNames={'in1','in2'}、相容 single/dlarray 輸入驗證、
+    %       強制單位自環 A + I_N、Kipf-Welling 對稱正規化、完全啟用自動微分圖追蹤)
     % 職責：對截面 N 檔標的之關聯圖譜進行空間資訊聚合，輸出節點級 EmbedDim 表徵
     % =========================================================================
 
@@ -38,6 +38,9 @@ classdef GraphSpatialFusionLayer < nnet.layer.Layer
             obj.MixMode = validatestring(mixMode, {'gcn_only', 'dynamic'});
             obj.Type = "Graph Spatial Fusion";
 
+            % 顯式聲明雙輸入端點名稱，對齊 connectLayers 'in1' 與 'in2'
+            obj.InputNames = {'in1', 'in2'};
+
             % He (Kaiming Normal) 初始化權重
             std_w = sqrt(2.0 / numFeatures);
             obj.Weights  = dlarray(randn(embedDim, numFeatures, 'single') * std_w);
@@ -50,25 +53,41 @@ classdef GraphSpatialFusionLayer < nnet.layer.Layer
         end
 
         function Z = predict(obj, X_flat, A_flat)
-            X = stripdims(X_flat);
-            A = stripdims(A_flat);
-            B = size(X, 2);
+            % 相容 single 數值矩陣與 dlarray，防止 initialize 探針階段崩潰
+            if isa(X_flat, 'dlarray')
+                X_val = stripdims(X_flat);
+            else
+                X_val = X_flat;
+            end
+            
+            if isa(A_flat, 'dlarray')
+                A_val = stripdims(A_flat);
+            else
+                A_val = A_flat;
+            end
+            
+            B = size(X_val, 2);
 
             % 1. 解壓縮為 3D 空間張量
-            X_3D = reshape(X, obj.NumFeatures, obj.NumNodes, B);
-            A_3D = reshape(A, obj.NumNodes, obj.NumNodes, B);
+            X_3D = reshape(X_val, obj.NumFeatures, obj.NumNodes, B);
+            A_3D = reshape(A_val, obj.NumNodes, obj.NumNodes, B);
 
-            % ★ 核心修復 1：顯式疊加單位自環 (Self-Loop: A_tilde = A + I_N)
-            % 徹底解決節點自身技術特徵遺失 (Self-Feature Amnesia)
-            I_N = eye(obj.NumNodes, 'like', A_3D);
+            % ★ 核心修復：使用常規 single 建立單位矩陣，徹底避開 eye(..., 'like', dlarray) 限制
+            I_raw = eye(obj.NumNodes, 'single');
+            if isgpuarray(A_3D)
+                I_raw = gpuArray(I_raw);
+            end
+            I_N = dlarray(I_raw);
+
+            % 疊加單位自環 (Self-Loop: A_tilde = A + I_N)
             A_tilde = A_3D + I_N;
 
-            % ★ 核心修復 2：Kipf-Welling 對稱拉普拉斯正規化 (D^-1/2 * A_tilde * D^-1/2)
+            % Kipf-Welling 對稱拉普拉斯正規化 (D^-1/2 * A_tilde * D^-1/2)
             deg = sum(abs(A_tilde), 2); % [NumNodes, 1, B]
             deg_inv_sqrt = 1.0 ./ sqrt(deg + 1e-6);
             A_norm_3D = deg_inv_sqrt .* A_tilde .* permute(deg_inv_sqrt, [2, 1, 3]);
 
-            % 2. 依據 MixMode 分支確定拓撲矩陣
+            % 2. 拓撲矩陣分支
             if strcmp(obj.MixMode, 'gcn_only')
                 A_spatial = A_norm_3D;
             else
@@ -90,7 +109,6 @@ classdef GraphSpatialFusionLayer < nnet.layer.Layer
             end
 
             % 3. 鄰居特徵聚合 (X_3D: [F, N, B], A_spatial: [N, N, B])
-            % pagemtimes(X_3D, A_spatial) 計算: Agg(:, j) = sum_k X(:, k) * A(k, j)
             Agg_3D = pagemtimes(X_3D, A_spatial);
             Agg_flat = reshape(Agg_3D, obj.NumFeatures, []);
 
@@ -102,12 +120,12 @@ classdef GraphSpatialFusionLayer < nnet.layer.Layer
             Z_3D_out = reshape(Z_flat, obj.EmbedDim, obj.NumNodes, B);
             Z_out = reshape(Z_3D_out, obj.EmbedDim * obj.NumNodes, B);
 
-            Z = dlarray(Z_out, 'CB');
-        end
-
-        function [loss, dLdX, dLdA] = backward(~, ~, ~, ~, ~, ~)
-            % 啟用自動微分
-            loss = []; dLdX = []; dLdA = [];
+            % 保持輸出為 dlarray 格式以支援後續求導
+            if ~isa(Z_out, 'dlarray')
+                Z = dlarray(Z_out, 'CB');
+            else
+                Z = Z_out;
+            end
         end
     end
 end
