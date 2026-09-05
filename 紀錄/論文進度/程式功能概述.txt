@@ -1,0 +1,114 @@
+一、系統生產與滾動回測主線管線 (Production Pipeline)
+**Run_Data_and_Features.m**
+* **產生原因**：建立無未來函數（Point-in-Time）的機構級多資產數據湖，提煉多維微觀與總經特徵，並透過向量量化消除微觀雜訊，確保樣本外資料零洩漏。
+* **做了哪些事情**：以 SPY 交易日曆對齊 504 檔美股與 FRED 總經數據，剔除停牌資料；計算 18 維微觀/相對特徵與 10 維宏觀特徵；執行 GICS 產業內 Z-Score 中性化與 BH-FDR 時變協整圖譜萃取；在 IS 樣本內預訓練 VQ-VAE 並凍結編碼簿，落地 `features_denoised.mat`。
+* **得出結論**：VQ-VAE 重構損失自 0.1935 穩步收斂至 0.0460，成功凍結字典阻斷前視偏差，產出確定性 3D 面板資料（8,457 天 $\times$ 28 維 $\times$ 504 檔）。
+
+**Run_Extractor_Pretrain.m**
+* **產生原因**：克服二元分類標籤的資訊湮滅，以 60D 連續超額報酬為導向，預訓練雙軌神經網路（時序 Trans-LSTM 與空間 DyGAT）提煉低維稠密表徵。
+* **做了哪些事情**：執行 1D/60D 橫截面 HAC-ICIR 穩定性健檢；構建能量守恆 Softmax 特徵注意力閘門；以 60D 連續 Z-Score 標籤結合 Soft-IC 連續損失函數，在跨體制驗證池約束下實施早停預訓練，匯出 64D 節點表徵張量 `DL_Extractors.mat`。
+* **得出結論**：60D 遠期訊號預測力顯著釋放（16 個特徵通過 HAC 檢定，Amihud20 ICIR 達 +0.5405），驗證損失收斂至 0.5514（時序）與 0.5549（空間），成功建立連續超額收益梯度流。
+
+**Run_GBDT_and_SHAP.m**
+* **產生原因**：將深度學習表徵與總經因子轉化為可解釋的橫截面選股排序得分，並訓練顯性尾部風控模型（崩盤護欄）。
+* **做了哪些事情**：以 5-Fold Expanding Window 訓練 LSBoost 連續迴歸模型（針對 60D 標籤），監控折外 Rank IC；以 RUSBoost 訓練極端風險分類器，並透過 Logistic 回歸執行 Platt Scaling 機率校準；生成 SHAP 邊際貢獻歸因圖並落地 `GBDT_Guards.mat`。
+* **得出結論**：時序專家展現強烈選股能力（OOF Rank IC 達 +0.0662，顯著高於原始特徵 +0.0452 與空間特徵 +0.0237）；崩盤護欄 Fold 5 AUC 達 0.7926，經 Platt 校準後 Brier Score 自 0.3094 驟降至 0.0425（改善 86.27%），精準捕獲尾部危機。
+
+**Run_BO_Hyperparameter_Tuning.m**
+* **產生原因**：針對多專家融合權重、選股集中度與護欄閾值尋求最佳平衡，並以 Deflated Sharpe Ratio (DSR) 嚴格過濾多重試驗的選擇偏誤。
+* **做了哪些事情**：定義超參數搜尋空間（Guardrail、Time_W、Top_K），在多核平行環境下以 4 子窗口穩健目標函數執行 25 輪貝氏尋優；計算考慮試驗次數與資產分佈偏態的 DSR 檢定值，合格則存檔為 `BO_Hyperparameters.mat`。
+* **得出結論**：在 60D 定期調倉體制下，最佳參數收斂於 Guard=0.0967、Time_W=0.9747、Top_K=38，觀測年化 Sharpe 達 1.7721，通過檢定（DSR = 1.0000 $\ge$ 0.95），成功落地為正式生產參數。
+
+**Run_CIO_Awakening.m**
+* **產生原因**：建立宏觀投資長（CIO）架構，根據總經狀態自適應調節進攻型、平衡型與保守型多代理人的曝險比例與現金水位。
+* **做了哪些事情**：注入 Phase 4 最佳化參數，計算 5 維宏觀狀態（崩盤機率、市場動能、波動度、回撤）；切分訓練池與驗證池，以 PPO 演算法同時訓練三軌強化學習代理人，並依跨體制驗證池表現實施早停快照回滾。
+* **得出結論**：三軌代理人於 Epoch 81 達成穩健收斂，能在極端體制（牛市進攻 vs 熊市避險）間自適應動態切換，解決短回合過擬合問題。
+
+**6_Run_WalkForward_Backtest.m**
+* **產生原因**：在真實市場物理摩擦、無未來函數與長週期滾動條件下，驗證全系統跨越二十年的真實經濟收益與風控防禦表現。
+* **做了哪些事情**：掛載真實開盤價，落實 Open-to-Open 撮合、每日權重自然漂移、停牌鎖死防護、死區連續風險縮放及日頻動態波動滑價模型；以 20 日定期調倉步進整合 CIO 決策與選股得分，隔離結算 IS 與 OOS 績效並輸出報表。
+* **得出結論**：全歷史累積報酬達 +807.37%（CAGR 11.28%、Sharpe 1.12、最大回撤僅 -21.08%），IS 訓練期報酬 +668.31%（Sharpe 1.39、MDD -18.63% 對比 SPY -55.42%），OOS 盲測期錄得 +18.10%（MDD -20.43%），實證確認該系統具備顯著的下行風險鈍化與穩健超額回報能力。
+
+
+
+二、Phase 15.5 診斷方案與天花板消融管線 (Diagnostics & Ablation)
+**Run_CeilingScan_MultiHorizon.m (Workstream A: 多 Horizon 訊號天花板掃描)**
+* **產生原因**：釐清特徵在不同預測天數下的有效性邊界，探討短週期是否因高頻市場雜訊而存在訊號無法突破的天花板。
+* **做了哪些事情**：平行排程 24 個掃描任務，測試 1、3、5、10、20、40、60、90 日 Horizon 與 3 種特徵子集（18D Rel+Micro、10D Macro、28D Full），以動態隔離期（Embargo = H）計算折外 AUC、Rank IC 與 HAC 顯著性。
+* **得出結論**：短週期（1D~5D）受限於隨機漫步雜訊，Rank IC 均低於 0.015 且難以穩定顯著；預測力隨預測天數拉長呈現單調遞增，60D（OOF IC = +0.0346, $p = 0.0004$）與 90D（OOF IC = +0.0451, $p = 0.0001$）訊號強烈，確立系統必須向中長週期轉型。
+
+**Run_Extractor_Pretrain_SMOKE.m (Stage 2: 三大替代方案消融測試)**
+* **產生原因**：針對分類模型損失長期卡在二元交叉熵 $\ln(2) \approx 0.693$ 停滯的問題，同步檢驗三條破局假設（Direction 1: 板塊中性化、Direction 2: 連續 Soft-IC 損失、Direction 3: 60D 週期隔離）。
+* **做了哪些事情**：設計 4 組對照訓練（Raw 18D+BCE、GICS-Neutral+BCE、GICS-Neutral+Soft-IC、60D Horizon+Embargo 60D），在固定 15 個 Epoch 內監控驗證損失與探針指標，並執行 HAC 自相關校正檢定。
+* **得出結論**：Direction 1 被證偽（板塊中性化對比基準組無顯著改善，$p = 1.0000$）；Direction 2 獲得證實（Soft-IC 連續損失顯著打破停滯，IC 達 +0.0626, $p = 0.0000$）；Direction 3 獲得證實（60D 長週期展現真實因果預測力，IC 達 +0.1296, $p = 0.0000$）。
+
+**Round6_SyntheticSanityCheck.m (Round 6: 合成訊號 Positive Control 驗證)**
+* **產生原因**：排除深度學習訓練流程中可能隱藏的張量維度錯位、通道對齊失誤或自動微分梯度斷裂等工程缺陷。
+* **做了哪些事情**：利用當日已知特徵線性組合生成理論 100% 可解的 50/50 合成二元標籤，切分 4,009 天訓練集與 1,151 天驗證集（Embargo 20天），訓練 Trans-LSTM 與 DyGAT 雙軌網路 30 個 Epoch 並計算線性探針 AUC。
+* **得出結論**：時序專家與空間專家的探針 AUC 分別達到 0.9813 與 0.9824，驗證損失大幅降至 0.1772 與 0.1826，徹底證實神經網路拓撲與梯度反向傳播管線毫無工程 Bug，後續真實數據的損失停滯純屬市場特徵之低訊噪比問題。
+
+**Round7_ICGateAblation.m (Round 7: IC 注意力閘門開關消融)**
+* **產生原因**：評估無未來函數的橫截面 Spearman IC 能量守恆 Softmax 注意力閘門，是否能動態聚焦強效特徵並提升表徵泛化度。
+* **做了哪些事情**：設置 Group A（掛載 IC Gate）與 Group B（無閘門 Raw 特徵），在相同資料切分下訓練雙軌網路 30 個 Epoch，監控驗證損失軌跡並進行配對 t 與 HAC 顯著性檢定。
+* **得出結論**：IC 注意力閘門具備顯著效益（GATE BENEFICIAL），時序專家驗證損失自無閘門的 0.8426 顯著壓制至 0.7006（損失差值 +0.1420，HAC $p = 0.0000$），探針 AUC 亦取得微幅增益，支持生產管線保留該機制。
+
+**Round8a_OverfitCapacityCheck.m (Round 8a-v3: 空間專家幾何容量與注意力解耦隔離診斷)**
+* **產生原因**：排查圖神經網路（DyGAT）在真實市場數據下驗證損失難以收斂的核心原因，釐清是單層圖卷積容量瓶頸抑或是動態注意力機制失效。
+* **做了哪些事情**：抽取 $N = 25$ 天極小樣本（1,500 筆觀測），在完全移除正則化（Dropout = 0）條件下對比 Pure LSTM、手動 2-Layer GCN、1-Layer GCN-Only 與 1-Layer Dynamic DyGAT 四軌模型訓練 150 個 Epoch，監控記憶過擬合曲線與動態注意力梯度範數。
+* **得出結論**：LSTM 能輕易過擬合小樣本（BCE 降至 0.0875），雙層 GCN 亦穩步下降至 0.4498；然而單層 GCN-Only 與 Dynamic DyGAT 均卡死在 0.684 附近，且動態注意力梯度衰減至 $5.09 \times 10^{-6}$，確診單層圖卷積之幾何容量不足以切分橫截面高維流形，且注意力過早飽和。
+
+**Round8b_ArchSimplification.m (Round 8b: 時序架構複雜度消融)**
+* **產生原因**：檢驗時序專家中的自注意力機制（Transformer Self-Attention）是否存在過度設計，評估簡化為純 Pure-LSTM 是否能在減少參數量之餘避免過擬合。
+* **做了哪些事情**：對比原版 Transformer-LSTM (Group A) 與簡化版 Pure-LSTM (Group B) 在相同 18 維特徵下的 30 個 Epoch 訓練動態，評估最終驗證損失、探針 AUC 並實施自相關統計檢定。
+* **得出結論**：複雜時序架構顯著優於簡化版本（COMPLEXITY BENEFICIAL），Transformer-LSTM 最終驗證損失為 0.8412，顯著低於 Pure-LSTM 之 0.9530（差值 +0.1118，HAC $p = 0.0000$），確認 Self-Attention 機制在提取時序依賴上具備實質泛化價值。
+
+**Round9_TrainingRegimeSweep.m (Round 9: 訓練體制與學習率排查)**
+* **產生原因**：檢驗早期模型驗證損失上升是否源於訓練 Epoch 數不足、學習率過大引發權重震盪，或學習率衰減排程不當。
+* **做了哪些事情**：拉長訓練至 100 個 Epoch，對比階梯衰減（Step Decay, 1e-3 $\to$ 1.25e-4）、固定平緩（Constant Small, 2e-4）與餘弦退火（Cosine Annealing, 1e-3 $\to$ 1e-5）三種學習率排程。
+* **得出結論**：適當的學習率排程具備關鍵修正效益（TRAINING EXTENSION BENEFICIAL），Constant Small (2e-4) 能將最終驗證損失穩定壓制在 0.8399，顯著優於激進退火之 1.0826（差值 -0.2386，HAC $p = 0.0000$），證明小學習率持續更新能有效防止神經網路表徵崩塌。
+
+**Round10_FeatureSubsetTrim.m (Round 10: 特徵子集精簡消融實驗)**
+* **產生原因**：檢驗依據 HAC-ICIR 穩定性檢定剔除統計無效特徵後，能否緩解維度詛咒並降低輸入端雜訊稀釋效應。
+* **做了哪些事情**：依據 5D ICIR 剔除 Beta、Corr、Vol20、IdioVol20、Amihud20、HL_Spread 等 6 維弱預測通道，對比 Full 18D (Group A) 與 Trimmed 12D (Group B) 於雙軌網路中的 30 個 Epoch 表現，並監控表徵變異數（E_Var）。
+* **得出結論**：特徵精簡能有效改善表徵純度（FEATURE TRIMMING EFFECTIVE），12 維精簡子集在維持健康表徵變異數（Time 2.164 / Space 1.241）的前提下，空間專家驗證損失取得顯著降低（HAC $p = 0.0070$），確認剔除噪聲特徵有助於增強網路的整體抗干擾能力。
+
+
+
+三、Stage 2.5 方法論重驗證專用腳本 (Code Review Suite)
+**Stage2_5_HAC_Relag_Revalidation.m (Stage 2.5 Task A: HAC max_lag 頻寬下限貫穿重驗證)**
+* **產生原因**：檢驗在長週期（60D Horizon）預測下，傳統自動頻寬選取（Auto Lag，如 $lag=6$）是否因低估時間序列自相關而產生偽陽性（Type I Error），必須驗證強制設定頻寬下限 $max\_lag \ge H$（即強制 $lag=60$）後的統計抗擾度。
+* **做了哪些事情**：在 60 檔標的 $\times$ 3,200 天樣本上訓練 Group 1 (Base BCE, $H=5$)、Group 3 (Soft-IC, $H=5$) 與 Group 4 (60D Horizon, Embargo=60D) 三組模型；比對 Auto Lag 與 Forced Lag ($H$) 下的個別檢定值，並對比 Base 基準組每日損失差執行 HAC 頻寬修正檢定，匯出 `Stage2_5_HAC_Relag_Summary.mat`。
+* **得出結論**：檢定結論具備高度抗擾穩健性（保持不變）。Group 3 ($lag=6$) 與 Group 4 ($lag=60$) 校正後的 $p$-value 均維持 $0.0000$，嚴格證實 60D 中長週期與 Soft-IC 連續目標的顯著性並非自相關低估造成的統計假象。
+
+**Stage2_5_MultiSeed_DirectionCompare.m (Stage 2.5 Task B: 多種子/多子集穩健性交叉檢驗)**
+* **產生原因**：排除單次隨機抽樣（$n=1$）帶來的倖存者偏差或運氣成分，驗證 Soft-IC 損失函數與 60D 遠期目標在跨獨立隨機子串流與不同股票子集下的穩健性與可重現性。
+* **做了哪些事情**：在 412 檔高活躍候選池中，切換 5 組 `mrg32k3a` 獨立子串流（Substream 1~5），各隨機抽樣 60 檔標的進行 10 個 Epoch 的雙軌網路訓練；同步評估 G1 (Base BCE)、G3 (Soft-IC) 與 G4 (60D Horizon) 的驗證損失與 Rank IC，並實施非參數 Wilcoxon 符號等級檢定（$n=5$），存檔為 `Stage2_5_MultiSeed_Summary.mat`。
+* **得出結論**：兩大假設跨種子雙雙獲得驗證（ROBUST CONFIRMED）。Soft-IC 損失在所有 5 組子串流中均顯著低於 BCE 損失（平均損失差 $+0.0212$，Wilcoxon $p = 0.0312 < 0.05$）；60D 目標之跨子串流平均 OOF Rank IC 達 $+0.1057$（所有子串流均通過 $p = 0.0000$ 檢定，Wilcoxon $p = 0.0312$），成功將方法論結論由「單次觀察」晉升為「具備統計穩健性的實證規律」。
+
+**Stage2_5_GBDT_SoftIC_Validation.m (Stage 2.5 Task B': GBDT 連續迴歸大宇宙交叉驗證)**
+* **產生原因**：脫離深度學習（DL）神經網路框架，在全 504 檔真實大宇宙上透過機器學習樹模型（GBDT），獨立驗證「分類任務失效究竟是特徵本身無效，還是 Beat-the-Median 二元標籤硬切導致的資訊損失」。
+* **做了哪些事情**：提取 504 檔標的、8,398 天的 18 維微觀/相對特徵（展平後達 3,359,549 筆樣本）；構建 5D 二元標籤與 5D 連續標準化超額報酬 Z-Score 標籤；切換 5 組獨立子串流（Substream 1~5），透過 `RawBaselineTrainer` 執行 5-Fold Purged CV，同步輸出 LogitBoost OOF AUC 與 LSBoost OOF Rank IC、Day-Block Bootstrap 95% CI 與 HAC 檢定。
+* **得出結論**：跨模型獨立證實 Direction 2（INDEPENDENTLY CONFIRMED ACROSS SEEDS）。LogitBoost 二元分類 AUC 在 5 組種子下均卡死在隨機噪音邊界（$0.5018 \pm 0.0010$），而切換為 LSBoost 連續迴歸後，OOF Rank IC 穩定產出 $+0.0228 \pm 0.0011$（所有種子 HAC $p = 0.0000$）；嚴格證明分類模型的失效本質為「二元硬切造成的資訊湮滅」，而非 18 維特徵缺乏預測力。
+
+
+
+四、P2 模組有效性獨立消融實驗 (Ablation Studies)
+**Run_Ablation_SpaceExpert.m (P2-1 空間專家邊際貢獻消融實驗)**
+* **產生原因**：驗證基於圖神經網路（DyGAT）截面拓撲卷積所構建的空間專家，是否具備超越個股時序動能的獨立 Alpha 邊際貢獻，防範架構過度複雜化與假性關聯。
+* **做了哪些事情**：在 60D 連續超額報酬 Z-Score 標籤下，設置 Pure Time (Group A)、Balanced 50/50 (Group B) 與 Pure Space (Group C) 三組對照；逐日計算橫截面 Rank IC 並執行 Newey-West HAC 檢定（$max\_lag \ge 60$）；以 Open-to-Open 撮合、權重自然漂移與停牌鎖死執行 IS/OOS 雙區間回測。
+* **得出結論**：空間專家邊際貢獻遭**嚴格證偽 (Falsified)**。OOS 盲測期間加入空間專家未帶來顯著 IC 增益（$\Delta\text{IC} = -0.0060$, HAC $p = 0.2692 > 0.05$），實盤夏普比率反遭稀釋（Pure Time 0.37 vs Balanced 0.26 vs Pure Space -0.02），證實美股截面圖拓撲訊號之信噪比不足以支撐獨立超額收益。
+
+**Run_Ablation_CrashGuard.m (P2-2 崩盤護欄與宏觀死區消融實驗)**
+* **產生原因**：評估基於總經因子之崩盤護欄與雜訊死區連續縮放（Deadband Risk Scaling），能否在極端系統性風險中抑制回撤，同時避免傳統二元硬切引發頻繁進出之摩擦耗損。
+* **做了哪些事情**：依據 IS 期間 75% 雜訊分位數校準死區緩衝寬度（Guard_High=0.0967, Guard_Low=0.0667）；對比 Group A (連續縮放)、Group B (二元硬熔斷) 與 Group C (無護欄基線)；重點壓力測試 2008 金融海嘯、2020 COVID 崩盤及 2022 升息熊市期間之防禦表現。
+* **得出結論**：連續死區縮放護欄具備**顯著防禦價值**。在歷史重大危機中大幅平抑回撤（2008 海嘯最大回撤壓制在 -3.82% 對比 SPY -55.19%；2022 熊市最大回撤收斂至 -27.27% 對比無護欄 -33.25%），平時保持低避險現金水位，有效消除二元硬熔斷之頻繁 whipsaw 損耗。
+
+**Run_Ablation_PPO_Ensemble.m (P2-3 PPO 三軌動態體制集成消融實驗)**
+* **產生原因**：檢驗分層強化學習（HRL）宏觀投資長（CIO）動態調度三軌代理人（Aggressive / Balanced / Conservative）之集成決策，是否能帶來獨立於單一代理人的計量超額收益。
+* **做了哪些事情**：預計算 CIO 5 維總經狀態向量，比較 Group A (三軌動態集成) 與 Group B~D (單一 Balanced、Aggressive、Conservative 代理人) 在嚴格因果回測環境下的風險調整後收益，並執行 HAC 統計顯著性檢定與危機壓力測試剖析。
+* **得出結論**：三軌集成在超額收益上**未達統計顯著性**（OOS 與單一 Balanced 代理人報酬差異 HAC $t = +0.055, p = 0.9563 > 0.05$）。其實證本質應客觀定性為「具備跨極端體制自適應調節曝險能力的工程風控架構」，而非直接提供 Alpha 增益之生成器。
+
+**Run_Ablation_VQVAE.m (P2-4 VQ-VAE 向量量化降噪器消融實驗)**
+* **產生原因**：評估 VQ-VAE 向量量化離散重構模組對高頻動能特徵（R1, R5, R20）降噪時，是否能改善特徵信噪比與模型泛化度，抑或造成資訊失真。
+* **做了哪些事情**：設置 Group A (VQ-VAE 降噪) 與 Group B (Raw 原始特徵)；執行 1D 與 60D 特徵層級 HAC-ICIR 對比；透過 8 任務多核心並行執行 5-Fold LSBoost 連續迴歸交叉驗證與 OOF Rank IC 檢定；落實 Open-to-Open 權重漂移回測。
+* **得出結論**：VQ-VAE 具備**高保真特徵重構與狀態壓縮價值**。模型層級 60D OOF Rank IC（+0.0504 vs +0.0494, HAC $p = 0.0960 > 0.05$）及實盤 OOS 報酬差異（HAC $p = 0.4415 > 0.05$）皆無顯著差異，實證證明其在有效壓縮潛在維度與穩定幾何拓撲的同時，未破壞真實訊號結構，亦未引入虛假過擬合 Alpha。
