@@ -1,15 +1,15 @@
 classdef GBDTExpertAgent < handle
     % =========================================================================
     % 類別：GBDTExpertAgent (顯性風險預測流、LSBoost 連續迴歸選股與 SHAP 解釋器)
-    % 升級：Phase 15.5 (★ 屬性更名為 RngStream 消除命名遮蔽警告、
-    %       徹底修復 RandStream 類別靜態調用、Platt 校準 500 次 Bootstrap 與
-    %       時間衰減加權抽樣跨平台確定性對齊、LSBoost 連續迴歸與 OOF 排序得分)
+    % 升級：Phase 15.5 參數驅動版 (★ 完整繼承 Config.m 全域參數、
+    %       Purged Expanding Window 動態 Embargo 隔離、Newey-West HAC 動態檢定、
+    %       消除 TreeSHAP 單查詢點並行警告、Platt 校準與時間衰減加權抽樣)
     % 職責：接收 DL 萃取之表徵與宏觀特徵，輸出 OOF/OOS 連續排序得分與崩盤校準機率
     % =========================================================================
     
     properties
         ConfigObj           % 全域設定檔參考
-        RngStream           % 隨機數串流物件 (支援 mrg32k3a 獨立子串流，避免與內建類別同名)
+        RngStream           % 隨機數串流物件 (支援 mrg32k3a 獨立子串流)
         MdlTime             % 最終時序專家 GBDT 迴歸模型 (LSBoost)
         MdlSpace            % 最終空間專家 GBDT 迴歸模型 (LSBoost)
         MdlCrash            % 最終崩盤護欄 GBDT 分類模型 (RUSBoost)
@@ -18,6 +18,10 @@ classdef GBDTExpertAgent < handle
         FeatureNamesTime    % 時序特徵名稱
         FeatureNamesSpace   % 空間特徵名稱
         FeatureNamesMacro   % 宏觀特徵名稱
+
+        TargetHorizon = 60  % 選股預測目標跨度 (預設 60 日)
+        EmbargoDays   = 60  % 時序交叉驗證隔離期 (預設 60 日，Embargo >= Horizon)
+        HACLag        = 60  % Newey-West HAC 滯後階數 (預設 60 日)
     end
     
     methods
@@ -33,7 +37,25 @@ classdef GBDTExpertAgent < handle
                 obj.RngStream = [];
             end
             
-            fprintf(' ⚙️ [GBDTExpertAgent] 實例化完成。已啟動 LSBoost 連續選股迴歸、折外 Rank IC 監控與 Platt 校準 (mrg32k3a 串流版)。\n');
+            % ★ 核心修復 1：精確繼承 Config.m 獨立屬性，杜絕無條件覆蓋
+            if ~isempty(configObj)
+                if isprop(configObj, 'Horizon') && ~isempty(configObj.Horizon)
+                    obj.TargetHorizon = configObj.Horizon;
+                end
+                if isprop(configObj, 'PurgeEmbargo') && ~isempty(configObj.PurgeEmbargo)
+                    obj.EmbargoDays = configObj.PurgeEmbargo;
+                elseif isprop(configObj, 'Horizon') && ~isempty(configObj.Horizon)
+                    obj.EmbargoDays = configObj.Horizon;
+                end
+                if isprop(configObj, 'HACLag') && ~isempty(configObj.HACLag)
+                    obj.HACLag = configObj.HACLag;
+                elseif isprop(configObj, 'Horizon') && ~isempty(configObj.Horizon)
+                    obj.HACLag = configObj.Horizon;
+                end
+            end
+            
+            fprintf(' ⚙️ [GBDTExpertAgent] 實例化完成。已啟動 LSBoost 連續選股迴歸 (Horizon=%dD, Embargo=%dD, HAC_Lag=%d)、折外 Rank IC 監控與 Platt 校準 (mrg32k3a 串流版)。\n', ...
+                obj.TargetHorizon, obj.EmbargoDays, obj.HACLag);
         end
         
         % =========================================================
@@ -48,7 +70,6 @@ classdef GBDTExpertAgent < handle
                 s = obj.resolveStream(stream);
             end
             
-            % ★ 核心修復：使用類別名稱 RandStream 呼叫靜態方法 setGlobalStream
             old_stream = RandStream.setGlobalStream(s);
             cleanupObj = onCleanup(@() RandStream.setGlobalStream(old_stream));
             
@@ -101,7 +122,10 @@ classdef GBDTExpertAgent < handle
             oof_preds_raw   = zeros(totalActive, 1, 'single');
             
             K = 5; 
-            embargo = 20;
+            embargo = obj.EmbargoDays;
+            if isempty(embargo), embargo = 60; end
+            hac_lag = obj.HACLag;
+            if isempty(hac_lag), hac_lag = 60; end
             fprintf('  -> 啟動手動 %d-Fold 區塊時序 (Purged Expanding Window, Embargo=%d天) 連續迴歸交叉驗證...\n', K, embargo);
             
             day_array = double(row_mapping(:, 1));
@@ -123,7 +147,6 @@ classdef GBDTExpertAgent < handle
                 train_idx = find(train_mask);
                 val_idx   = find(val_mask);
                 
-                % 注入串流進行無放回訓練抽樣
                 if length(train_idx) > max_train_samples
                     train_idx = train_idx(randsample(s, length(train_idx), max_train_samples, false));
                 end
@@ -154,7 +177,6 @@ classdef GBDTExpertAgent < handle
                     oof_preds_raw(curr_val_idx)   = single(predict(mdl_r, X_raw_flat(curr_val_idx, :)));
                 end
                 
-                % 計算 Fold 驗證區間的平均橫截面 Spearman Rank IC
                 val_days_k = unique(day_array(val_idx));
                 ic_t_vec = zeros(length(val_days_k), 1);
                 ic_s_vec = zeros(length(val_days_k), 1);
@@ -204,11 +226,11 @@ classdef GBDTExpertAgent < handle
             ic_s_all = ic_s_all(1:v_all);
             ic_r_all = ic_r_all(1:v_all);
             
-            [~, p_hac_t] = hac_significance_test(ic_t_all, 5);
-            [~, p_hac_s] = hac_significance_test(ic_s_all, 5);
-            [~, p_hac_r] = hac_significance_test(ic_r_all, 5);
+            [~, p_hac_t] = hac_significance_test(ic_t_all, hac_lag);
+            [~, p_hac_s] = hac_significance_test(ic_s_all, hac_lag);
+            [~, p_hac_r] = hac_significance_test(ic_r_all, hac_lag);
             
-            fprintf('\n 📊 [GBDT 連續迴歸交叉驗證總評] 全域 OOF Spearman Rank IC (HAC p-val, lag=5):\n');
+            fprintf('\n 📊 [GBDT 連續迴歸交叉驗證總評] 全域 OOF Spearman Rank IC (HAC p-val, lag=%d):\n', hac_lag);
             fprintf('    > 原始 18D 基準線 : %+.4f (p = %.4f)\n', mean(ic_r_all), p_hac_r);
             fprintf('    > 時序專家 (Time) : %+.4f (p = %.4f)\n', mean(ic_t_all), p_hac_t);
             fprintf('    > 空間專家 (Space): %+.4f (p = %.4f)\n', mean(ic_s_all), p_hac_s);
@@ -229,7 +251,6 @@ classdef GBDTExpertAgent < handle
                 end
             end
             
-            % 使用 mrg32k3a 串流進行時間衰減加權抽樣
             fprintf('  -> 訓練最終全域橫截面模型 (LSBoost 時間衰減加權抽樣版)...\n');
             time_idx_of_sample = double(row_mapping(:, 1));
             half_life_days = 756; 
@@ -257,7 +278,6 @@ classdef GBDTExpertAgent < handle
                 s = obj.resolveStream(stream);
             end
             
-            % ★ 核心修復：使用類別名稱 RandStream 呼叫靜態方法
             old_stream = RandStream.setGlobalStream(s);
             cleanupObj = onCleanup(@() RandStream.setGlobalStream(old_stream));
             
@@ -271,7 +291,7 @@ classdef GBDTExpertAgent < handle
             obj.FeatureNamesMacro = obj.get_macro_names(numMacro);
             
             K = 5;
-            embargo = 20;
+            embargo_crash = 20; % 崩盤護欄為 10 日標籤，20 天隔離期充足安全
             P_crash_oof_scores = zeros(numDays, 1, 'single');
             
             pos_crash_indices = find(Y_Crash_1D == 1);
@@ -292,7 +312,7 @@ classdef GBDTExpertAgent < handle
             
             for k = 2:K
                 val_mask = ((1:numDays)' >= edges(k)) & ((1:numDays)' < edges(k+1));
-                train_mask = ((1:numDays)' < (edges(k) - embargo));
+                train_mask = ((1:numDays)' < (edges(k) - embargo_crash));
                 
                 num_val_pos = sum(Y_Crash_1D(val_mask) == 1);
                 fprintf('     - 正在訓練崩盤護欄 Fold %d/%d (驗證崩盤樣本: %d 天) ... ', k, K, num_val_pos);
@@ -420,7 +440,6 @@ classdef GBDTExpertAgent < handle
                 s = obj.resolveStream(stream);
             end
             
-            % ★ 核心修復：使用類別名稱 RandStream 呼叫靜態方法
             old_stream = RandStream.setGlobalStream(s);
             cleanupObj = onCleanup(@() RandStream.setGlobalStream(old_stream));
             
@@ -448,7 +467,13 @@ classdef GBDTExpertAgent < handle
             use_parallel_flag = (num_queries > 1);
             
             explainer = shapley(target_mdl, X_bg_tbl);
-            shap_results = fit(explainer, X_query_tbl, 'UseParallel', use_parallel_flag);
+            
+            % ★ 核心修復 2：消除單查詢點傳遞 'UseParallel' 造成的無效參數警告
+            if use_parallel_flag
+                shap_results = fit(explainer, X_query_tbl, 'UseParallel', true);
+            else
+                shap_results = fit(explainer, X_query_tbl);
+            end
             
             fig_name = sprintf('SHAP 歸因分析 - %s', upper(mode));
             figure('Name', fig_name, 'Color', 'w', 'Position', [100, 100, 900, 600]);
@@ -472,7 +497,6 @@ classdef GBDTExpertAgent < handle
             elseif ~isempty(obj.ConfigObj) && ismethod(obj.ConfigObj, 'getRandStream')
                 s = obj.ConfigObj.getRandStream(1);
             else
-                % ★ 核心修復：使用類別名稱 RandStream 呼叫靜態方法
                 s = RandStream.getGlobalStream();
             end
         end
