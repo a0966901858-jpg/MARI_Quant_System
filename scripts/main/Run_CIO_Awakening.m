@@ -2,15 +2,23 @@
 % 腳本：5_Run_CIO_HRL_Train.m (原 5_Run_CIO_Awakening.m)
 % 升級：Phase 15.5 60D 基準線版 (★ 20日定期調倉步進對齊、消除慢速訊號過度換手、
 %       PPO 動作探索綁定 mrg32k3a 獨立子串流、狀態空間對齊橫截面百分位排序得分、
-%       Open-to-Open 撮合與權重漂移同構化、死區連續縮放護欄、多體制驗證早停)
+%       Open-to-Open 撮合與權重漂移同構化、死區連續縮放護欄、多體制驗證早停、
+%       各階段獨立高精度計時與總運行耗時審計)
 % 職責：在向量化平行模擬環境中，訓練三位具備不同風險偏好的 CIO 總管，追求高夏普與低回撤
 % =========================================================================
 clear; clc; close all;
+
+% 啟動全域總計時器
+t_total_start = tic;
+
 disp('=================================================================');
 disp('🚀 [Phase 15.5] 啟動 CIO 三軌訓練 (60D 基準線與定期調倉同構版)');
 disp('=================================================================');
 
-%% 0. 環境路徑掛載 (規範化階層回溯解析與路徑重新整理)
+%% 0. 環境路徑掛載與平行池啟動
+t_step0 = tic;
+disp('--- 步驟 0：環境路徑掛載、Config 載入與平行池啟動 ---');
+
 currentFile = mfilename('fullpath');
 if isempty(currentFile)
     currentPath = pwd;
@@ -48,14 +56,18 @@ stream_main = configObj.getRandStream(1);
 RandStream.setGlobalStream(stream_main);
 disp('🔒 已成功掛載 mrg32k3a 主隨機串流 (Substream=1)，鎖定 CIO 訓練環境。');
 
-%% 0. 啟動 MATLAB 平行運算池
+% 啟動 MATLAB 平行運算池
 poolobj = gcp('nocreate');
 if isempty(poolobj)
     disp(' ⚙️ 正在啟動 CPU 平行運算池 (Parallel Pool)...');
     parpool('Processes'); 
 end
 
+time_step0 = toc(t_step0);
+fprintf('⏱️ [步驟 0 完成] 耗時: %.2f 秒\n\n', time_step0);
+
 %% 1. 載入特徵快取、DataFetcher 開盤價與專家百分位選股矩陣
+t_step1 = tic;
 disp('--- 步驟 1：載入全域資料庫、Opens 矩陣與專家百分位選股分數 ---');
 cachePath = fullfile(configObj.CacheDir, 'features_denoised.mat');
 gbdtPath  = fullfile(configObj.ModelDir, 'GBDT_Guards.mat');
@@ -94,7 +106,11 @@ P_time_M  = P_time_all(valid_idx, :)';
 P_space_M = P_space_all(valid_idx, :)';
 numDays   = length(Dates_Active);
 
+time_step1 = toc(t_step1);
+fprintf('⏱️ [步驟 1 完成] 耗時: %.2f 秒\n\n', time_step1);
+
 %% 2. 建構 CIO 五維宏觀感知狀態
+t_step2 = tic;
 disp('--- 步驟 2：預計算 CIO 5 維宏觀狀態空間 ---');
 CIO_State = zeros(5, numDays, 'single');
 
@@ -127,7 +143,11 @@ CIO_State(3, :) = vol20';             % 維度 3：大盤年化波動率
 CIO_State(4, :) = abs(mdd252)';       % 維度 4：一年期最大回撤絕對值
 CIO_State(5, :) = 1.0;                % 維度 5：當前持倉現金比例
 
+time_step2 = toc(t_step2);
+fprintf('⏱️ [步驟 2 完成] 耗時: %.2f 秒\n\n', time_step2);
+
 %% 3. 校準崩盤護欄死區下限並實例化三軌代理人
+t_step3 = tic;
 disp('--- 步驟 3：校準崩盤護欄死區下限並實例化三軌 RL 代理人 ---');
 spy_inception_idx = find(spy_prices > 10, 1);
 if isempty(spy_inception_idx), spy_inception_idx = 1; end
@@ -173,7 +193,11 @@ cfg_agg = struct('Frict', base_frict*0.5, 'GuardHigh', min(0.99, base_guard*1.15
 cfg_bal = struct('Frict', base_frict,     'GuardHigh', base_guard,                 'LR', base_lr,     'TauNoise', tau_noise);
 cfg_con = struct('Frict', base_frict*1.5, 'GuardHigh', base_guard*0.85,            'LR', base_lr*0.8, 'TauNoise', tau_noise);
 
-%% 4. 動態對齊時間軸並構建跨體制驗證池
+time_step3 = toc(t_step3);
+fprintf('⏱️ [步驟 3 完成] 耗時: %.2f 秒\n\n', time_step3);
+
+%% 4. 動態對齊時間軸並構建跨體制驗證池 (包含 PPO 訓練主迴圈)
+t_step4 = tic;
 disp('--- 步驟 4：切分訓練池與多體制驗證池 (解決短回合過擬合) ---');
 RolloutSteps = 60; 
 
@@ -323,7 +347,11 @@ if ~isempty(best_agent_agg)
     agent_conservative = best_agent_con;
 end
 
+time_step4 = toc(t_step4);
+fprintf('⏱️ [步驟 4 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step4, time_step4 / 60);
+
 %% --- 步驟 5：儲存覺醒完成的三軌 CIO 大腦與訓練曲線 ---
+t_step5 = tic;
 disp('--- 步驟 5：儲存覺醒完成的三軌 CIO 大腦與訓練曲線 (白底黑字) ---');
 trainFigPath = fullfile(configObj.ModelDir, 'Phase5_CIO_Training_Curve.png');
 exportgraphics(fig_train, trainFigPath, 'Resolution', 300, 'BackgroundColor', 'white');
@@ -334,6 +362,36 @@ save(fullfile(configObj.ModelDir, 'CIO_Aggressive.mat'), 'agent_aggressive');
 save(fullfile(configObj.ModelDir, 'CIO_Balanced.mat'), 'agent_balanced');
 save(fullfile(configObj.ModelDir, 'CIO_Conservative.mat'), 'agent_conservative');
 disp('✅ Phase 5 訓練完成！最佳大腦已具備跨體制穩健性並安全落地。');
+
+time_step5 = toc(t_step5);
+fprintf('⏱️ [步驟 5 完成] 耗時: %.2f 秒\n\n', time_step5);
+
+%% =========================================================================
+% 結算全流程執行時長審計
+% =========================================================================
+total_elapsed_sec = toc(t_total_start);
+tot_hours = floor(total_elapsed_sec / 3600);
+tot_mins  = floor(mod(total_elapsed_sec, 3600) / 60);
+tot_secs  = mod(total_elapsed_sec, 60);
+
+fprintf('=================================================================\n');
+fprintf('📊 【Phase 5 各階段耗時明細與總時長審計報告】\n');
+fprintf('=================================================================\n');
+fprintf(' 步驟 0：環境掛載與平行池啟動     : %8.2f 秒 (%5.1f%%)\n', time_step0, (time_step0 / total_elapsed_sec) * 100);
+fprintf(' 步驟 1：快取載入與開盤價矩陣對齊 : %8.2f 秒 (%5.1f%%)\n', time_step1, (time_step1 / total_elapsed_sec) * 100);
+fprintf(' 步驟 2：CIO 5 維宏觀狀態空間計算 : %8.2f 秒 (%5.1f%%)\n', time_step2, (time_step2 / total_elapsed_sec) * 100);
+fprintf(' 步驟 3：死區下限校準與代理人實例化: %8.2f 秒 (%5.1f%%)\n', time_step3, (time_step3 / total_elapsed_sec) * 100);
+fprintf(' 步驟 4：三軌 HRL 訓練與多體制驗證: %8.2f 秒 (%5.1f%%)\n', time_step4, (time_step4 / total_elapsed_sec) * 100);
+fprintf(' 步驟 5：訓練曲線輸出與大腦權重存檔: %8.2f 秒 (%5.1f%%)\n', time_step5, (time_step5 / total_elapsed_sec) * 100);
+fprintf('-----------------------------------------------------------------\n');
+if tot_hours > 0
+    fprintf('⏱️ 【總執行時長】: %d 小時 %d 分 %.2f 秒 (共 %.2f 秒)\n', tot_hours, tot_mins, tot_secs, total_elapsed_sec);
+else
+    fprintf('⏱️ 【總執行時長】: %d 分 %.2f 秒 (共 %.2f 秒)\n', tot_mins, tot_secs, total_elapsed_sec);
+end
+fprintf('=================================================================\n');
+disp('🎯 [Phase 5] CIO 三軌訓練完成！請進入 Phase 6。');
+disp('=================================================================');
 
 %% =====================================================================
 % 向量化環境模擬核心函數 (★ 定期調倉 + 權重漂移 + 死區縮放 + 串流約束)
@@ -516,7 +574,7 @@ function [avg_reward, agent] = simulate_and_update(agent, cfg, start_indices, st
         ret(isnan(ret) | isinf(ret)) = 0; 
         
         spy_ret = (Opens(current_t + 2, spy_idx)' - Opens(current_t + 1, spy_idx)') ./ (Opens(current_t + 1, spy_idx)' + 1e-8);
-        spy_ret(isnan(spy_ret) | isinf(spy_ret)) = 0;
+        spy_ret(isnan(spy_ret) | isinf(spy_ret)) = 0; 
         
         current_vol = current_state(3, :); 
         current_vol(isnan(current_vol) | isinf(current_vol)) = 0;
