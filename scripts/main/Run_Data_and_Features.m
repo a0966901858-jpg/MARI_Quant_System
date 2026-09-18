@@ -1,16 +1,23 @@
 % =========================================================================
 % 腳本：1_Run_Data_and_Features.m 
 % 升級：Phase 15.5 (★ mrg32k3a 獨立子串流注入、parfor 平行隨機狀態嚴格鎖定、
-%       雙爬蟲微服務調度、FRED 總經整合、VQ-VAE 字典物理凍結與大腦實體落地)
+%       雙爬蟲微服務調度、FRED 總經整合、VQ-VAE 字典物理凍結與大腦實體落地、
+%       各階段獨立高精度計時與總運行耗時審計)
 % 職責：調度 Python 爬蟲 -> DataFetcher 矩陣映射 -> 特徵工程 (含真實VIX/VRP) -> VQ-VAE 降噪存檔
 % =========================================================================
 clear; clc; close all;
+
+% 啟動全域總計時器
+t_total_start = tic;
 
 disp('=================================================================');
 disp('🚀 [Phase 15.5] 啟動 MARI 數據湖對齊、特徵萃取與零洩漏降噪管線 (mrg32k3a 確定性子串流版)');
 disp('=================================================================');
 
 %% 0. 環境路徑掛載 (規範化階層回溯解析與路徑重新整理)
+t_step0 = tic;
+disp('--- 步驟 0：環境路徑掛載、Config 載入與平行隨機子串流鎖定 ---');
+
 currentFile = mfilename('fullpath');
 if isempty(currentFile)
     currentPath = pwd;
@@ -44,7 +51,6 @@ rehash;
 if exist('Config', 'class') ~= 8
     error('❌ 已掛載路徑但仍找不到 Config 類別，請檢查 configs/Config.m 權限或語法錯誤！');
 end
-
 configObj = Config();
 
 % ★ 核心修復 1：使用 Config 統一初始化主執行緒 mrg32k3a 隨機數生成器 (Substream = 1)
@@ -58,7 +64,6 @@ if isempty(poolobj)
 end
 
 % ★ 核心修復 2：為 parpool 所有並行 Worker 注入 mrg32k3a 獨立子串流 (Sub-streams)
-% 依 labindex 鎖定子串流索引，杜絕 parfor 競爭排程造成的隨機漂移，確保 FDR 圖譜構建 100% 確定性可重現
 rng_seed = configObj.RNG_Seed;
 rng_gen  = configObj.RNG_Generator;
 spmd
@@ -67,8 +72,11 @@ spmd
     RandStream.setGlobalStream(worker_stream);
 end
 disp('🔒 已成功為所有並行 Worker 注入 mrg32k3a 獨立隨機子串流 (確定性可重現模式)。');
+time_step0 = toc(t_step0);
+fprintf('⏱️ [步驟 0 完成] 耗時: %.2f 秒\n\n', time_step0);
 
 %% --- 步驟 1：啟動外部 Python 雙爬蟲微服務 (Yahoo Finance + FRED API) ---
+t_step1 = tic;
 disp('--- 步驟 1：啟動外部 Python 爬蟲微服務 (美股大宇宙 + FRED 總經) ---');
 
 % 尋找 Python 執行環境
@@ -104,19 +112,24 @@ end
 
 % 動態重載宇宙名單
 configObj.loadUniverse(); 
+time_step1 = toc(t_step1);
+fprintf('⏱️ [步驟 1 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step1, time_step1 / 60);
 
 %% --- 步驟 2：載入 Data Lake 大宇宙數據 (純矩陣映射) ---
+t_step2 = tic;
 disp('--- 步驟 2：載入 Data Lake 並執行極速矩陣映射 ---');
 fetcher = DataFetcher(configObj);
 dataStruct = fetcher.fetch_data(); 
+time_step2 = toc(t_step2);
+fprintf('⏱️ [步驟 2 完成] 耗時: %.2f 秒\n\n', time_step2);
 
 %% --- 步驟 3：特徵工程與時變圖譜萃取 ---
+t_step3 = tic;
 disp('--- 步驟 3：特徵工程與 DyGAT 時變圖譜萃取 (防禦 Look-ahead Bias) ---');
 fe = FeatureEngineer(configObj);
 if isprop(fe, 'RandStream')
     fe.RandStream = configObj.getRandStream(1);
 end
-
 if ~isstruct(dataStruct)
     error('❌ 致命錯誤：資料流格式錯誤！請確保 DataFetcher 輸出的是 Struct 矩陣封裝。');
 end
@@ -131,8 +144,11 @@ fprintf('  📊 [特徵面板維度校驗] 天數: %d | 節點特徵數: %d 維 
 if totalFeatsCheck ~= fe.TotalNodeFeats
     error('❌ 特徵維度不匹配：實際產出 %d 維，預期為 %d 維！', totalFeatsCheck, fe.TotalNodeFeats);
 end
+time_step3 = toc(t_step3);
+fprintf('⏱️ [步驟 3 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step3, time_step3 / 60);
 
 %% --- 步驟 4：嚴格 In-Sample 預訓練 VQ-VAE 降噪器與字典凍結 ---
+t_step4 = tic;
 disp('--- 步驟 4：嚴格 In-Sample 預訓練 VQ-VAE 降噪器與字典凍結 ---');
 Train_Start_Date = datetime('2006-01-01', 'TimeZone', 'UTC');
 OOS_Start_Date   = datetime('2022-01-01', 'TimeZone', 'UTC');
@@ -147,12 +163,18 @@ vqvaeAgent.train(X_norm_IS, Expert_Active_IS, 30);
 % 訓練完畢立即凍結字典，物理禁止 OOS 推論時更新編碼簿
 vqvaeAgent.Quantizer.freeze();
 fprintf(' 🧊 VQ-VAE 編碼簿字典已成功凍結 (Freeze)，徹底杜絕 OOS 洩漏！\n');
+time_step4 = toc(t_step4);
+fprintf('⏱️ [步驟 4 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step4, time_step4 / 60);
 
 %% --- 步驟 5：全域盲測降噪 ---
+t_step5 = tic;
 disp(' 🔄 啟動全域盲測降噪 (Out-of-Sample Denoising)...');
 X_denoised_3D = vqvaeAgent.denoise(X_norm_3D, Expert_Active);
+time_step5 = toc(t_step5);
+fprintf('⏱️ [步驟 5 完成] 耗時: %.2f 秒\n\n', time_step5);
 
 %% --- 步驟 6：降噪特徵張量與 VQ-VAE 模型實體快取落地 ---
+t_step6 = tic;
 disp('--- 步驟 6：降噪特徵 3D 張量快取與 VQ-VAE 大腦實體落地 ---');
 
 % 6A. 儲存全域特徵面板與圖譜快取
@@ -165,7 +187,33 @@ vqModelPath = fullfile(configObj.ModelDir, 'VQVAE_Agent.mat');
 if ~exist(configObj.ModelDir, 'dir'), mkdir(configObj.ModelDir); end
 save(vqModelPath, 'vqvaeAgent', '-v7.3');
 fprintf('💾 VQ-VAE 降噪大腦實體已存檔至: %s\n', vqModelPath);
+time_step6 = toc(t_step6);
+fprintf('⏱️ [步驟 6 完成] 耗時: %.2f 秒\n\n', time_step6);
 
-disp('=================================================================');
+%% =========================================================================
+% 結算全流程執行時長審計
+% =========================================================================
+total_elapsed_sec = toc(t_total_start);
+tot_hours = floor(total_elapsed_sec / 3600);
+tot_mins  = floor(mod(total_elapsed_sec, 3600) / 60);
+tot_secs  = mod(total_elapsed_sec, 60);
+
+fprintf('=================================================================\n');
+fprintf('📊 【Phase 1 各階段耗時明細與總時長審計報告】\n');
+fprintf('=================================================================\n');
+fprintf(' 步驟 0：環境掛載與隨機串流注入 : %8.2f 秒 (%5.1f%%)\n', time_step0, (time_step0 / total_elapsed_sec) * 100);
+fprintf(' 步驟 1：Python 爬蟲微服務調度  : %8.2f 秒 (%5.1f%%)\n', time_step1, (time_step1 / total_elapsed_sec) * 100);
+fprintf(' 步驟 2：Data Lake 矩陣映射對齊 : %8.2f 秒 (%5.1f%%)\n', time_step2, (time_step2 / total_elapsed_sec) * 100);
+fprintf(' 步驟 3：特徵工程與時變圖譜萃取 : %8.2f 秒 (%5.1f%%)\n', time_step3, (time_step3 / total_elapsed_sec) * 100);
+fprintf(' 步驟 4：In-Sample VQ-VAE 字典預訓練: %8.2f 秒 (%5.1f%%)\n', time_step4, (time_step4 / total_elapsed_sec) * 100);
+fprintf(' 步驟 5：全域盲測特徵向量降噪推論: %8.2f 秒 (%5.1f%%)\n', time_step5, (time_step5 / total_elapsed_sec) * 100);
+fprintf(' 步驟 6：張量快取與大腦實體序列化: %8.2f 秒 (%5.1f%%)\n', time_step6, (time_step6 / total_elapsed_sec) * 100);
+fprintf('-----------------------------------------------------------------\n');
+if tot_hours > 0
+    fprintf('⏱️ 【總執行時長】: %d 小時 %d 分 %.2f 秒 (共 %.2f 秒)\n', tot_hours, tot_mins, tot_secs, total_elapsed_sec);
+else
+    fprintf('⏱️ 【總執行時長】: %d 分 %.2f 秒 (共 %.2f 秒)\n', tot_mins, tot_secs, total_elapsed_sec);
+end
+fprintf('=================================================================\n');
 disp('🎯 [Phase 1] 完美完成。特徵資料庫與降噪模型已 100% 確定性落地，請進入 Phase 2！');
 disp('=================================================================');
