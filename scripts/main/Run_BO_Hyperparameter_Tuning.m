@@ -2,16 +2,24 @@
 % 腳本：4_Run_BO_Hyperparameter_Tuning.m
 % 升級：Phase 15.5 60D 基準線版 (★ 20日定期調倉步進對齊、消除慢速訊號過度換手、
 %       平行池全域注入 mrg32k3a 獨立子串流、DSR 統計顯著性熔斷機制、
-%       防無效參數污染生產環境、死區護欄模擬器對齊、白底黑字學術視覺化報表)
+%       防無效參數污染生產環境、死區護欄模擬器對齊、白底黑字學術視覺化報表、
+%       各階段獨立高精度計時與總運行耗時審計)
 % 職責：利用貝氏最佳化在多子窗口中聯合尋優，以 DSR 量化選擇偏誤；
 %       若未達顯著則啟動熔斷，防止邊界病態解覆寫生產管線。
 % =========================================================================
 clear; clc; close all;
+
+% 啟動全域總計時器
+t_total_start = tic;
+
 disp('=================================================================');
 disp('🧠 [Phase 15.5] 啟動 CIO 總管動態路由貝氏超參數尋優 (60D 基準線與定期調倉版)');
 disp('=================================================================');
 
 %% 0. 環境路徑掛載 (規範化階層回溯解析與路徑重新整理)
+t_step0 = tic;
+disp('--- 步驟 0：環境路徑掛載、Config 載入與隨機串流鎖定 ---');
+
 currentFile = mfilename('fullpath');
 if isempty(currentFile)
     currentPath = pwd;
@@ -45,7 +53,11 @@ configObj = Config();
 % 使用 Config 統一初始化主執行緒 mrg32k3a 隨機數引擎 (Substream = 1)
 configObj.initRNG(1);
 
+time_step0 = toc(t_step0);
+fprintf('⏱️ [步驟 0 完成] 耗時: %.2f 秒\n\n', time_step0);
+
 %% 1. 載入全域快取與 GBDT 預測機率，並動態拉取 Opens 矩陣
+t_step1 = tic;
 disp('--- 步驟 1：載入快取與時間軸嚴格對齊 (引入 Opens 矩陣) ---');
 cachePath = fullfile(configObj.CacheDir, 'features_denoised.mat');
 gbdtPath  = fullfile(configObj.ModelDir, 'GBDT_Guards.mat'); 
@@ -79,7 +91,11 @@ Dates_Active  = Dates_Active(valid_idx);
 P_time_M  = P_time_all(valid_idx, :)';
 P_space_M = P_space_all(valid_idx, :)';
 
+time_step1 = toc(t_step1);
+fprintf('⏱️ [步驟 1 完成] 耗時: %.2f 秒\n\n', time_step1);
+
 %% 2. 切分 In-Sample (IS) 訓練區間與雜訊底線校準
+t_step2 = tic;
 disp('--- 步驟 2：切分 In-Sample 訓練區間與校準背景雜訊底線 ---');
 Train_Start_Date = datetime('2006-01-01', 'TimeZone', Dates_Active.TimeZone);
 OOS_Start_Date   = datetime('2022-01-01', 'TimeZone', Dates_Active.TimeZone);
@@ -97,7 +113,11 @@ Dates_IS   = Dates_Active(idx_IS);
 tau_noise = prctile(P_crash_IS, 75);
 fprintf('  -> IS 期間 P(Crash) 75%% 背景雜訊分位數 (tau_noise): %.4f\n', tau_noise);
 
+time_step2 = toc(t_step2);
+fprintf('⏱️ [步驟 2 完成] 耗時: %.2f 秒\n\n', time_step2);
+
 %% 3. 定義貝氏最佳化超參數空間 (自適應邊界加固)
+t_step3 = tic;
 disp('--- 步驟 3：定義貝氏最佳化超參數空間 (自適應邊界與間距保證) ---');
 p_80 = prctile(P_crash_IS, 80);
 p_99 = prctile(P_crash_IS, 99);
@@ -120,7 +140,11 @@ var_weight = optimizableVariable('Expert_Time_Weight', [0.0, 1.0], 'Type', 'real
 var_topk   = optimizableVariable('Top_K_Assets', [10, 40], 'Type', 'integer');
 bo_vars    = [var_guard, var_weight, var_topk];
 
+time_step3 = toc(t_step3);
+fprintf('⏱️ [步驟 3 完成] 耗時: %.2f 秒\n\n', time_step3);
+
 %% 4. 啟動 BayesOpt 尋優引擎 (穩健多子窗口評估 + mrg32k3a 平行子串流鎖定)
+t_step4 = tic;
 disp('--- 步驟 4：啟動 BayesOpt 尋優引擎 (4 子窗口穩健目標函數 - 多核平行) ---');
 poolobj = gcp('nocreate');
 if isempty(poolobj)
@@ -144,7 +168,11 @@ results = bayesopt(obj_fun, bo_vars, ...
     'UseParallel', true, ...                                
     'Verbose', 1);
 
+time_step4 = toc(t_step4);
+fprintf('⏱️ [步驟 4 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step4, time_step4 / 60);
+
 %% 5. 提取最佳參數、DSR 統計校正與斷路器檢驗
+t_step5 = tic;
 disp('--- 步驟 5：提取最佳參數、DSR 統計檢驗與熔斷裁決 ---');
 if isempty(results.XAtMinObjective) || height(results.XAtMinObjective) == 0
     best_params = table(p_99, 0.5, 20, 'VariableNames', {'Guardrail_CrashProb', 'Expert_Time_Weight', 'Top_K_Assets'});
@@ -228,7 +256,11 @@ else
     fprintf('💾 尋優診斷數據已獨立存檔至: %s (供論文假說 H1d 證偽引用)\n', diag_bo_path);
 end
 
+time_step5 = toc(t_step5);
+fprintf('⏱️ [步驟 5 完成] 耗時: %.2f 秒\n\n', time_step5);
+
 %% 6. 產出 BayesOpt 收斂軌跡與超額收益視覺化報表 (標準學術白底黑字)
+t_step6 = tic;
 disp('--- 步驟 6：產出 BayesOpt 尋優收斂與超額收益報表 (白底黑字) ---');
 fig_bo = figure('Name', 'Phase 4: BayesOpt Tuning Report', ...
     'Position', [100, 100, 1200, 500], 'Color', 'w', 'Visible', 'off');
@@ -270,7 +302,34 @@ exportgraphics(fig_bo, boFigPath, 'Resolution', 300, 'BackgroundColor', 'white')
 fprintf(' 📊 尋優收斂與超額收益圖 (白底黑字) 已儲存至: %s\n', boFigPath);
 close(fig_bo);
 
-disp('=================================================================');
+time_step6 = toc(t_step6);
+fprintf('⏱️ [步驟 6 完成] 耗時: %.2f 秒\n\n', time_step6);
+
+%% =========================================================================
+% 結算全流程執行時長審計
+% =========================================================================
+total_elapsed_sec = toc(t_total_start);
+tot_hours = floor(total_elapsed_sec / 3600);
+tot_mins  = floor(mod(total_elapsed_sec, 3600) / 60);
+tot_secs  = mod(total_elapsed_sec, 60);
+
+fprintf('=================================================================\n');
+fprintf('📊 【Phase 4 各階段耗時明細與總時長審計報告】\n');
+fprintf('=================================================================\n');
+fprintf(' 步驟 0：環境掛載與隨機串流鎖定   : %8.2f 秒 (%5.1f%%)\n', time_step0, (time_step0 / total_elapsed_sec) * 100);
+fprintf(' 步驟 1：快取與時間軸對齊 (Opens) : %8.2f 秒 (%5.1f%%)\n', time_step1, (time_step1 / total_elapsed_sec) * 100);
+fprintf(' 步驟 2：IS 切分與雜訊底線校準    : %8.2f 秒 (%5.1f%%)\n', time_step2, (time_step2 / total_elapsed_sec) * 100);
+fprintf(' 步驟 3：超參數空間自適應邊界定義 : %8.2f 秒 (%5.1f%%)\n', time_step3, (time_step3 / total_elapsed_sec) * 100);
+fprintf(' 步驟 4：BayesOpt 尋優平行引擎運行: %8.2f 秒 (%5.1f%%)\n', time_step4, (time_step4 / total_elapsed_sec) * 100);
+fprintf(' 步驟 5：DSR 統計檢驗與斷路器裁決 : %8.2f 秒 (%5.1f%%)\n', time_step5, (time_step5 / total_elapsed_sec) * 100);
+fprintf(' 步驟 6：收斂軌跡與超額收益報表繪製: %8.2f 秒 (%5.1f%%)\n', time_step6, (time_step6 / total_elapsed_sec) * 100);
+fprintf('-----------------------------------------------------------------\n');
+if tot_hours > 0
+    fprintf('⏱️ 【總執行時長】: %d 小時 %d 分 %.2f 秒 (共 %.2f 秒)\n', tot_hours, tot_mins, tot_secs, total_elapsed_sec);
+else
+    fprintf('⏱️ 【總執行時長】: %d 分 %.2f 秒 (共 %.2f 秒)\n', tot_mins, tot_secs, total_elapsed_sec);
+end
+fprintf('=================================================================\n');
 disp('🎯 [Phase 4] 執行完畢！熔斷檢定與參數狀態已鎖定。');
 disp('=================================================================');
 
