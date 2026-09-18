@@ -1,0 +1,319 @@
+# MARI 量化交易系統：全階段防過擬合與正則化架構升級報告書
+
+---
+
+### 一、 技術可行性與審核矩陣
+
+針對 MARI 系統全階段（Phase 1 至 Phase 5）引入類似 Dropout 等防過擬合技術之評估，依據底層數學原理、計算圖引擎相容性與金融計量特性，綜合審核判定如下：
+
+| 模組 / 階段 | 提案技術 | 執行判定 | 衝突根因與理論評估 | 最終處置與替代方案 |
+| --- | --- | --- | --- | --- |
+| **Phase 1 特徵工程**<br>
+
+<br>(`Run_Data_and_Features.m`)
+
+ | **持久化隨機遮蔽 / 靜態噪聲** | **嚴格禁止** | 特徵資料庫持久化檔案（`features_denoised.mat`）必須維持市場物理數值客觀性，寫死隨機擾動會導致下游跨實驗無法對齊且污染 VQ-VAE 碼簿。
+
+ | **維持資料湖純淨**：嚴格禁止在 Phase 1 注入隨機擾動，所有特徵增強移至 Phase 2 訓練沙盒內部動態生成。
+
+ |
+| **Phase 2 時序專家**<br>
+
+<br>(LSTM 層級)
+
+ | **Variational Dropout** | **可行且推薦** | 跨時間步（$T=60$）共享相同 Drop Mask，消除逐步隨機丟棄所造成的隱藏狀態（Hidden State）與歷史記憶鏈條斷裂。
+
+ | **正式整合**：前向計算注入全時步廣播掩碼 $[D, B, 1]$。
+
+ |
+|  | **Zoneout** | **不可行** | MATLAB 原生 `bilstmLayer` 為 C++/cuDNN 底層封裝，不開放單元狀態替換；手動 `dlgradient` 展開迴圈會使計算耗時暴增且引發顯存溢出。 | **替代方案**：使用 **Hidden State LayerNorm + 循環權重 $L_2$ 懲罰** 達成隱藏狀態平滑。 |
+| **Phase 2 空間專家**<br>
+
+<br>(Transformer 層級)
+
+ | **Attention Dropout** | **可行且推薦** | 隨機丟棄自注意力權重矩陣 $A = \text{softmax}(QK^T / \sqrt{d})$ 中的連線，阻斷模型對特定歷史 K 線組合的死記硬背。
+
+ | **正式整合**：在 `selfAttentionLayer` 中顯式配置 `Dropout` 參數。
+
+ |
+|  | **DropPath (Stochastic Depth)** | **不可行** | 專為數十至上百層的深層殘差網路設計；MARI 時空雙軌架構僅 1~2 層，隨機丟棄殘差子層會切斷 50% 特徵流動，誘發梯度劇烈震盪。
+
+ | **替代方案**：使用 **殘差縮放（Residual Scaling）+ 標準 Dropout** 維持淺層梯度流平穩。 |
+| **Phase 2 輸入層**<br>
+
+<br>(Input Feature Level)
+
+ | **Feature Dropout** | **強烈推薦** | 以「特徵維度」為單位進行隨機遮蔽（Masking），強迫模型打破對特定強動能因子（如 Amihud20 或 Dist_H20）的依賴。
+
+ | **正式整合**：訓練前向前向生成跨時間步一致的特徵掩碼 $[D, B, 1]$。
+
+ |
+|  | **動態高斯噪聲注入** | **可行且推薦** | 在中性化特徵上注入微小擾動 $\mathcal{N}(0, \sigma^2)$，等效於隱式 $L_2$ 正則化，提升模型對微結構滑價的適應力。 | **正式整合**：動態疊加微結構抖動張量（$\sigma = 0.02$）。
+
+ |
+| **Phase 2 損失函數**<br>
+
+<br>(Loss Function Tuning)
+
+ | **Huber Loss (Smooth L1)** | **系統已內建** | 在誤差大時轉為線性懲罰，能防範金融極端厚尾事件拉扯模型梯度。
+
+ | **參數化收斂**：將過渡門檻 $\delta=1.0$ 正式納入全域配置參數。
+
+ |
+|  | **端到端報酬損失 (DSR/MDD)** | **架構不可行** | Phase 2 的定位為「特徵表徵抽取器」；路徑依賴（Path-dependent）的報酬損失會破壞橫截面單調排序力（Rank IC），破壞下游 Phase 3 GBDT 訓練基底。
+
+ | **替代方案**：維持 **Huber + Continuous Soft-IC 複合損失**，可選配 **Pairwise Ranking Margin Loss** 強化截面邊界。
+
+ |
+| **Phase 3 決策專家**<br>
+
+<br>(GBDT 排序與護欄)
+
+ | **Tree Dropout (DART)** | **不建議執行** | 決策樹非密集神經網路，MATLAB 原生 `fitrensemble` 不支援 DART，手動刪樹重新擬合會破壞 Boosting 殘差鏈且計算開銷過大。
+
+ | **替代方案**：導入 **特徵子採樣（80% Random Subspace）** 與 **Shrinkage 學習率退火（0.05）**。
+
+ |
+| **Phase 5 強化學習**<br>
+
+<br>(PPO 宏觀配置大腦)
+
+ | **Actor / Critic Dropout** | **嚴格禁止 (Hard No)** | Actor 注入隨機丟棄會使動作機率 $\pi(a \mid s)$ 劇烈抖動，破壞重要性採樣比率 $r_t(\theta)$ 並引發策略發散；Critic 加入 Dropout 會導致貝爾曼價值更新方差爆炸。
+
+ | **維持既有機制**：依靠 **策略熵正則項（Entropy Bonus）**、**Huber-like 獎勵** 與 **早停機制** 抑制過擬合。
+
+ |
+
+---
+
+### 二、 理論根因剖析與替代架構設計
+
+#### 1. 深度表徵階段：Feature / Variational / Attention Dropout 縱深防禦
+
+在 Phase 2 預訓練中，過擬合的主因在於金融時序特徵具備高雜訊、非定態與強共線性特性。單一標準 Dropout 會破壞序列結構，因此採取三層結構化解耦正則化：
+
+* **特徵欄位遮蔽（Feature Dropout）**：隨機以欄位（Column-wise）將特徵置零，公式為：
+
+$$\tilde{x}_{f, :, :} = x_{f, :, :} \cdot \frac{m_f}{1 - p_{\text{feat}}}, \quad m_f \sim \text{Bernoulli}(1 - p_{\text{feat}})$$
+
+
+
+此舉強迫模型利用非主流指標（如特質波動度、相對強弱）與主流動能指標進行多因子組合推論。
+
+
+* **時序循環一致性（Variational Dropout）**：在序列長度 $T=60$ 的時序維度上，確保每個 Batch 樣本在所有時間步使用同一個遮蔽向量：
+
+
+
+$$\text{Mask} \in \mathbb{R}^{D \times B \times 1} \xrightarrow{\text{Broadcast}} \mathbb{R}^{D \times B \times T}$$
+
+
+
+這確保了 LSTM 閘門單元在跨時間傳遞隱藏記憶時，神經元不會忽開忽關，維持歷史動能的物理連續性。
+
+
+* **自注意力權重正則化（Attention Dropout）**：在注意力權重矩陣上隨機斷開連結：
+
+$$\tilde{A} = \text{Dropout}\left(\text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right), p_{\text{attn}}\right)$$
+
+
+
+防止自注意力機制將過高權重過度鎖定於訓練集中特定幾日的歷史極端事件。
+
+
+
+#### 2. 表徵學習與交易執行目標之理論邊界
+
+「直接將 Differential Sharpe Ratio 或 MDD 懲罰作為 Phase 2 Loss」在架構上被判定不可行，其核心在於機器學習管線的職責解耦原則：
+
+* **Phase 2 職責**：提取對未來收益具備單調區別能力的特徵嵌入（Embedding）。其最佳目標函數是最大化橫截面排序資訊係數（Rank IC），以 **Huber + Soft-IC** 最為理想。
+
+
+* **交易風控職責**：回撤控制與夏普最優化具有嚴格的路徑依賴性（Path-dependent），受持倉步進、交易摩擦與資產權重交互作用主導。此類目標必須留給 Phase 4 的貝氏尋優（DSR 熔斷）與 Phase 5 的 PPO 宏觀配置大腦進行動態最佳化。若在 Phase 2 硬塞交易級損失，會導致表徵空間產生非凸畸變，大幅削弱下游 GBDT 的選股能力。
+
+
+
+#### 3. 決策樹與強化學習之正則化路徑
+
+* **GBDT 的原生等價 Dropout（隨機子空間法）**：決策樹的單次切分是貪婪演算法（Greedy Search）。若特徵池中存在單一強因子（如短期動能），所有決策樹的根節點都會優先選擇它。透過設定 `NumPredictorsToSample = 0.8 * numFeats`，強迫決策樹在 80% 的特徵子集中尋找次優切分點，在數學本質上完全等價於 Feature Dropout，且能保持 Boosting 殘差逼近的數值穩定性。
+
+
+* **PPO 為何嚴禁神經元 Dropout**：On-Policy RL 的更新基石是重要性採樣比率：
+
+$$r_t(\theta) = \frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_{\text{old}}}(a_t \mid s_t)}$$
+
+
+
+若在 Actor 網絡加入 Dropout，推論動作機率將受隨機掩碼支配，導致 $r_t(\theta)$ 產生無關策略優劣的巨大方差，頻繁觸發 PPO 的裁剪閾值（$1 \pm \epsilon$）甚至引發梯度發散；而在 Critic 網絡加入 Dropout 會破壞時序差分目標 $y_t = r_t + \gamma V(s_{t+1})$ 的定態性，引發嚴重的價值高估或崩潰。
+
+
+
+---
+
+### 三、 程式改動清冊與改動規格
+
+為落實上述決策，系統共有 5 個核心程式模組完成改動或確認架構規範：
+
+```
+[MARI 系統改動結構圖]
+├── configs/Config.m                      (SSOT 超參數配置中心：新增正則化超參數)
+├── models/BuildDecoupledExtractors.m     (模型工廠：實作特徵增強、Variational Dropout 與損失引擎)
+├── scripts/main/1_Run_Data_and_Features.m (Phase 1 特徵工程：嚴格保持資料湖純淨，加入資料完整性斷言)
+├── scripts/main/2_Run_Extractor_Pretrain.m (Phase 2 預訓練：動態調用訓練正則化，驗證/推論確定性解耦)
+└── agents/GBDTExpertAgent.m              (Phase 3 GBDT：決策樹範本配置 80% 特徵子採樣與 Shrinkage)
+
+```
+
+#### 1. `configs/Config.m`：全域參數單一真理來源
+
+在系統超參數區塊中集中新增深度學習與樹模型正則化參數，杜絕各腳本內部數值寫死：
+
+* **新增屬性**：
+* `FeatureDropoutRate = 0.15`：特徵維度隨機遮蔽率。
+* `InputNoiseStd = 0.02`：特徵動態高斯噪聲標準差。
+* `VariationalDropRate = 0.20`：時序全維度共享掩碼率。
+* `AttentionDropRate = 0.10`：自注意力權重遮蔽率。
+* `DL_HuberDelta = 1.0`：Huber Loss 線性過渡門檻。
+* `DL_ICLossWeight = 0.5`：Continuous Soft-IC 複合損失權重。
+* `GBDT_FeatSubsample = 0.8`：GBDT 每棵樹隨機抽樣特徵比例。
+* `GBDT_LearnRate = 0.05`：降低決策樹學習率以配合步長縮減。
+
+
+
+#### 2. `models/BuildDecoupledExtractors.m`：網路拓撲與動態正則化引擎
+
+將動態正則化工具、網路層封裝與損失計算收斂至靜態方法庫中：
+
+* **網路建構層**：
+* 在時序專家建構函式中，為 `selfAttentionLayer` 注入 `obj.AttentionDropRate`。
+
+
+* **新增靜態正則化方法**：
+* `apply_input_regularization(x, feat_drop_rate, noise_std, is_training)`：以欄位為單位生成掩碼張量，並注入尺度為 `noise_std` 的高斯雜訊。
+* `apply_variational_dropout(x, drop_rate, is_training)`：生成形狀為 $[D, B, 1]$ 之掩碼矩陣，自動廣播至序列 $T=60$ 的全時步。
+
+
+* **損失引擎參數化**：
+* `compute_continuous_return_loss(..., ic_weight, delta)`：開放動態傳入 Huber 門檻與 Soft-IC 權重。
+
+
+* `compute_vicreg_penalty(emb, target_std)`：獨立封裝表徵變異數保底約束，防範特徵坍縮。
+
+
+
+
+
+#### 3. `scripts/main/1_Run_Data_and_Features.m`：資料湖純淨度防禦
+
+落實 Phase 1 與 Phase 2 的職責隔離，確保快取資料之客觀物理特性：
+
+* **防禦機制**：嚴禁在產出 `features_denoised.mat` 前執行任何隨機遮蔽或持久化噪聲注入。
+
+
+* **新增資料品質斷言**：
+```matlab
+nan_ratio_norm = sum(isnan(X_norm_3D(:))) / numel(X_norm_3D);
+nan_ratio_deno = sum(isnan(X_denoised_3D(:))) / numel(X_denoised_3D);
+assert(nan_ratio_norm < 0.01, '❌ [資料品質警報] X_norm_3D 異常值比例過高！');
+assert(nan_ratio_deno < 0.01, '❌ [資料品質警報] X_denoised_3D 異常值比例過高！');
+
+```
+
+
+
+#### 4. `scripts/main/2_Run_Extractor_Pretrain.m`：預訓練沙盒動態調度
+
+在訓練與評估迴圈中嚴格實施「訓練擾動、評估純淨」機制：
+
+* **訓練階段（`aux_loss_time` / `aux_loss_space`）**：
+* 前向傳播前調用 `apply_input_regularization` 與 `apply_variational_dropout`，傳入標記 `is_training = true`。
+* 計算損失時動態引用 `configObj.DL_HuberDelta` 與 `configObj.DL_ICLossWeight`。
+
+
+* **驗證與推論階段（`calc_val_loss_*` / 步驟 6 提煉）**：
+* 強制傳入 `is_training = false`，推論函式（`predict`）原生關閉所有 Dropout 與噪聲，確保產出的全歷史 64 維 Embedding 矩陣（`E_time_all`, `E_space_all`）為確定性數值。
+
+
+
+
+
+#### 5. `agents/GBDTExpertAgent.m`：決策樹隨機子空間注入
+
+強化 Phase 3 下游排序模型的泛化能力：
+
+* 在 `templateTree` 中配置 `'NumPredictorsToSample', round(numFeats * configObj.GBDT_FeatSubsample)`。
+
+
+* 訓練 `LSBoost` 時調用 `configObj.GBDT_LearnRate`（0.05）配合 `configObj.GBDT_NumCycles`（100），透過步長縮減防禦過擬合。
+
+
+
+---
+
+### 四、 訓練與推論隔離驗證機制 (Train/Inference Parity)
+
+為確保隨機正則化技術不對下游量化回測造成「偽信號」或「數據滲漏」，系統建立嚴格的數值一致性防禦屏障：
+
+```
++---------------------------------------------------------------------------------------+
+|                                訓練與推論隔離檢驗架構                                 |
++---------------------------------------------------------------------------------------+
+|  【訓練模式 (is_training = true)】                                                    |
+|    - 輸入層 : 動態注入 Feature Dropout (15%) + 高斯噪聲 (std = 0.02)                   |
+|    - 網路層 : 廣播 Variational Dropout (20%) + Attention Dropout (10%)                 |
+|    - 目的   : 打破特徵共線性依賴、抑制歷史模式死記、平滑損失曲面                      |
++---------------------------------------------------------------------------------------+
+                                           │
+                                           ▼ (切換至驗證 / 生產推論)
++---------------------------------------------------------------------------------------+
+|  【推論模式 (is_training = false)】                                                   |
+|    - 輸入層 : 特徵原始物理輸入 (Dropout 權重除以保留率歸一化完畢，不注入噪聲)          |
+|    - 網路層 : 關閉所有隨機掩碼，神經元全量啟用，執行確定性矩陣相乘                    |
+|    - 斷言   : 相同輸入在同一模型權重下，輸出之 64 維 Embedding 必須具備 100% 數值確定性|
++---------------------------------------------------------------------------------------+
+
+```
+
+1. **隨機數串流隔離**：所有隨機掩碼生成均受控於 `configObj.getRandStream(1)` 產生的 `mrg32k3a` 隨機數引擎，確保實驗結果在多核心與跨平台環境下具備可重現性。
+
+
+2. **表徵健康度監控**：在每輪訓練後抽樣無擾動 Embedding，計算各維度變異數（`var_e_t`, `var_e_s`）。若變異數低於保底下限（時序 0.05、空間 0.10），系統判定表徵發生坍縮並跳過該輪快照存檔，防止正則化過度導致神經元死鎖。
+
+
+3. **多體制早停機制**：早停評估嚴格基於 2008 金融海嘯、2015 盤整修正與 2020 崩盤等歷史極端區間之驗證損失，唯有在未受擾動的跨體制驗證損失持續改善時，模型權重才予以保留。
+
+
+
+---
+
+### 五、 驗證藍圖與效益監控指標
+
+完成上述改動後，全系統重跑管線時應重點追蹤以下量化指標，以驗證防過擬合技術的實質成效：
+
+* **訓練與驗證損失間距（Overfitting Gap）**：
+* 監控指標：$\Delta \text{Loss} = \text{Loss}_{\text{Val}} - \text{Loss}_{\text{Train}}$。
+* 預期表現：引入 Feature / Attention Dropout 後，訓練集損失收斂速度放緩屬正常現象；關鍵在於多體制驗證損失曲線不再如早期實驗在通過最低點後單調發散，$\Delta \text{Loss}$ 應顯著收斂。
+
+
+
+
+* **折外橫截面預測力（Phase 3 OOF Rank IC / ICIR）**：
+* 監控指標：使用 18 維特徵進行 5-Fold Purged CV 產出之 Rank IC 與經過 Newey-West HAC 校正之 $t$ 統計量。
+
+
+* 預期表現：各專家軌道之 OOF Rank IC 應穩定維持在 $+0.015 \sim +0.025$ 區間且 $p < 0.01$，特徵子採樣應使各因子權重分佈更為平滑，SHAP 分析中單一強因子貢獻率不再超過 40%。
+
+
+
+
+* **全歷史與樣本外實盤穩定度（Phase 6 Backtest）**：
+* 監控指標：樣本外（OOS: 2022–2026）年化夏普比率、最大回撤（MDD）與雙邊年化換手率。
+
+
+* 預期表現：正則化後的表徵抽取器在 2022 年後的大幅升息與震盪行情中應展現更強的適應力，避免模型因過度擬合歷史低頻趨勢而產生長達數季的現金癱瘓或回撤擴大，使實盤績效穩健落於 20D 週期同構的最佳甜蜜點。
+
+
+
+
+
+本套正則化改動方案在強化深度神經網路抗噪特性的同時，遵循了量化金融任務解耦與強化學習收斂穩定性的基本理論，能為整體交易系統奠定穩固的泛化基礎。
