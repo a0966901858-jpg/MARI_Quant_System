@@ -1,16 +1,25 @@
 % =========================================================================
 % 腳本：2_Run_Extractor_Pretrain.m (階段 2：DL 雙軌時空特徵萃取器預訓練管線)
-% 升級：Phase 15.5 參數驅動版 (★ 自動繼承 Config.m 之 Horizon/PurgeEmbargo、
-%       支援 5D/20D/60D 動態對齊、mrg32k3a 獨立子串流注入、He 權重初始化、
-%       Huber + Soft-IC 複合連續迴歸損失、VICReg 變異數保底防坍縮)
-% 職責：使用 18 維個股微觀/相對特徵提煉 64 維 Embedding，學習動能與結構表徵
+% 升級：Phase 15.5 正則化防禦與參數驅動基準版 (★ 自動繼承 Config.m 全域參數、
+%       輸入層 Feature Dropout 與動態高斯噪聲注入、時序循環 Variational Dropout、
+%       Attention Dropout 防死記、Huber + Soft-IC 複合連續迴歸損失動態對齊、
+%       VICReg 變異數保底防坍縮、mrg32k3a 確定性子串流、多體制早停機制、
+%       各階段獨立高精度計時與總運行耗時審計)
+% 職責：使用 18 維個股微觀/相對特徵提煉 64 維 Embedding，學習動能與空間拓撲表徵
 % =========================================================================
 clear; clc; close all;
+
+% 啟動全域總計時器
+t_total_start = tic;
+
 disp('=================================================================');
-disp('🚀 [Phase 15.5] 啟動 DL 雙軌特徵萃取器預訓練管線 (Config 參數動態對齊版)');
+disp('🚀 [Phase 15.5] 啟動 DL 雙軌特徵萃取器預訓練管線 (深度正則化防過擬合版)');
 disp('=================================================================');
 
 %% 0. 環境路徑掛載 (規範化階層回溯解析與路徑重新整理)
+t_step0 = tic;
+disp('--- 步驟 0：環境路徑掛載、Config 載入與隨機串流鎖定 ---');
+
 currentFile = mfilename('fullpath');
 if isempty(currentFile)
     currentPath = pwd;
@@ -33,7 +42,6 @@ addpath(genpath(fullfile(projectRoot, 'envs')));
 addpath(genpath(fullfile(projectRoot, 'utils')));
 rehash path;
 rehash;
-
 if exist('Config', 'class') ~= 8
     error('❌ 已掛載路徑但仍找不到 Config 類別，請檢查 configs/Config.m 權限或語法錯誤！');
 end
@@ -44,7 +52,11 @@ stream = configObj.getRandStream(1);
 RandStream.setGlobalStream(stream);
 disp('🔒 已成功掛載 mrg32k3a 主隨機串流 (Substream=1)，鎖定預訓練確定性。');
 
+time_step0 = toc(t_step0);
+fprintf('⏱️ [步驟 0 完成] 耗時: %.2f 秒\n\n', time_step0);
+
 %% 1. 載入 3D 特徵面板資料
+t_step1 = tic;
 disp('--- 步驟 1：載入淨化 3D 特徵面板與時間軸嚴格對齊 ---');
 cachePath = fullfile(configObj.CacheDir, 'features_denoised.mat');
 if ~exist(cachePath, 'file')
@@ -57,19 +69,22 @@ numT = configObj.NumTickers;
 numFeats_All = size(X_norm_3D, 2); 
 seqLen = configObj.SeqLen;
 
-% ★ 核心修復 1：優先繼承 Config.m 的全域 Horizon，消除硬編碼
+% 優先繼承 Config.m 的全域 Horizon，消除硬編碼
 if isprop(configObj, 'Horizon') && ~isempty(configObj.Horizon)
     horizon = configObj.Horizon;
 else
-    horizon = 60;
+    horizon = 20;
 end
-
 valid_idx = seqLen : (numDaysRaw - horizon); 
 num_valid = length(valid_idx);
 fprintf('  -> 宇宙規模: %d 檔 | 交易天數: %d 天 | 原始特徵維度: %d 維 | 預測視窗: %d 日\n', ...
     numT, numDaysRaw, numFeats_All, horizon);
 
+time_step1 = toc(t_step1);
+fprintf('⏱️ [步驟 1 完成] 耗時: %.2f 秒\n\n', time_step1);
+
 %% 1.5 核心串接：18 維特徵切片、1D/Horizon 雙軌 HAC-ICIR 健檢與特徵注意力閘門
+t_step1_5 = tic;
 disp('--- 步驟 1.5：特徵切片 (剝離 Macro)、1D/HAC-ICIR 健檢與特徵注意力加權 ---');
 numExtractorFeats = 3 + configObj.NumMicroFeatures; % 18 維 (Rel 3 + Micro 15)
 X_norm_3D_extractor_raw = X_norm_3D(:, 1:numExtractorFeats, :);
@@ -94,14 +109,17 @@ ch_stds = squeeze(std(X_norm_3D_extractor, 0, [1, 3], 'omitnan'));
 fprintf('  -> [萃取器通道健檢] 18 維特徵標準差範圍: [%.4f, %.4f] (平均: %.4f)\n', ...
     min(ch_stds), max(ch_stds), mean(ch_stds));
 
+time_step1_5 = toc(t_step1_5);
+fprintf('⏱️ [步驟 1.5 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step1_5, time_step1_5 / 60);
+
 %% 2. 構建橫截面連續預測目標 (動態 Horizon 連續報酬 Z-Score)
+t_step2 = tic;
 fprintf('--- 步驟 2：構建橫截面連續超額報酬標籤 (Direction 2: %dD Continuous Z-Score) ---\n', horizon);
 R_fwd = NaN(numDaysRaw, numT, 'single');
 R_fwd(1:end-horizon, :) = (Prices_Active(1+horizon:end, :) - Prices_Active(1:end-horizon, :)) ...
                           ./ (Prices_Active(1:end-horizon, :) + 1e-8);
 R_fwd(isnan(R_fwd) | isinf(R_fwd)) = NaN;
 Y_Labels_3D = zeros(numDaysRaw, numT, 'single');
-
 for t = 1:numDaysRaw-horizon
     active_mask = Expert_Active(t, :) & ~isnan(R_fwd(t, :)) & ~isinf(R_fwd(t, :));
     if sum(active_mask) >= 10
@@ -114,13 +132,16 @@ for t = 1:numDaysRaw-horizon
 end
 Y_Labels_3D(isnan(Y_Labels_3D) | isinf(Y_Labels_3D)) = 0;
 
+time_step2 = toc(t_step2);
+fprintf('⏱️ [步驟 2 完成] 耗時: %.2f 秒\n\n', time_step2);
+
 %% 3. 切分時間軸 (嚴格 IS 內 Purged Embargo 跨體制驗證集)
+t_step3 = tic;
 disp('--- 步驟 3：切分時間軸 (嚴格 IS 內 Purged Embargo 跨體制驗證集) ---');
 Train_Start_Date = datetime('2006-01-01');
 OOS_Start_Date   = datetime('2022-01-01');
 idx_train_raw = find(Dates_Active >= Train_Start_Date & Dates_Active < OOS_Start_Date);
 is_idx_valid = intersect(valid_idx, idx_train_raw);
-
 regime_windows = { ...
     struct('name','2008 金融海嘯', 'start', datetime('2007-09-01'), 'end', datetime('2009-06-01')), ...
     struct('name','2015-16 盤整修正', 'start', datetime('2015-06-01'), 'end', datetime('2016-06-01')), ...
@@ -129,13 +150,12 @@ regime_windows = { ...
 val_idx_valid = [];
 embargo_val_idx = [];
 
-% ★ 核心修復 2：優先讀取 Config.m 的 PurgeEmbargo，若無則綁定 horizon
+% 優先讀取 Config.m 的 PurgeEmbargo，若無則綁定 horizon
 if isprop(configObj, 'PurgeEmbargo') && ~isempty(configObj.PurgeEmbargo)
     embargo = configObj.PurgeEmbargo;
 else
     embargo = horizon;
 end
-
 for i = 1:length(regime_windows)
     w = regime_windows{i};
     idx_w = find(Dates_Active >= w.start & Dates_Active <= w.end);
@@ -152,7 +172,11 @@ num_val = length(val_idx_valid);
 fprintf('✅ Purged 多體制時間軸劃分成功！訓練樣本: %d 筆 | 跨體制驗證樣本: %d 筆 (嚴格 Embargo: %d 天)\n', ...
     num_train, num_val, embargo);
 
+time_step3 = toc(t_step3);
+fprintf('⏱️ [步驟 3 完成] 耗時: %.2f 秒\n\n', time_step3);
+
 %% 4. 初始化雙軌 DL 萃取器與連續迴歸線性預測頭
+t_step4 = tic;
 disp('--- 步驟 4：初始化雙軌特徵萃取網路 (連續預測頭 - mrg32k3a 確定性初值) ---');
 factory = BuildDecoupledExtractors(configObj, numExtractorFeats);
 [net_time, net_space] = factory.buildNetworks();
@@ -162,7 +186,6 @@ W_aux_time  = dlarray(randn(stream, 1, 64, 'single') * 0.01);
 b_aux_time  = dlarray(zeros(1, 1, 'single'));         
 W_aux_space = dlarray(randn(stream, 1, 64, 'single') * 0.01);
 b_aux_space = dlarray(zeros(1, 1, 'single'));
-
 if canUseGPU()
     gpuInfo = gpuDevice(); 
     fprintf('🎮 成功捕獲圖形加速卡：【%s】，開啟深度學習全量預訓練。\n', gpuInfo.Name);
@@ -172,30 +195,40 @@ if canUseGPU()
     W_aux_space = gpuArray(W_aux_space); b_aux_space = gpuArray(b_aux_space);
 end
 
-%% 5. 啟動雙軌萃取器預訓練 (Huber + Soft-IC 複合損失 + VICReg 保底)
-disp('--- 步驟 5：執行雙軌萃取器預訓練 (Soft-IC 連續損失 + 跨體制早停) ---');
+time_step4 = toc(t_step4);
+fprintf('⏱️ [步驟 4 完成] 耗時: %.2f 秒\n\n', time_step4);
+
+%% 5. 啟動雙軌萃取器預訓練 (Huber + Soft-IC 複合損失 + 正則化防禦)
+t_step5 = tic;
+disp('--- 步驟 5：執行雙軌萃取器預訓練 (Feature/Variational Dropout + 噪聲注入 + 跨體制早停) ---');
 epochs = 30; 
 physicalBatchSize = 2;   
 accumulationSteps = 16;  
 numIterationsPerEpoch = floor(num_train / physicalBatchSize);
 clipThreshold = 1.0;
 base_lr        = 1e-3; 
+
+% 讀取全域正則化超參數
 l2_lambda      = configObj.DL_L2_Regularization;      % 1e-5
 var_lambda     = configObj.DL_VarianceFloorLambda;    % 0.05
 var_target     = configObj.DL_VarianceFloorTarget;    % 1.0
-patience_limit = configObj.DL_EarlyStoppingPatience;
-ic_loss_weight = 0.5;
+patience_limit = configObj.DL_EarlyStoppingPatience;  % 5
+
+% 讀取輸入與損失正則化參數
+feat_drop_rate  = configObj.FeatureDropoutRate;       % 0.15
+noise_std       = configObj.InputNoiseStd;            % 0.02
+var_drop_rate   = configObj.VariationalDropRate;      % 0.20
+huber_delta     = configObj.DL_HuberDelta;            % 1.0
+ic_loss_weight  = configObj.DL_ICLossWeight;          % 0.5
 
 avgG_t = []; avgSG_t = []; avgG_s = []; avgSG_s = [];
 avgG_Wt = []; avgSG_Wt = []; avgG_bt = []; avgSG_bt = [];
 avgG_Ws = []; avgSG_Ws = []; avgG_bs = []; avgSG_bs = [];
 iter = 0; 
-
 historical_loss_time  = zeros(epochs, 1);
 historical_loss_space = zeros(epochs, 1);
 val_loss_time         = zeros(epochs, 1);
 val_loss_space        = zeros(epochs, 1);
-
 best_val_loss = inf; 
 patience = 0; 
 best_net_time  = net_time; 
@@ -221,7 +254,7 @@ for epoch = 1:epochs
     last_gnorm_t = 0;
     last_gnorm_s = 0;
     
-    % --- 訓練階段 ---
+    % --- 訓練階段 (動態注入 Feature Dropout, Noise 與 Variational Dropout) ---
     for i = 1:numIterationsPerEpoch
         batch_idx = idx_shuffle((i-1)*physicalBatchSize + 1 : i*physicalBatchSize);
         actual_t_indices = train_idx_valid(batch_idx);
@@ -229,14 +262,16 @@ for epoch = 1:epochs
         [X_batch_time, X_batch_space, A_batch_space, Y_batch, M_batch] = prepareBatchData(...
             actual_t_indices, X_norm_3D_extractor, AdjMatrix_3D, Y_Labels_3D, Expert_Active, numExtractorFeats, numT, seqLen, physicalBatchSize);
         
-        % 計算時序專家 Huber + Soft-IC 連續損失與梯度
+        % 計算時序專家正規化損失與反向梯度 (含 Variational & Feature Dropout + 噪聲)
         [loss_t, grad_t, grad_Wt, grad_bt] = dlfeval(@(n,w,b,x,y,m) aux_loss_time(...
-            n, w, b, x, y, m, l2_lambda, var_lambda, var_target, numT, physicalBatchSize, ic_loss_weight), ...
+            n, w, b, x, y, m, l2_lambda, var_lambda, var_target, numT, physicalBatchSize, ...
+            ic_loss_weight, huber_delta, feat_drop_rate, noise_std, var_drop_rate), ...
             net_time, W_aux_time, b_aux_time, X_batch_time, Y_batch, M_batch);
         
-        % 計算空間專家 Huber + Soft-IC 連續損失與梯度
+        % 計算空間專家正規化損失與反向梯度 (含 Feature Dropout + 噪聲)
         [loss_s, grad_s, grad_Ws, grad_bs] = dlfeval(@(n,w,b,x,a,y,m) aux_loss_space(...
-            n, w, b, x, a, y, m, l2_lambda, numT, physicalBatchSize, ic_loss_weight), ...
+            n, w, b, x, a, y, m, l2_lambda, numT, physicalBatchSize, ...
+            ic_loss_weight, huber_delta, feat_drop_rate, noise_std), ...
             net_space, W_aux_space, b_aux_space, X_batch_space, A_batch_space, Y_batch, M_batch);
         
         if isempty(grad_t_accum)
@@ -286,7 +321,7 @@ for epoch = 1:epochs
     historical_loss_time(epoch)  = epoch_loss_time / numIterationsPerEpoch;
     historical_loss_space(epoch) = epoch_loss_space / numIterationsPerEpoch;
     
-    % --- 多體制連續迴歸驗證階段 ---
+    % --- 多體制連續迴歸驗證階段 (★ 嚴格關閉 Dropout 與 Noise 擾動) ---
     val_samples = min(num_val, 64); 
     val_idx_shuffle = randperm(stream, num_val, val_samples);
     actual_val_indices = val_idx_valid(val_idx_shuffle);
@@ -305,8 +340,8 @@ for epoch = 1:epochs
         [X_val_time, X_val_space, A_val_space, Y_val, M_val] = prepareBatchData(...
             chunk_indices, X_norm_3D_extractor, AdjMatrix_3D, Y_Labels_3D, Expert_Active, numExtractorFeats, numT, seqLen, chunk_size);
         
-        v_loss_t_chunk = calc_val_loss_time(net_time, W_aux_time, b_aux_time, X_val_time, Y_val, M_val, numT, chunk_size, ic_loss_weight);
-        v_loss_s_chunk = calc_val_loss_space(net_space, W_aux_space, b_aux_space, X_val_space, A_val_space, Y_val, M_val, numT, chunk_size, ic_loss_weight);
+        v_loss_t_chunk = calc_val_loss_time(net_time, W_aux_time, b_aux_time, X_val_time, Y_val, M_val, numT, chunk_size, ic_loss_weight, huber_delta);
+        v_loss_s_chunk = calc_val_loss_space(net_space, W_aux_space, b_aux_space, X_val_space, A_val_space, Y_val, M_val, numT, chunk_size, ic_loss_weight, huber_delta);
         
         temp_val_loss_t = temp_val_loss_t + extractdata(v_loss_t_chunk) * chunk_size;
         temp_val_loss_s = temp_val_loss_s + extractdata(v_loss_s_chunk) * chunk_size;
@@ -317,6 +352,7 @@ for epoch = 1:epochs
     val_loss_time(epoch)  = temp_val_loss_t / val_samples;
     val_loss_space(epoch) = temp_val_loss_s / val_samples;
     
+    % 表徵健康度抽樣檢查 (推論無擾動)
     e_t_sample = extractdata(predict(net_time, X_batch_time));
     e_s_sample = extractdata(reshape(predict(net_space, X_batch_space, A_batch_space), 64, []));
     var_e_t = var(e_t_sample(:), 'omitnan');
@@ -365,19 +401,21 @@ loss_s_end = val_loss_space(min(epoch, epochs));
 fprintf('\n📊 全量雙軌萃取器收斂診斷 (跨體制驗證集基準):\n');
 fprintf('  > 時序專家 (T) 最終 Val Continuous Loss: %.4f\n', loss_t_end);
 fprintf('  > 空間專家 (S) 最終 Val Continuous Loss: %.4f\n', loss_s_end);
-
 if isnan(loss_t_end) || isinf(loss_t_end) || isnan(loss_s_end) || isinf(loss_s_end)
     warning('❌ 警告：模型最終 Val Loss 存在 NaN 或 Inf，訓練異常！');
 else
-    disp('✅ 全量雙軌萃取器連續目標訓練完畢，成功建立連續超額報酬梯度流！');
+    disp('✅ 全量雙軌萃取器連續目標訓練完畢，成功建立抗過擬合連續超額報酬特徵表徵！');
 end
 
-%% 6. 最終全歷史 Embedding 提煉與存檔 (推論階段)
+time_step5 = toc(t_step5);
+fprintf('⏱️ [步驟 5 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step5, time_step5 / 60);
+
+%% 6. 最終全歷史 Embedding 提煉與存檔 (推論階段：純淨無隨機擾動)
+t_step6 = tic;
 disp('--- 步驟 6：全歷史強固特徵表徵提煉與落地 (提取 3D 張量) ---');
 E_time_all = zeros(numDaysRaw, 64, numT, 'single');
 E_space_all = zeros(numDaysRaw, 64, numT, 'single');
 inferBatchSize = 2; 
-
 fprintf('  -> 正在提煉全歷史節點級別表徵 (共 %d 筆有效天數)...\n', num_valid);
 for start_idx = 1:inferBatchSize:num_valid
     end_idx = min(start_idx + inferBatchSize - 1, num_valid);
@@ -387,6 +425,7 @@ for start_idx = 1:inferBatchSize:num_valid
     [X_inf_time, X_inf_space, A_inf_space, ~, ~] = prepareBatchData(...
         actual_t_indices, X_norm_3D_extractor, AdjMatrix_3D, Y_Labels_3D, Expert_Active, numExtractorFeats, numT, seqLen, chunk_size);
     
+    % 推論模式下原生關閉 Dropout
     E_time_raw = predict(net_time, X_inf_time);
     E_space_flat_out = predict(net_space, X_inf_space, A_inf_space);
     
@@ -397,13 +436,15 @@ for start_idx = 1:inferBatchSize:num_valid
     E_space_all(actual_t_indices, :, :) = gather(e_s_reshaped);
 end
 
+time_step6 = toc(t_step6);
+fprintf('⏱️ [步驟 6 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step6, time_step6 / 60);
+
 %% 7. 繪製與儲存訓練曲線與 GCN 圖譜視覺化 (標準白底黑字學術格式)
+t_step7 = tic;
 disp('--- 步驟 7：產出 Loss 曲線與 GCN 靜態圖譜視覺化報表 (白底黑字) ---');
 fig_loss = figure('Name', 'Phase 2: Extractor Pretrain Continuous Loss', ...
     'Position', [100, 100, 1200, 500], 'Color', 'w', 'Visible', 'off'); 
 set(fig_loss, 'InvertHardcopy', 'off');
-
-% ★ 核心修復 3：圖表標題動態反映當前 horizon
 subplot(1, 2, 1);
 plot(1:epochs, historical_loss_time, '-o', 'LineWidth', 1.8, 'Color', '#D95319', 'DisplayName', 'Train Continuous Loss'); hold on;
 plot(1:epochs, val_loss_time, '-x', 'LineWidth', 1.8, 'Color', '#0072BD', 'DisplayName', 'Val (Multi-Regime) Loss');
@@ -414,7 +455,6 @@ legend('Location', 'northeast', 'TextColor', 'k', 'Color', 'w', 'EdgeColor', [0.
 set(gca, 'Color', 'w', 'XColor', 'k', 'YColor', 'k', 'LineWidth', 1.0, ...
     'GridColor', [0.85 0.85 0.85], 'GridAlpha', 0.8, 'FontName', 'Helvetica', 'FontSize', 10);
 grid on; box on;
-
 subplot(1, 2, 2);
 plot(1:epochs, historical_loss_space, '-o', 'LineWidth', 1.8, 'Color', '#D95319', 'DisplayName', 'Train Continuous Loss'); hold on;
 plot(1:epochs, val_loss_space, '-x', 'LineWidth', 1.8, 'Color', '#0072BD', 'DisplayName', 'Val (Multi-Regime) Loss');
@@ -425,7 +465,6 @@ legend('Location', 'northeast', 'TextColor', 'k', 'Color', 'w', 'EdgeColor', [0.
 set(gca, 'Color', 'w', 'XColor', 'k', 'YColor', 'k', 'LineWidth', 1.0, ...
     'GridColor', [0.85 0.85 0.85], 'GridAlpha', 0.8, 'FontName', 'Helvetica', 'FontSize', 10);
 grid on; box on;
-
 lossFigPath = fullfile(configObj.ModelDir, 'Phase2_Loss_Curve.png');
 exportgraphics(fig_loss, lossFigPath, 'Resolution', 300, 'BackgroundColor', 'white');
 fprintf(' 📊 Loss 曲線 (白底黑字) 已儲存至: %s\n', lossFigPath);
@@ -445,10 +484,10 @@ axis square;
 set(gca, 'Color', 'w', 'XColor', 'k', 'YColor', 'k', 'LineWidth', 1.0, ...
     'XTick', [], 'YTick', [], 'FontName', 'Helvetica');
 box on;
-
 adjFigPath = fullfile(configObj.ModelDir, 'Phase2_GCN_Adjacency_Matrix.png');
 exportgraphics(fig_adj, adjFigPath, 'Resolution', 300, 'BackgroundColor', 'white');
 fprintf(' 🕸️ GCN 靜態關聯圖譜矩陣 (白底黑字) 已儲存至: %s\n', adjFigPath);
+
 close(fig_loss);
 close(fig_adj);
 
@@ -457,12 +496,41 @@ if ~exist(configObj.ModelDir, 'dir'), mkdir(configObj.ModelDir); end
 save(modelPath, 'net_time', 'net_space', 'E_time_all', 'E_space_all', '-v7.3');
 fprintf('💾 雙軌 DL 萃取器預訓練完畢！[Days, 64, Tickers] 節點表徵已存至: %s\n', modelPath);
 
-disp('=================================================================');
+time_step7 = toc(t_step7);
+fprintf('⏱️ [步驟 7 完成] 耗時: %.2f 秒\n\n', time_step7);
+
+%% =========================================================================
+% 結算全流程執行時長審計
+% =========================================================================
+total_elapsed_sec = toc(t_total_start);
+tot_hours = floor(total_elapsed_sec / 3600);
+tot_mins  = floor(mod(total_elapsed_sec, 3600) / 60);
+tot_secs  = mod(total_elapsed_sec, 60);
+
+fprintf('=================================================================\n');
+fprintf('📊 【Phase 2 各階段耗時明細與總時長審計報告】\n');
+fprintf('=================================================================\n');
+fprintf(' 步驟 0：環境掛載與隨機串流鎖定   : %8.2f 秒 (%5.1f%%)\n', time_step0, (time_step0 / total_elapsed_sec) * 100);
+fprintf(' 步驟 1：3D 特徵快取載入與對齊   : %8.2f 秒 (%5.1f%%)\n', time_step1, (time_step1 / total_elapsed_sec) * 100);
+fprintf(' 步驟 1.5：HAC-ICIR 健檢與閘門融合: %8.2f 秒 (%5.1f%%)\n', time_step1_5, (time_step1_5 / total_elapsed_sec) * 100);
+fprintf(' 步驟 2：連續超額報酬 Z-Score 構建: %8.2f 秒 (%5.1f%%)\n', time_step2, (time_step2 / total_elapsed_sec) * 100);
+fprintf(' 步驟 3：Purged 多體制時間軸劃分  : %8.2f 秒 (%5.1f%%)\n', time_step3, (time_step3 / total_elapsed_sec) * 100);
+fprintf(' 步驟 4：雙軌拓撲與線性預測頭初始化: %8.2f 秒 (%5.1f%%)\n', time_step4, (time_step4 / total_elapsed_sec) * 100);
+fprintf(' 步驟 5：雙軌萃取器預訓練與早停   : %8.2f 秒 (%5.1f%%)\n', time_step5, (time_step5 / total_elapsed_sec) * 100);
+fprintf(' 步驟 6：全歷史 64D 表徵提煉落地 : %8.2f 秒 (%5.1f%%)\n', time_step6, (time_step6 / total_elapsed_sec) * 100);
+fprintf(' 步驟 7：曲線圖譜繪製與模型存檔   : %8.2f 秒 (%5.1f%%)\n', time_step7, (time_step7 / total_elapsed_sec) * 100);
+fprintf('-----------------------------------------------------------------\n');
+if tot_hours > 0
+    fprintf('⏱️ 【總執行時長】: %d 小時 %d 分 %.2f 秒 (共 %.2f 秒)\n', tot_hours, tot_mins, tot_secs, total_elapsed_sec);
+else
+    fprintf('⏱️ 【總執行時長】: %d 分 %.2f 秒 (共 %.2f 秒)\n', tot_mins, tot_secs, total_elapsed_sec);
+end
+fprintf('=================================================================\n');
 disp('🎯 [Phase 2] 連續迴歸萃取器預訓練完成！請執行 Phase 3。');
 disp('=================================================================');
 
 %% =====================================================================
-% 輔助函數區 (Huber + Soft-IC 連續迴歸、VICReg 變異數保底與 L2 解耦)
+% 輔助函數區 (動態資料正則化、Huber + Soft-IC 連續迴歸、VICReg 保底與 L2 解耦)
 % =====================================================================
 function [X_time, X_space, A_space, Y, M] = prepareBatchData(indices, X_3D, Adj_3D, Y_Lab, Expert, nF, nT, sL, bZ)
     X_time_raw = zeros(nF, nT * bZ, sL, 'single');
@@ -500,20 +568,27 @@ function [X_time, X_space, A_space, Y, M] = prepareBatchData(indices, X_3D, Adj_
     end
 end
 
-function [loss, grad_net, grad_W, grad_b] = aux_loss_time(net, W_aux, b_aux, X, Y, M, l2_lambda, var_lambda, var_target, nT, bZ, ic_w)
-    E = forward(net, X); 
+function [loss, grad_net, grad_W, grad_b] = aux_loss_time(net, W_aux, b_aux, X, Y, M, ...
+    l2_lambda, var_lambda, var_target, nT, bZ, ic_w, delta, feat_drop, noise_std, var_drop)
+    
+    % 1. 輸入特徵層動態正則化 (Feature Dropout + 高斯動態噪聲)
+    X_aug = BuildDecoupledExtractors.apply_input_regularization(X, feat_drop, noise_std, true);
+    
+    % 2. 時序循環 Variational Dropout (Sequence 共享 Mask)
+    X_aug = BuildDecoupledExtractors.apply_variational_dropout(X_aug, var_drop, true);
+    
+    % 3. 前向計算表徵
+    E = forward(net, X_aug); 
     E_unfmt = stripdims(E);
     Y_pred = W_aux * E_unfmt + b_aux; 
     
-    cont_loss = compute_continuous_loss_internal(Y_pred, Y, M, nT, bZ, ic_w);
+    % 4. 複合連續損失 (Huber + Soft-IC)
+    cont_loss = compute_continuous_loss_internal(Y_pred, Y, M, nT, bZ, ic_w, delta);
     
-    % 變異數保底正則化 (VICReg 風格)
-    mu_dim = mean(E_unfmt, 2);
-    var_per_dim = mean((E_unfmt - mu_dim).^2, 2);
-    std_per_dim = sqrt(var_per_dim + 1e-4);
-    var_penalty = mean(max(0, var_target - std_per_dim));
+    % 5. 變異數保底正則化 (VICReg 風格)
+    var_penalty = BuildDecoupledExtractors.compute_vicreg_penalty(E_unfmt, var_target);
     
-    % L2 懲罰排除最終表徵輸出層 ('E_time')
+    % 6. L2 懲罰排除最終表徵輸出層 ('E_time')
     l2_penalty = 0;
     learnables = net.Learnables;
     for r = 1:height(learnables)
@@ -528,13 +603,21 @@ function [loss, grad_net, grad_W, grad_b] = aux_loss_time(net, W_aux, b_aux, X, 
     [grad_net, grad_W, grad_b] = dlgradient(loss, net.Learnables, W_aux, b_aux);
 end
 
-function [loss, grad_net, grad_W, grad_b] = aux_loss_space(net, W_aux, b_aux, X, A, Y, M, l2_lambda, nT, bZ, ic_w)
-    E_flat_out = forward(net, X, A); 
+function [loss, grad_net, grad_W, grad_b] = aux_loss_space(net, W_aux, b_aux, X, A, Y, M, ...
+    l2_lambda, nT, bZ, ic_w, delta, feat_drop, noise_std)
+    
+    % 1. 空間輸入特徵層動態正則化 (Feature Dropout + 高斯動態噪聲)
+    X_aug = BuildDecoupledExtractors.apply_input_regularization(X, feat_drop, noise_std, true);
+    
+    % 2. 前向計算表徵
+    E_flat_out = forward(net, X_aug, A); 
     E_unfmt = reshape(stripdims(E_flat_out), 64, []);
     Y_pred = W_aux * E_unfmt + b_aux; 
     
-    cont_loss = compute_continuous_loss_internal(Y_pred, Y, M, nT, bZ, ic_w);
+    % 3. 複合連續損失 (Huber + Soft-IC)
+    cont_loss = compute_continuous_loss_internal(Y_pred, Y, M, nT, bZ, ic_w, delta);
     
+    % 4. L2 懲罰
     l2_penalty = 0;
     learnables = net.Learnables;
     for r = 1:height(learnables)
@@ -547,21 +630,25 @@ function [loss, grad_net, grad_W, grad_b] = aux_loss_space(net, W_aux, b_aux, X,
     [grad_net, grad_W, grad_b] = dlgradient(loss, net.Learnables, W_aux, b_aux);
 end
 
-function loss = calc_val_loss_time(net, W_aux, b_aux, X, Y, M, nT, bZ, ic_w)
+function loss = calc_val_loss_time(net, W_aux, b_aux, X, Y, M, nT, bZ, ic_w, delta)
     E = predict(net, X); 
     E_unfmt = stripdims(E);
     Y_pred = W_aux * E_unfmt + b_aux; 
-    loss = compute_continuous_loss_internal(Y_pred, Y, M, nT, bZ, ic_w);
+    loss = compute_continuous_loss_internal(Y_pred, Y, M, nT, bZ, ic_w, delta);
 end
 
-function loss = calc_val_loss_space(net, W_aux, b_aux, X, A, Y, M, nT, bZ, ic_w)
+function loss = calc_val_loss_space(net, W_aux, b_aux, X, A, Y, M, nT, bZ, ic_w, delta)
     E_flat_out = predict(net, X, A); 
     E_unfmt = reshape(stripdims(E_flat_out), 64, []);
     Y_pred = W_aux * E_unfmt + b_aux; 
-    loss = compute_continuous_loss_internal(Y_pred, Y, M, nT, bZ, ic_w);
+    loss = compute_continuous_loss_internal(Y_pred, Y, M, nT, bZ, ic_w, delta);
 end
 
-function loss = compute_continuous_loss_internal(y_pred, y_true, mask, nT, bZ, ic_weight)
+function loss = compute_continuous_loss_internal(y_pred, y_true, mask, nT, bZ, ic_weight, delta)
+    if nargin < 7 || isempty(delta)
+        delta = 1.0;
+    end
+    
     yp = stripdims(y_pred); yp = yp(:);
     yt = stripdims(y_true); yt = yt(:);
     m  = logical(stripdims(mask)); m = m(:);
@@ -569,7 +656,6 @@ function loss = compute_continuous_loss_internal(y_pred, y_true, mask, nT, bZ, i
     % 1. 元素級 Huber 迴歸損失
     yp_m = yp(m);
     yt_m = yt(m);
-    delta = 0.1;
     err = abs(yp_m - yt_m);
     is_small = err <= delta;
     huber = mean(is_small .* (0.5 * err.^2) + (~is_small) .* (delta * (err - 0.5 * delta)), 'all');
