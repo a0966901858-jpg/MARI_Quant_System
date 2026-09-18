@@ -1,9 +1,10 @@
 classdef Config < handle
     % =========================================================================
     % 類別: Config (系統全域超參數與路徑配置中心)
-    % 升級: Phase 15.5 生產基準版 (★ 統一 60D 基準線全域參數單一來源、
-    %       PurgeEmbargo/HACLag 阻斷長週期重疊標籤洩漏、RebalanceStride 平抑換手摩擦、
-    %       mrg32k3a 獨立子串流隨機數引擎、DSR 熔斷防禦載入、SpaceExpertMixMode 空間模式)
+    % 升級: Phase 15.5 20D 正式生產基準版 (★ 統一 20D 基準線全域參數單一來源、
+    %       PurgeEmbargo/HACLag 對齊 20 日時序隔離、RebalanceStride=20 日月步進、
+    %       mrg32k3a 獨立子串流隨機數引擎、DSR 熔斷防禦載入、SpaceExpertMixMode 空間模式、
+    %       ★ 集中新增 Phase 1 & 2 輸入層與時序雙軌深度正則化超參數)
     % 職責: 作為 MARI 量化系統的超參數與組態單一真理來源 (Single Source of Truth)
     % =========================================================================
     
@@ -37,50 +38,60 @@ classdef Config < handle
         EnableSpaceExpertTraining = true  % 空間專家訓練開關
         SpaceExpertMixMode = 'gcn_only'   % 空間專家混合模式 ('gcn_only' | 'dynamic')
         
-        % --- 0.5 全域訊號與預測週期基準 (★ Unified 60D Baseline) ---
-        Horizon         = 60     % 全域超額報酬預測跨度 (Direction 2 基準線: 60 日)
-        PurgeEmbargo    = 60     % 時序交叉驗證隔離期 (Embargo >= Horizon，杜絕標籤洩漏)
-        HACLag          = 60     % Newey-West HAC 滯後階數 (強制 lag >= Horizon 校正自相關)
-        RebalanceStride = 20     % 回測調倉步進天數 (建議 20 日滾動月換手，避免每日雜訊換手吞噬收益)
+        % --- 0.5 全域訊號與預測週期基準 (★ Unified 20D Configuration) ---
+        Horizon         = 20     % 全域超額報酬預測跨度 (切換為 20 日月度動能目標)
+        PurgeEmbargo    = 20     % 時序交叉驗證隔離期 (Embargo >= Horizon，杜絕標籤洩漏)
+        HACLag          = 20     % Newey-West HAC 滯後階數 (強制 lag >= Horizon 校正自相關)
+        RebalanceStride = 20     % 回測調倉步進天數 (20 日定期換手，實現目標與執行週期嚴格同構)
         
         % --- 1. 特徵工程與雙軌萃取器 (Phase 1 & 2) ---
         NumMacroFeatures = 10    % 宏觀特徵維度 (VIX_Proxy, R20, R60, Breadth, Real_VIX, VRP, T10Y2Y, HY, DGS10, UNRATE)
         NumMicroFeatures = 15    % 微觀特徵維度 (含特質波動度、Amihud流動性、52週新高、MACD柱狀圖)
         NumCointFeatures = 3     % 協整相對特徵 (Beta, Corr, Relative Strength)
         
-        SeqLen = 60              % LSTM 時序專家回溯視窗長度 (對齊 60 個交易日)
+        SeqLen   = 60            % LSTM 時序專家回溯視窗長度 (維持 60 個交易日輸入歷史記憶)
         Lookback = 60            % 相關性圖譜與 IC 檢定的歷史滾動視窗
         
-        % 雙軌萃取器正則化超參數與變異數保底
-        DL_DropoutRate = 0.2             % Transformer-LSTM Dropout 機率
-        DL_L2_Regularization = 1e-5      % 降低 L2 懲罰，避免主導弱梯度訊號
-        DL_VarianceFloorLambda = 0.05    % 表徵變異數保底正則化係數
-        DL_VarianceFloorTarget = 1.0     % 每個 embedding 維度跨樣本標準差的目標下限
-        DL_EarlyStoppingPatience = 5     % 早停容忍輪數
+        % 雙軌萃取器正則化超參數與變異數保底 (VICReg 風格)
+        DL_DropoutRate           = 0.2    % 密集層/全連接層標準 Dropout 機率
+        DL_L2_Regularization     = 1e-5   % 降低 L2 懲罰，避免主導弱梯度訊號
+        DL_VarianceFloorLambda   = 0.05   % 表徵變異數保底正則化係數
+        DL_VarianceFloorTarget   = 1.0    % 每個 embedding 維度跨樣本標準差的目標下限
+        DL_EarlyStoppingPatience = 5      % 早停容忍輪數
+        
+        % ★ 深度學習輸入層與時空雙軌防過擬合正則化 (SSOT 集中控管)
+        FeatureDropoutRate   = 0.15      % 特徵欄位隨機遮蔽率 (以指標維度為單位，破除單一強因子依賴)
+        InputNoiseStd        = 0.02      % 輸入特徵高斯動態噪聲標準差 (模擬真實盤面滑價與微結構抖動)
+        VariationalDropRate  = 0.20      % 時序循環 Dropout 率 (Sequence 全時間步共享 Mask，保持狀態連續)
+        AttentionDropRate    = 0.10      % 自注意力權重丟棄率 (防止模型死記過往特定 K 線模式)
+        
+        % ★ 複合損失函數超參數 (Huber + Soft-IC)
+        DL_HuberDelta        = 1.0       % Huber Loss 線性過渡門檻 (防禦金融厚尾極端值拉扯梯度)
+        DL_ICLossWeight      = 0.5       % Continuous Soft-IC 損失權重係數 (平衡點位誤差與截面排序力)
         
         % --- 2. VQ-VAE 向量量化降噪器 (Phase 1) ---
-        VQ_DLatent = 3           % 潛在空間維度
+        VQ_DLatent   = 3         % 潛在空間維度
         VQ_KCodebook = 256       % 編碼簿大小
-        VQ_Gamma = 0.99          % EMA 衰減率
-        VQ_DHidden = 128         % 隱藏層神經元數量
+        VQ_Gamma     = 0.99      % EMA 衰減率
+        VQ_DHidden   = 128       % 隱藏層神經元數量
         
         % --- 3. 顯性風險預測流 (GBDT Experts - Phase 3) ---
         GBDT_NumCycles = 50      % 決策樹森林基學習器數量
         GBDT_LearnRate = 0.1     % LogitBoost / LSBoost 學習率
-        GBDT_MaxDepth = 5        % 單一決策樹最大深度
+        GBDT_MaxDepth  = 5       % 單一決策樹最大深度
         
         % --- 4. HRL 總管狀態與決策空間 (Phase 5) ---
-        CIO_SeqLen = 10          % 總管大腦的歷史記憶長度
-        CIO_StateDim = 5         % 總管宏觀狀態維度 [P_crash, SPY_Ret20, Vol20, MDD252, PrevCash]
+        CIO_SeqLen    = 10       % 總管大腦的歷史記憶長度
+        CIO_StateDim  = 5        % 總管宏觀狀態維度 [P_crash, SPY_Ret20, Vol20, MDD252, PrevCash]
         CIO_ActionDim = 3        % 總管動作輸出維度 [w_time, w_space, target_cash]
         
         % --- 5. 交易摩擦與護欄閾值 (實盤物理環境) ---
-        HRL_LR = 0.0005          % 強化學習大腦的基礎學習率
-        MoE_FrictionMask = 0.005 % 固定機構級慣性摩擦力 0.5%
+        HRL_LR           = 0.0005 % 強化學習大腦的基礎學習率
+        MoE_FrictionMask = 0.005  % 固定機構級慣性摩擦力 0.5%
         
         % 全域統一交易成本模型係數
-        BaseFrictionFee = 0.0005 % 基礎固定手續費 0.05%
-        SlippageVolCoeff = 0.10  % 波動率動態衝擊成本係數 (日頻波動度基礎)
+        BaseFrictionFee  = 0.0005 % 基礎固定手續費 0.05%
+        SlippageVolCoeff = 0.10   % 波動率動態衝擊成本係數 (日頻波動度基礎)
         
         % 學術中立基準超參數 (當 BO 未達 DSR 顯著時的強制 Fallback 配置)
         Guardrail_CrashProb = 0.0850 % 中立崩盤護欄硬熔斷閾值 (8.5%)
@@ -89,7 +100,7 @@ classdef Config < handle
         
         % --- 6. 強化學習演算法 (RL Hyperparameters) ---
         HRL_Epochs = 500         % 強化學習平行滾動訓練總 Epoch 數
-        HRL_Gamma = 0.96
+        HRL_Gamma  = 0.96
         
         % --- 7. 工程衛生與隨機種子 ---
         RNG_Seed      = 42          % 全域隨機種子 (確保實驗可重現)
