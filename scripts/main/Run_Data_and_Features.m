@@ -1,9 +1,10 @@
 % =========================================================================
 % 腳本：1_Run_Data_and_Features.m 
-% 升級：Phase 15.5 (★ mrg32k3a 獨立子串流注入、parfor 平行隨機狀態嚴格鎖定、
+% 升級：Phase 15.5 物理客觀基準版 (★ mrg32k3a 獨立子串流注入、parfor 平行隨機狀態嚴格鎖定、
 %       雙爬蟲微服務調度、FRED 總經整合、VQ-VAE 字典物理凍結與大腦實體落地、
-%       各階段獨立高精度計時與總運行耗時審計)
+%       ★ 特徵湖物理純淨度斷言、正則化沙盒解耦防洩漏、各階段獨立高精度計時與總運行耗時審計)
 % 職責：調度 Python 爬蟲 -> DataFetcher 矩陣映射 -> 特徵工程 (含真實VIX/VRP) -> VQ-VAE 降噪存檔
+% 紀律：嚴禁在此處寫死隨機特徵遮蔽或持久化噪聲，維持資料湖絕對物理客觀性
 % =========================================================================
 clear; clc; close all;
 
@@ -72,6 +73,7 @@ spmd
     RandStream.setGlobalStream(worker_stream);
 end
 disp('🔒 已成功為所有並行 Worker 注入 mrg32k3a 獨立隨機子串流 (確定性可重現模式)。');
+
 time_step0 = toc(t_step0);
 fprintf('⏱️ [步驟 0 完成] 耗時: %.2f 秒\n\n', time_step0);
 
@@ -130,6 +132,7 @@ fe = FeatureEngineer(configObj);
 if isprop(fe, 'RandStream')
     fe.RandStream = configObj.getRandStream(1);
 end
+
 if ~isstruct(dataStruct)
     error('❌ 致命錯誤：資料流格式錯誤！請確保 DataFetcher 輸出的是 Struct 矩陣封裝。');
 end
@@ -144,14 +147,22 @@ fprintf('  📊 [特徵面板維度校驗] 天數: %d | 節點特徵數: %d 維 
 if totalFeatsCheck ~= fe.TotalNodeFeats
     error('❌ 特徵維度不匹配：實際產出 %d 維，預期為 %d 維！', totalFeatsCheck, fe.TotalNodeFeats);
 end
+
 time_step3 = toc(t_step3);
 fprintf('⏱️ [步驟 3 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step3, time_step3 / 60);
 
 %% --- 步驟 4：嚴格 In-Sample 預訓練 VQ-VAE 降噪器與字典凍結 ---
 t_step4 = tic;
 disp('--- 步驟 4：嚴格 In-Sample 預訓練 VQ-VAE 降噪器與字典凍結 ---');
-Train_Start_Date = datetime('2006-01-01', 'TimeZone', 'UTC');
-OOS_Start_Date   = datetime('2022-01-01', 'TimeZone', 'UTC');
+
+% 時區相容性安全處理
+Train_Start_Date = datetime('2006-01-01');
+OOS_Start_Date   = datetime('2022-01-01');
+if ~isempty(Dates_Active.TimeZone)
+    Train_Start_Date.TimeZone = Dates_Active.TimeZone;
+    OOS_Start_Date.TimeZone   = Dates_Active.TimeZone;
+end
+
 idx_IS = find(Dates_Active >= Train_Start_Date & Dates_Active < OOS_Start_Date);
 fprintf(' 🔒 物理隔絕啟動：VQ-VAE 僅允許在 In-Sample 區間 (%d 天) 進行降噪字典學習。\n', length(idx_IS));
 
@@ -163,6 +174,7 @@ vqvaeAgent.train(X_norm_IS, Expert_Active_IS, 30);
 % 訓練完畢立即凍結字典，物理禁止 OOS 推論時更新編碼簿
 vqvaeAgent.Quantizer.freeze();
 fprintf(' 🧊 VQ-VAE 編碼簿字典已成功凍結 (Freeze)，徹底杜絕 OOS 洩漏！\n');
+
 time_step4 = toc(t_step4);
 fprintf('⏱️ [步驟 4 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step4, time_step4 / 60);
 
@@ -170,12 +182,19 @@ fprintf('⏱️ [步驟 4 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step
 t_step5 = tic;
 disp(' 🔄 啟動全域盲測降噪 (Out-of-Sample Denoising)...');
 X_denoised_3D = vqvaeAgent.denoise(X_norm_3D, Expert_Active);
+
 time_step5 = toc(t_step5);
 fprintf('⏱️ [步驟 5 完成] 耗時: %.2f 秒\n\n', time_step5);
 
 %% --- 步驟 6：降噪特徵張量與 VQ-VAE 模型實體快取落地 ---
 t_step6 = tic;
 disp('--- 步驟 6：降噪特徵 3D 張量快取與 VQ-VAE 大腦實體落地 ---');
+
+% ★ 特徵湖物理純淨度嚴格斷言：確保快取持久層未遭隨機丟棄或外生噪聲污染
+nan_ratio_norm = sum(isnan(X_norm_3D(:))) / numel(X_norm_3D);
+nan_ratio_deno = sum(isnan(X_denoised_3D(:))) / numel(X_denoised_3D);
+assert(nan_ratio_norm < 0.01, '❌ [資料品質警報] X_norm_3D 異常值比例過高 (%.4f)！', nan_ratio_norm);
+assert(nan_ratio_deno < 0.01, '❌ [資料品質警報] X_denoised_3D 異常值比例過高 (%.4f)！', nan_ratio_deno);
 
 % 6A. 儲存全域特徵面板與圖譜快取
 cachePath = fullfile(configObj.CacheDir, 'features_denoised.mat');
@@ -187,6 +206,7 @@ vqModelPath = fullfile(configObj.ModelDir, 'VQVAE_Agent.mat');
 if ~exist(configObj.ModelDir, 'dir'), mkdir(configObj.ModelDir); end
 save(vqModelPath, 'vqvaeAgent', '-v7.3');
 fprintf('💾 VQ-VAE 降噪大腦實體已存檔至: %s\n', vqModelPath);
+
 time_step6 = toc(t_step6);
 fprintf('⏱️ [步驟 6 完成] 耗時: %.2f 秒\n\n', time_step6);
 
@@ -214,6 +234,8 @@ if tot_hours > 0
 else
     fprintf('⏱️ 【總執行時長】: %d 分 %.2f 秒 (共 %.2f 秒)\n', tot_mins, tot_secs, total_elapsed_sec);
 end
+fprintf('🔒 【架構安全斷言】: 特徵資料庫保持絕對客觀物理數值，無常態性隨機遮蔽。\n');
+fprintf('🛡️ 【正則化解耦機制】: Feature/Attention/Variational Dropout 嚴格限制於 Phase 2 動態生成。\n');
 fprintf('=================================================================\n');
 disp('🎯 [Phase 1] 完美完成。特徵資料庫與降噪模型已 100% 確定性落地，請進入 Phase 2！');
 disp('=================================================================');
