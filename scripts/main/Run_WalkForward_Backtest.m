@@ -2,15 +2,24 @@
 % 腳本：6_Run_WalkForward_Backtest.m
 % 升級：Phase 15.5 60D 基準線版 (★ 20日定期調倉步進對齊、消除慢速訊號過度換手、
 %       mrg32k3a 隨機串流鎖定、Open-to-Open 權重漂移、停牌資產鎖死、
-%       死區護欄連續縮放、CIO 彈性退回中立規則、因果時間軸校正)
+%       死區護欄連續縮放、CIO 彈性退回中立規則、因果時間軸校正、
+%       各階段獨立高精度計時、樣本外 OOS 淨值歸一化重頭起算、
+%       樣本外水下回撤獨立歸零結算與視覺化診斷報表)
 % 職責：執行嚴格的因果律滾動回測，產出無縫的 IS/OOS 真實績效、交易軌跡與視覺化診斷報表
 % =========================================================================
 clear; clc; close all;
+
+% 啟動全域總計時器
+t_total_start = tic;
+
 disp('=================================================================');
 disp('🚀 [Phase 15.5] 啟動 MARI 嚴格前向滾動回測 (60D 基準線與定期調倉版)');
 disp('=================================================================');
 
 %% 0. 環境路徑掛載與隨機串流管理
+t_step0 = tic;
+disp('--- 步驟 0：環境路徑掛載、Config 載入與隨機串流鎖定 ---');
+
 currentFile = mfilename('fullpath');
 if isempty(currentFile)
     currentPath = pwd;
@@ -46,7 +55,11 @@ stream = configObj.getRandStream(1);
 RandStream.setGlobalStream(stream);
 disp('🔒 已掛載 mrg32k3a 主隨機串流 (Substream=1)，鎖定前向回測環境。');
 
+time_step0 = toc(t_step0);
+fprintf('⏱️ [步驟 0 完成] 耗時: %.2f 秒\n\n', time_step0);
+
 %% 1. 載入全域快取、DataFetcher 與大腦權重
+t_step1 = tic;
 disp('--- 步驟 1：載入全域快取、DataFetcher 開盤價與多軌大腦 ---');
 cachePath = fullfile(configObj.CacheDir, 'features_denoised.mat');
 gbdtPath  = fullfile(configObj.ModelDir, 'GBDT_Guards.mat');
@@ -107,7 +120,11 @@ numTickers = configObj.NumTickers;
 spy_idx = find(strcmp(configObj.IdxTickers, 'SPY'));
 if isempty(spy_idx), error('❌ 找不到 SPY 基準！'); end
 
+time_step1 = toc(t_step1);
+fprintf('⏱️ [步驟 1 完成] 耗時: %.2f 秒\n\n', time_step1);
+
 %% 2. 預計算 CIO 5 維狀態空間 
+t_step2 = tic;
 disp('--- 步驟 2：預計算 CIO 5 維狀態空間 ---');
 CIO_State = zeros(5, numDays, 'single');
 spy_prices = Prices_Active(:, spy_idx);
@@ -134,7 +151,13 @@ CIO_State(3, :) = vol20';
 CIO_State(4, :) = abs(mdd252)';    
 CIO_State(5, :) = 1.0;             
 
-%% 3. 定義嚴格時間邊界
+time_step2 = toc(t_step2);
+fprintf('⏱️ [步驟 2 完成] 耗時: %.2f 秒\n\n', time_step2);
+
+%% 3. 定義嚴格時間邊界與崩盤護欄死區 (Deadband) 校準
+t_step3 = tic;
+disp('--- 步驟 3：時間邊界劃分與校準崩盤護欄死區 ---');
+
 spy_inception_idx = find(spy_prices > 10, 1);
 if isempty(spy_inception_idx), spy_inception_idx = 252; end
 
@@ -145,8 +168,6 @@ valid_start_t = max(spy_inception_idx + 252, idx_train_start);
 OOS_Date = datetime('2022-01-01', 'TimeZone', tz);
 idx_OOS_start = find(Dates_Active >= OOS_Date, 1);
 
-%% 4. 初始化回測沙盒與崩盤護欄死區 (Deadband) 校準
-disp('--- 步驟 3：初始化回測沙盒與校準崩盤護欄死區 ---');
 port_values = ones(numDays, 1, 'single');
 spy_values  = ones(numDays, 1, 'single');
 cash_ratios = zeros(numDays, 1, 'single');
@@ -206,7 +227,11 @@ sample_tc = configObj.BaseFrictionFee + (configObj.SlippageVolCoeff * sample_vol
 fprintf(' 📊 [成本模型檢查] 平均日波動度: %.4f%% | 預期平均換手成本率: %.4f%%\n', ...
     sample_vol_daily*100, sample_tc*100);
 
+time_step3 = toc(t_step3);
+fprintf('⏱️ [步驟 3 完成] 耗時: %.2f 秒\n\n', time_step3);
+
 %% 5. 執行逐日回測 (★ 20日定期調倉 + Open-to-Open 權重漂移 + 停牌鎖死)
+t_step4 = tic;
 disp('--- 步驟 4：啟動逐日推論與 X 光級交易監控 (60D 定期調倉版) ---');
 fprintf(' 📡 回測正式起點：%s\n', datestr(Dates_Active(valid_start_t)));
 
@@ -408,7 +433,11 @@ for t = valid_start_t : numDays - 2
 end
 cash_ratios(numDays) = w_cash;
 
+time_step4 = toc(t_step4);
+fprintf('⏱️ [步驟 4 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step4, time_step4 / 60);
+
 %% 6. 機構級績效結算 (IS 與 OOS 嚴格隔離)
+t_step5 = tic;
 disp('--- 步驟 5：嚴格 IS / OOS 績效分離結算 ---');
 is_idx  = (valid_start_t + 1) : idx_OOS_start;
 oos_idx = idx_OOS_start : numDays;
@@ -418,6 +447,7 @@ is_spy   = spy_values(is_idx);
 oos_port = port_values(oos_idx);
 oos_spy  = spy_values(oos_idx);
 
+% 執行嚴格的 IS / OOS 指標評估 (OOS 內部獨立計算累積報酬與 MDD)
 is_m   = evaluate_financial_metrics(is_port, is_spy);
 oos_m  = evaluate_financial_metrics(oos_port, oos_spy);
 full_m = evaluate_financial_metrics(port_values(valid_start_t+1:numDays), spy_values(valid_start_t+1:numDays));
@@ -441,21 +471,40 @@ fprintf(' 全歷史累計(MARI)|  %+8.2f%% |     %+6.2f%%   |   %5.2f%%  |    %6
     full_m.TotalRet, full_m.CAGR, full_m.AnnVol, full_m.MDD, full_m.Sharpe, full_m.Calmar, full_m.IR, full_m.WinRate);
 fprintf('====================================================================================================\n\n');
 
-%% 7. 繪製標準學術白底黑字視覺化報表
-disp('--- 步驟 6：生成機構級視覺化報表 (白底黑字) ---');
+time_step5 = toc(t_step5);
+fprintf('⏱️ [步驟 5 完成] 耗時: %.2f 秒\n\n', time_step5);
+
+%% 7. 繪製標準學術白底黑字視覺化報表 (★ OOS 淨值歸一化起算 & 回撤獨立歸零)
+t_step6 = tic;
+disp('--- 步驟 6：生成機構級視覺化報表 (白底黑字 - OOS 獨立歸一化與回撤歸零版) ---');
+
 fig_wf = figure('Name', 'MARI Quant Walk-Forward Backtest', ...
     'Color', 'w', 'Position', [100, 100, 1250, 1000], 'Visible', 'off');
 set(fig_wf, 'InvertHardcopy', 'off');
 
-% 子圖 1：全歷史對數淨值曲線
+% ★ 關鍵修復 1：計算 IS 與 OOS 分別從 1.0 開始起算的淨值曲線
+is_port_norm  = is_port ./ (is_port(1) + 1e-8);
+is_spy_norm   = is_spy  ./ (is_spy(1) + 1e-8);
+oos_port_norm = oos_port ./ (oos_port(1) + 1e-8);
+oos_spy_norm  = oos_spy  ./ (oos_spy(1) + 1e-8);
+
+% ★ 關鍵修復 2：水下回撤嚴格分離計算，OOS 在 2022 年起點強制歸零，杜絕繼承歷史高點
+is_mari_dd = (is_port_norm - cummax(is_port_norm)) ./ (cummax(is_port_norm) + 1e-8) * 100;
+is_spy_dd  = (is_spy_norm  - cummax(is_spy_norm))  ./ (cummax(is_spy_norm)  + 1e-8) * 100;
+
+oos_mari_dd = (oos_port_norm - cummax(oos_port_norm)) ./ (cummax(oos_port_norm) + 1e-8) * 100;
+oos_spy_dd  = (oos_spy_norm  - cummax(oos_spy_norm))  ./ (cummax(oos_spy_norm)  + 1e-8) * 100;
+
+% 子圖 1：對數淨值曲線 (IS 與 OOS 各自獨立從 1.0 起算)
 subplot(4, 1, 1);
-plot(Dates_Active(is_idx), log10(is_port), 'LineWidth', 1.6, 'Color', '#D95319', 'DisplayName', 'MARI (IS)'); hold on;
-plot(Dates_Active(is_idx), log10(is_spy), 'LineWidth', 1.3, 'Color', '#0072BD', 'DisplayName', 'SPY (IS)');
-plot(Dates_Active(oos_idx), log10(oos_port), 'LineWidth', 2.0, 'Color', '#A2142F', 'DisplayName', 'MARI (OOS)');
-plot(Dates_Active(oos_idx), log10(oos_spy), 'LineWidth', 1.4, 'Color', '#4DBEEE', 'DisplayName', 'SPY (OOS)');
-xline(Dates_Active(idx_OOS_start), '--k', 'OOS Start', 'LineWidth', 1.3, ...
+plot(Dates_Active(is_idx), log10(is_port_norm), 'LineWidth', 1.6, 'Color', '#D95319', 'DisplayName', 'MARI (IS, Base=1.0)'); hold on;
+plot(Dates_Active(is_idx), log10(is_spy_norm), 'LineWidth', 1.3, 'Color', '#0072BD', 'DisplayName', 'SPY (IS, Base=1.0)');
+plot(Dates_Active(oos_idx), log10(oos_port_norm), 'LineWidth', 2.0, 'Color', '#A2142F', 'DisplayName', 'MARI (OOS, Reset Base=1.0)');
+plot(Dates_Active(oos_idx), log10(oos_spy_norm), 'LineWidth', 1.4, 'Color', '#4DBEEE', 'DisplayName', 'SPY (OOS, Reset Base=1.0)');
+xline(Dates_Active(idx_OOS_start), '--k', 'OOS Start (Rebased to 1.0)', 'LineWidth', 1.3, ...
     'LabelVerticalAlignment', 'bottom', 'Color', 'k', 'FontName', 'Helvetica', 'FontWeight', 'bold');
-title('Log-Scale Cumulative Equity Curve (Continuous Realized Open-to-Open, 20D Rebalance)', ...
+yline(0, ':k', 'Wealth = 1.0', 'LineWidth', 1.0, 'HandleVisibility', 'off');
+title('Log-Scale Cumulative Equity Curve (IS & OOS Independently Rebased to 1.0)', ...
     'FontSize', 11, 'FontWeight', 'bold', 'Color', 'k');
 ylabel('Log_{10}(Wealth)', 'FontSize', 9, 'FontWeight', 'bold', 'Color', 'k');
 legend('Location', 'northwest', 'TextColor', 'k', 'Color', 'w', 'EdgeColor', [0.8 0.8 0.8]);
@@ -463,17 +512,17 @@ set(gca, 'Color', 'w', 'XColor', 'k', 'YColor', 'k', 'LineWidth', 1.0, ...
     'GridColor', [0.85 0.85 0.85], 'GridAlpha', 0.8, 'FontName', 'Helvetica', 'FontSize', 9);
 grid on; box on;
 
-% 子圖 2：水下回撤圖 (%)
+% 子圖 2：水下回撤圖 (%) (IS 與 OOS 嚴格分離，OOS 獨立歸零)
 subplot(4, 1, 2);
-full_port_eval = port_values(valid_start_t+1:numDays);
-full_spy_eval  = spy_values(valid_start_t+1:numDays);
-full_dates     = Dates_Active(valid_start_t+1:numDays);
-mari_dd = (full_port_eval - cummax(full_port_eval)) ./ (cummax(full_port_eval) + 1e-8) * 100;
-spy_dd  = (full_spy_eval  - cummax(full_spy_eval))  ./ (cummax(full_spy_eval) + 1e-8)  * 100;
-area(full_dates, mari_dd, 'FaceColor', '#D95319', 'FaceAlpha', 0.4, 'EdgeColor', 'none', 'DisplayName', 'MARI Drawdown'); hold on;
-plot(full_dates, spy_dd, 'Color', '#0072BD', 'LineWidth', 1.1, 'DisplayName', 'SPY Drawdown');
-xline(Dates_Active(idx_OOS_start), '--k', 'LineWidth', 1.2, 'Color', 'k');
-title('Portfolio Underwater Drawdown Profile (%)', 'FontSize', 11, 'FontWeight', 'bold', 'Color', 'k');
+area(Dates_Active(is_idx), is_mari_dd, 'FaceColor', '#D95319', 'FaceAlpha', 0.4, 'EdgeColor', 'none', 'DisplayName', 'MARI DD (IS)'); hold on;
+plot(Dates_Active(is_idx), is_spy_dd, 'Color', '#0072BD', 'LineWidth', 1.1, 'DisplayName', 'SPY DD (IS)');
+area(Dates_Active(oos_idx), oos_mari_dd, 'FaceColor', '#A2142F', 'FaceAlpha', 0.4, 'EdgeColor', 'none', 'DisplayName', 'MARI DD (OOS Reset)');
+plot(Dates_Active(oos_idx), oos_spy_dd, 'Color', '#4DBEEE', 'LineWidth', 1.2, 'DisplayName', 'SPY DD (OOS Reset)');
+xline(Dates_Active(idx_OOS_start), '--k', 'OOS Start (DD Reset 0%)', 'LineWidth', 1.2, 'Color', 'k', ...
+    'LabelVerticalAlignment', 'bottom', 'FontName', 'Helvetica', 'FontWeight', 'bold');
+yline(0, '-k', 'LineWidth', 1.0, 'HandleVisibility', 'off');
+title('Portfolio Underwater Drawdown Profile (%) [IS & OOS Separated, OOS Re-anchored to 0%]', ...
+    'FontSize', 11, 'FontWeight', 'bold', 'Color', 'k');
 ylabel('Drawdown (%)', 'FontSize', 9, 'FontWeight', 'bold', 'Color', 'k');
 legend('Location', 'southwest', 'TextColor', 'k', 'Color', 'w', 'EdgeColor', [0.8 0.8 0.8]);
 set(gca, 'Color', 'w', 'XColor', 'k', 'YColor', 'k', 'LineWidth', 1.0, ...
@@ -482,6 +531,7 @@ grid on; box on;
 
 % 子圖 3：動態避險現金比例 (%)
 subplot(4, 1, 3);
+full_dates = Dates_Active(valid_start_t+1:numDays);
 area(full_dates, cash_ratios(valid_start_t+1:numDays) * 100, ...
     'FaceColor', '#77AC30', 'FaceAlpha', 0.5, 'EdgeColor', 'none', 'DisplayName', 'Cash Ratio (%)'); hold on;
 xline(Dates_Active(idx_OOS_start), '--k', 'LineWidth', 1.2, 'Color', 'k');
@@ -514,7 +564,34 @@ exportgraphics(fig_wf, wfFigPath, 'Resolution', 300, 'BackgroundColor', 'white')
 fprintf(' 📊 機構級前向回測報表 (白底黑字) 已儲存至: %s\n', wfFigPath);
 close(fig_wf);
 
-disp('=================================================================');
+time_step6 = toc(t_step6);
+fprintf('⏱️ [步驟 6 完成] 耗時: %.2f 秒\n\n', time_step6);
+
+%% =========================================================================
+% 結算全流程執行時長審計
+% =========================================================================
+total_elapsed_sec = toc(t_total_start);
+tot_hours = floor(total_elapsed_sec / 3600);
+tot_mins  = floor(mod(total_elapsed_sec, 3600) / 60);
+tot_secs  = mod(total_elapsed_sec, 60);
+
+fprintf('=================================================================\n');
+fprintf('📊 【Phase 6 各階段耗時明細與總時長審計報告】\n');
+fprintf('=================================================================\n');
+fprintf(' 步驟 0：環境掛載與隨機串流鎖定   : %8.2f 秒 (%5.1f%%)\n', time_step0, (time_step0 / total_elapsed_sec) * 100);
+fprintf(' 步驟 1：快取與開盤價矩陣載入     : %8.2f 秒 (%5.1f%%)\n', time_step1, (time_step1 / total_elapsed_sec) * 100);
+fprintf(' 步驟 2：CIO 5 維狀態空間預計算   : %8.2f 秒 (%5.1f%%)\n', time_step2, (time_step2 / total_elapsed_sec) * 100);
+fprintf(' 步驟 3：時間邊界劃分與死區校準   : %8.2f 秒 (%5.1f%%)\n', time_step3, (time_step3 / total_elapsed_sec) * 100);
+fprintf(' 步驟 4：前向滾動推論與定期調倉撮合: %8.2f 秒 (%5.1f%%)\n', time_step4, (time_step4 / total_elapsed_sec) * 100);
+fprintf(' 步驟 5：IS/OOS 財務計量指標分離  : %8.2f 秒 (%5.1f%%)\n', time_step5, (time_step5 / total_elapsed_sec) * 100);
+fprintf(' 步驟 6：圖表繪製 (OOS 重設) 與存檔: %8.2f 秒 (%5.1f%%)\n', time_step6, (time_step6 / total_elapsed_sec) * 100);
+fprintf('-----------------------------------------------------------------\n');
+if tot_hours > 0
+    fprintf('⏱️ 【總執行時長】: %d 小時 %d 分 %.2f 秒 (共 %.2f 秒)\n', tot_hours, tot_mins, tot_secs, total_elapsed_sec);
+else
+    fprintf('⏱️ 【總執行時長】: %d 分 %.2f 秒 (共 %.2f 秒)\n', tot_mins, tot_secs, total_elapsed_sec);
+end
+fprintf('=================================================================\n');
 disp('🎯 [Phase 15.5] 前向回測執行完畢！');
 disp('=================================================================');
 
