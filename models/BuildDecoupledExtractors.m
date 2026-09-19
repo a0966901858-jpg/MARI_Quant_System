@@ -1,37 +1,38 @@
 classdef BuildDecoupledExtractors
     % =========================================================================
     % 模組：BuildDecoupledExtractors.m
-    % 升級：Phase 15.5 正則化防禦與空間混合升級版 (★ 支援 Feature/Attention/Variational Dropout、
-    %       輸入動態高斯噪聲注入、SpaceExpertMixMode 動態注入、GCN-only/Dynamic 雙模式切換、
+    % 升級：Phase 15.5 生產基準版 (★ 支援空間專家 Pure-Time 剪枝開關、
+    %       原生 'like' 語法 GPU/dlarray 無縫張量正則化、時序注意力維度對齊、
     %       Huber + Continuous Soft-IC 複合損失引擎、VICReg 變異數保底防坍縮)
-    % 職責：構建雙軌時空特徵萃取網路，並提供支援因果律訓練之可微分排序、回歸損失與資料正則化引擎
+    % 職責：構建時空解耦特徵萃取網路（支援純時序單軌），並提供可微分排序與回歸損失引擎
     % =========================================================================
     
     properties
-        ConfigObj        
-        NumTickers       
-        SeqLen           
-        EmbedDim         
-        DropoutRate      
-        ArchType         % 'trans_lstm' (預設) 或 'pure_lstm' (Round 8b 輕量版)
-        SpaceMixMode     % 'gcn_only' (預設凍結注意力) 或 'dynamic' (動態注意力)
+        ConfigObj               % 全域配置物件 (Config 實例)
+        NumTickers              % 股票池標的數量
+        SeqLen                  % 時序歷史回看視窗長度
+        EmbedDim                % 降維目標 Embedding 維度 (預設 64)
+        DropoutRate             % 密集層標準 Dropout 比率
+        ArchType                % 'trans_lstm' (預設) 或 'pure_lstm'
+        SpaceMixMode            % 'gcn_only' 或 'dynamic'
+        EnableSpaceExpert       % ★ 空間專家啟用開關 (布林值，連動剪枝)
         
-        % ★ 正則化與特徵噪聲控制參數 (自 Config.m 動態注入)
-        FeatureDropoutRate   % 特徵維度隨機丟棄率 (Feature Dropout)
-        InputNoiseStd        % 輸入特徵高斯動態噪聲標準差 (Gaussian Noise)
-        VariationalDropRate  % 時序序列固定 Drop Mask 機率 (Variational Dropout)
-        AttentionDropRate    % 自注意力權重丟棄率 (Attention Dropout)
-        HuberDelta           % Huber 損失線性過渡門檻
-        ICLossWeight         % Continuous Soft-IC 損失權重
+        % 正則化與特徵噪聲控制參數 (自 Config.m 動態注入)
+        FeatureDropoutRate      % 特徵維度隨機遮蔽率 (Feature Dropout)
+        InputNoiseStd           % 輸入特徵動態高斯噪聲標準差 (Gaussian Noise)
+        VariationalDropRate     % 時序循環全時間步共享遮蔽率 (Variational Dropout)
+        AttentionDropRate       % 自注意力權重丟棄率 (Attention Dropout)
+        HuberDelta              % Huber 損失線性過渡門檻
+        ICLossWeight            % Continuous Soft-IC 損失權重
         
-        TotalNodeFeats   % 單一節點特徵總數 (Relative 3 + Micro 15 = 18)
-        FlattenedFeatDim 
-        FlattenedAdjDim  
+        TotalNodeFeats          % 單節點特徵維度 (Relative 3 + Micro 15 = 18)
+        FlattenedFeatDim        % 空間專家展平特徵維度
+        FlattenedAdjDim         % 空間專家展平圖譜維度
     end
     
     methods
         function obj = BuildDecoupledExtractors(config, totalFeats, archType)
-            disp(' ⚙️ [NetworkFactory] 啟動雙軌特徵萃取器構建工廠 (深度正則化與空間混合模式支援版)...');
+            disp(' ⚙️ [NetworkFactory] 啟動特徵萃取器構建工廠 (支援 Pure-Time 剪枝與深度正則化)...');
             
             obj.ConfigObj  = config;
             obj.NumTickers = config.NumTickers;
@@ -45,7 +46,7 @@ classdef BuildDecoupledExtractors
                 obj.DropoutRate = 0.2;
             end
             
-            % ★ 正則化與特徵噪聲超參數動態注入 (與 Config.m 嚴格同步)
+            % ★ 讀取正則化與特徵噪聲超參數 (與 Config.m 保持 SSOT 一致)
             if isprop(config, 'FeatureDropoutRate') && ~isempty(config.FeatureDropoutRate)
                 obj.FeatureDropoutRate = config.FeatureDropoutRate;
             else
@@ -89,11 +90,22 @@ classdef BuildDecoupledExtractors
                 obj.ArchType = 'trans_lstm';
             end
             
-            % 空間專家混合模式組態 (預設 'gcn_only')
+            % 空間專家混合模式組態
             if isprop(config, 'SpaceExpertMixMode') && ~isempty(config.SpaceExpertMixMode)
                 obj.SpaceMixMode = config.SpaceExpertMixMode;
             else
                 obj.SpaceMixMode = 'gcn_only';
+            end
+            
+            % ★ 空間專家剪枝決策判定 (落實消融實驗與貝氏最佳化結論)
+            if isprop(config, 'EnableSpaceExpertTraining') && ~config.EnableSpaceExpertTraining
+                obj.EnableSpaceExpert = false;
+            elseif isprop(config, 'EnableSpaceExpert') && ~config.EnableSpaceExpert
+                obj.EnableSpaceExpert = false;
+            elseif strcmpi(obj.SpaceMixMode, 'none') || strcmpi(obj.SpaceMixMode, 'off')
+                obj.EnableSpaceExpert = false;
+            else
+                obj.EnableSpaceExpert = true;
             end
             
             if nargin >= 2 && ~isempty(totalFeats)
@@ -107,16 +119,21 @@ classdef BuildDecoupledExtractors
             obj.FlattenedFeatDim = obj.TotalNodeFeats * obj.NumTickers;
             obj.FlattenedAdjDim  = obj.NumTickers * obj.NumTickers;
             
-            fprintf('  -> 網路拓撲與正則化設定：\n');
-            fprintf('     [時序專家] 架構: %s | 輸入: %d 維 | 序列長度: %d | Dropout: %.2f | AttnDrop: %.2f\n', ...
+            fprintf('  -> 網路拓撲與正則化組態：\n');
+            fprintf('     [時序專家] 架構: %s | 輸入: %d 維 | 視窗: %d | Dropout: %.2f | AttnDrop: %.2f\n', ...
                 upper(obj.ArchType), obj.TotalNodeFeats, obj.SeqLen, obj.DropoutRate, obj.AttentionDropRate);
-            fprintf('     [空間專家] 展平特徵維度: %d | 展平圖譜維度: %d | 輸出維度: %d | 混合模式: %s\n', ...
-                obj.FlattenedFeatDim, obj.FlattenedAdjDim, obj.EmbedDim, upper(obj.SpaceMixMode));
-            fprintf('     [數據增強] 特徵遮蔽 (FeatureDrop): %.2f | 高斯噪聲 (NoiseStd): %.4f | 循環遮蔽 (VarDrop): %.2f\n', ...
+            if obj.EnableSpaceExpert
+                fprintf('     [空間專家] 狀態: 啟用 | 展平特徵: %d 維 | 圖譜: %d 維 | 輸出: %d 維 | 模式: %s\n', ...
+                    obj.FlattenedFeatDim, obj.FlattenedAdjDim, obj.EmbedDim, upper(obj.SpaceMixMode));
+            else
+                fprintf('     [空間專家] 狀態: ⏩ 已依實驗結論全面剪枝 (Pure-Time 模式，杜絕過度平滑)\n');
+            end
+            fprintf('     [動態增強] 特徵遮蔽 (FeatureDrop): %.2f | 噪聲注入 (NoiseStd): %.4f | 循環遮蔽 (VarDrop): %.2f\n', ...
                 obj.FeatureDropoutRate, obj.InputNoiseStd, obj.VariationalDropRate);
         end
         
         function [net_time, net_space] = buildNetworks(obj)
+            % 1. 構建時序專家網路
             switch obj.ArchType
                 case 'pure_lstm'
                     layers_time = [
@@ -130,27 +147,33 @@ classdef BuildDecoupledExtractors
                         layerNormalizationLayer('Name', 'ln_time_out')
                     ];
                 otherwise
+                    % Trans-LSTM: 輸入投影 64 維 -> 多頭自注意力 (4 頭 x 16D = 64D) -> LSTM -> 64D
                     layers_time = [
-                        sequenceInputLayer(obj.TotalNodeFeats, 'Name', 'in_time')
-                        fullyConnectedLayer(128, 'Name', 'proj_fc')
-                        % ★ 注入 Attention Dropout 抑制對歷史特定 K 線模式的死記硬背
-                        selfAttentionLayer(4, 32, 'Dropout', obj.AttentionDropRate, 'Name', 'self_attn')
+                        sequenceInputLayer(obj.TotalNodeFeats, 'Name', 'in_time', 'Normalization', 'none')
+                        fullyConnectedLayer(64, 'Name', 'proj_fc', 'WeightsInitializer', 'he')
+                        selfAttentionLayer(4, 16, 'Dropout', obj.AttentionDropRate, 'Name', 'self_attn')
                         dropoutLayer(obj.DropoutRate, 'Name', 'drop_attn')
                         lstmLayer(128, 'OutputMode', 'last', 'Name', 'lstm_1')
                         layerNormalizationLayer('Name', 'ln_pre_embed')
                         dropoutLayer(obj.DropoutRate, 'Name', 'drop_lstm')
-                        fullyConnectedLayer(obj.EmbedDim, 'Name', 'E_time') 
+                        fullyConnectedLayer(obj.EmbedDim, 'Name', 'E_time', 'WeightsInitializer', 'he') 
                         layerNormalizationLayer('Name', 'ln_time_out')
                     ];
             end
             net_time = dlnetwork(layers_time);
             fprintf('✅ 時序專家網路拓撲構建完畢 (%s + Attention Dropout + 雙重 LayerNorm)。\n', obj.ArchType);
             
+            % 2. 構建空間專家網路 (若剪枝則安全回傳空值)
+            if ~obj.EnableSpaceExpert
+                net_space = [];
+                disp('⏩ 空間專家 (DyGAT) 已依組態剪枝跳過構建，節省顯存與前向運算開銷。');
+                return;
+            end
+            
             lgraph_space = layerGraph();
             feat_input = featureInputLayer(obj.FlattenedFeatDim, 'Name', 'in_space_feat');
             adj_input  = featureInputLayer(obj.FlattenedAdjDim, 'Name', 'in_space_adj');
             
-            % 將 SpaceMixMode 顯式傳入 GraphSpatialFusionLayer
             gat_layer = GraphSpatialFusionLayer('gat_1', obj.NumTickers, obj.EmbedDim, ...
                 obj.TotalNodeFeats, obj.SpaceMixMode);
             
@@ -162,7 +185,7 @@ classdef BuildDecoupledExtractors
             lgraph_space = connectLayers(lgraph_space, 'in_space_adj', 'gat_1/in2');
             
             net_space = dlnetwork(lgraph_space);
-            fprintf('✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入解耦版, 模式: %s)。\n', upper(obj.SpaceMixMode));
+            fprintf('✅ 空間專家網路拓撲構建完畢 (DyGAT 雙輸入版, 模式: %s)。\n', upper(obj.SpaceMixMode));
         end
         
         function [net_time, net_space] = build(obj)
@@ -171,11 +194,11 @@ classdef BuildDecoupledExtractors
     end
     
     %% =====================================================================
-    % 靜態方法：深度學習動態正則化與特徵資料增強引擎
+    % 靜態方法：深度學習動態正則化與可微分連續排序損失引擎
     % =====================================================================
     methods (Static)
         % -----------------------------------------------------------------
-        % 1. 輸入特徵層正則化 (Feature Dropout + 動態高斯噪聲)
+        % 1. 輸入特徵層動態正則化 (Feature Dropout + 高斯動態噪聲)
         % -----------------------------------------------------------------
         function x_aug = apply_input_regularization(x, feat_drop_rate, noise_std, is_training)
             if nargin < 4 || ~is_training
@@ -186,27 +209,23 @@ classdef BuildDecoupledExtractors
             sz = size(x);
             numFeats = sz(1);
             batchSize = sz(2);
+            raw_data = extractdata(x);
             
-            % Feature Dropout: 以特徵欄位為單位進行隨機遮蔽 (維持整條 Sequence 一致)
+            % Feature Dropout: 以特徵維度為單位進行整條序列共享遮蔽
             if nargin >= 2 && ~isempty(feat_drop_rate) && feat_drop_rate > 0
+                keep_prob = single(1.0 - feat_drop_rate);
                 if length(sz) == 3
-                    feat_mask = single(rand(numFeats, batchSize, 1) > feat_drop_rate) / (1.0 - feat_drop_rate);
+                    mask_raw = rand(numFeats, batchSize, 1, 'like', raw_data);
                 else
-                    feat_mask = single(rand(numFeats, batchSize) > feat_drop_rate) / (1.0 - feat_drop_rate);
+                    mask_raw = rand(numFeats, batchSize, 'like', raw_data);
                 end
-                if isgpuarray(x)
-                    feat_mask = gpuArray(feat_mask);
-                end
+                feat_mask = dlarray(cast(mask_raw > feat_drop_rate, 'like', raw_data) / keep_prob);
                 x = x .* feat_mask;
             end
             
             % 動態高斯噪聲注入: 模擬盤面真實滑價與微結構抖動
             if nargin >= 3 && ~isempty(noise_std) && noise_std > 0
-                if isgpuarray(x)
-                    noise = gpuArray.randn(size(x), 'single') * single(noise_std);
-                else
-                    noise = randn(size(x), 'single') * single(noise_std);
-                end
+                noise = dlarray(randn(sz, 'like', raw_data) * cast(noise_std, 'like', raw_data));
                 x = x + noise;
             end
             
@@ -223,16 +242,16 @@ classdef BuildDecoupledExtractors
             end
             
             sz = size(x);
+            raw_data = extractdata(x);
+            keep_prob = single(1.0 - drop_rate);
+            
             if length(sz) == 3
-                % 廣播至所有時間步 [Dim, Batch, 1]
-                mask = single(rand(sz(1), sz(2), 1) > drop_rate) / (1.0 - drop_rate);
+                mask_raw = rand(sz(1), sz(2), 1, 'like', raw_data);
             else
-                mask = single(rand(sz) > drop_rate) / (1.0 - drop_rate);
+                mask_raw = rand(sz, 'like', raw_data);
             end
             
-            if isgpuarray(x)
-                mask = gpuArray(mask);
-            end
+            mask = dlarray(cast(mask_raw > drop_rate, 'like', raw_data) / keep_prob);
             x_drop = x .* mask;
         end
         
@@ -240,13 +259,13 @@ classdef BuildDecoupledExtractors
         % 3. 每日橫截面 Soft-IC 損失 (可微分連續排序代理)
         % -----------------------------------------------------------------
         function loss = compute_soft_ic_loss(y_pred, y_true, act_mask, sample_T, B)
-            if isgpuarray(y_pred) && ~isgpuarray(y_true)
-                y_true = gpuArray(y_true);
-            end
+            yp = stripdims(y_pred);
+            yt = stripdims(y_true);
+            m  = logical(stripdims(act_mask));
             
-            y_p_mat = reshape(y_pred, sample_T, B);
-            y_t_mat = reshape(y_true, sample_T, B);
-            act_mat = reshape(act_mask, sample_T, B);
+            y_p_mat = reshape(yp, sample_T, B);
+            y_t_mat = reshape(yt, sample_T, B);
+            act_mat = reshape(m,  sample_T, B);
             
             ic_sum = 0;
             valid_days = 0;
@@ -255,11 +274,11 @@ classdef BuildDecoupledExtractors
                 m_b = act_mat(:, b);
                 n_act = sum(m_b);
                 if n_act >= 5
-                    yp = y_p_mat(m_b, b);
-                    yt = y_t_mat(m_b, b);
+                    yp_b = y_p_mat(m_b, b);
+                    yt_b = y_t_mat(m_b, b);
                     
-                    yp_c = yp - mean(yp);
-                    yt_c = yt - mean(yt);
+                    yp_c = yp_b - mean(yp_b);
+                    yt_c = yt_b - mean(yt_b);
                     
                     cov_xy  = sum(yp_c .* yt_c);
                     norm_xy = sqrt(sum(yp_c.^2) * sum(yt_c.^2) + 1e-6);
@@ -273,7 +292,7 @@ classdef BuildDecoupledExtractors
             if valid_days > 0
                 loss = -(ic_sum / valid_days);
             else
-                loss = sum(y_pred, 'all') * 0;
+                loss = sum(yp, 'all') * 0;
             end
         end
         
@@ -284,13 +303,14 @@ classdef BuildDecoupledExtractors
             if nargin < 6 || isempty(margin)
                 margin = 0.01;
             end
-            if isgpuarray(y_pred) && ~isgpuarray(y_true)
-                y_true = gpuArray(y_true);
-            end
             
-            y_p_mat = reshape(y_pred, sample_T, B);
-            y_t_mat = reshape(y_true, sample_T, B);
-            act_mat = reshape(act_mask, sample_T, B);
+            yp = stripdims(y_pred);
+            yt = stripdims(y_true);
+            m  = logical(stripdims(act_mask));
+            
+            y_p_mat = reshape(yp, sample_T, B);
+            y_t_mat = reshape(yt, sample_T, B);
+            act_mat = reshape(m,  sample_T, B);
             
             total_rank_loss = 0;
             total_pairs = 0;
@@ -299,11 +319,11 @@ classdef BuildDecoupledExtractors
                 m_b = act_mat(:, b);
                 n_act = sum(m_b);
                 if n_act >= 4
-                    yp = y_p_mat(m_b, b);
-                    yt = y_t_mat(m_b, b);
+                    yp_b = y_p_mat(m_b, b);
+                    yt_b = y_t_mat(m_b, b);
                     
-                    diff_t = yt - yt';
-                    diff_p = yp - yp';
+                    diff_t = yt_b - yt_b';
+                    diff_p = yp_b - yp_b';
                     
                     pair_mask = diff_t > margin;
                     n_pairs = sum(pair_mask, 'all');
@@ -319,7 +339,7 @@ classdef BuildDecoupledExtractors
             if total_pairs > 0
                 loss = total_rank_loss / total_pairs;
             else
-                loss = sum(y_pred, 'all') * 0;
+                loss = sum(yp, 'all') * 0;
             end
         end
         
@@ -333,20 +353,21 @@ classdef BuildDecoupledExtractors
             if nargin < 7 || isempty(delta)
                 delta = 0.1;
             end
-            if isgpuarray(y_pred) && ~isgpuarray(y_true)
-                y_true = gpuArray(y_true);
-            end
             
-            yp = y_pred(act_mask);
-            yt = y_true(act_mask);
-            yp = yp(:);
-            yt = yt(:);
+            yp = stripdims(y_pred);
+            yt = stripdims(y_true);
+            m  = logical(stripdims(act_mask));
             
-            err = abs(yp - yt);
+            yp_m = yp(m);
+            yt_m = yt(m);
+            
+            % 元素級 Huber 殘差損失
+            err = abs(yp_m - yt_m);
             is_small = err <= delta;
             huber = mean(is_small .* (0.5 * err.^2) + (~is_small) .* (delta * (err - 0.5 * delta)), 'all');
             
-            ic_loss = BuildDecoupledExtractors.compute_soft_ic_loss(y_pred, y_true, act_mask, sample_T, B);
+            % 橫截面 Soft-IC 排序正規化
+            ic_loss = BuildDecoupledExtractors.compute_soft_ic_loss(yp, yt, m, sample_T, B);
             
             loss = huber + ic_weight * (1.0 + ic_loss);
         end
@@ -358,8 +379,9 @@ classdef BuildDecoupledExtractors
             if nargin < 2 || isempty(target_std)
                 target_std = 1.0;
             end
-            mu_dim = mean(emb, 2);
-            var_per_dim = mean((emb - mu_dim).^2, 2);
+            e = stripdims(emb);
+            mu_dim = mean(e, 2);
+            var_per_dim = mean((e - mu_dim).^2, 2);
             std_per_dim = sqrt(var_per_dim + 1e-4);
             var_penalty = mean(max(0, target_std - std_per_dim));
         end
