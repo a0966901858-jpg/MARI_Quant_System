@@ -1,18 +1,18 @@
 % =========================================================================
 % 腳本：6_Run_WalkForward_Backtest.m
-% 升級：Phase 15.5 生產基準版 (★ Pure-Time 剪枝防訊號稀釋、
-%       Phase 4 BO 最佳化參數自動優先繼承、Config.Horizon 調倉步進動態同構、
-%       mrg32k3a 確定性串流鎖定、Open-to-Open 權重漂移與停牌鎖死防護、
-%       死區連續縮放護欄、OOS 盲測期獨立歸一化起算與水下回撤歸零結算、
-%       各階段獨立高精度計時與總運行耗時審計)
-% 職責：執行嚴格的因果律滾動回測，產出無縫的 IS/OOS 真實績效、交易軌跡與視覺化診斷報表
+% 升級：Phase 15.5 生產基準版 (★ 徹底剔除 PPO 強化學習消除牛市現金拖累、
+%       Pure-Time 剪枝防訊號稀釋、Phase 4 BO 最佳化參數直接接管資產配置、
+%       Config.Horizon/RebalanceStride 調倉步進動態同構、mrg32k3a 確定性串流、
+%       Open-to-Open 權重自然漂移與停牌鎖死防護、死區連續縮放護欄、
+%       OOS 盲測期獨立歸一化起算與水下回撤歸零結算、全流程高精度計時與時長審計)
+% 職責：執行嚴格的因果律前向回測，產出無前視偏差的 IS/OOS 真實績效、交易軌跡與診斷報表
 % =========================================================================
 clear; clc; close all;
 
 % 啟動全域總計時器
 t_total_start = tic;
 disp('=================================================================');
-disp('🚀 [Phase 15.5] 啟動 MARI 嚴格前向滾動回測管線 (生產基準同構版)');
+disp('🚀 [Phase 15.5] 啟動 MARI 嚴格前向滾動回測管線 (規則優化與無RL極速版)');
 disp('=================================================================');
 
 %% 0. 環境路徑掛載與隨機串流管理
@@ -99,30 +99,15 @@ else
     disp('  ℹ️ 未檢測到正式 BO_Hyperparameters.mat，回測將使用 Config 預設基準配置。');
 end
 
-% CIO 權重彈性載入防護 (若未訓練則退回規則路由)
+% ★ 決策架構徹底剔除 PPO 強化學習 (Phase 5)
+% 依據實證與 P2-3 消融結論，PPO 在低信噪比環境中難以產生有效超額，常態性持有 50%+ 現金引發嚴重牛市拖累；
+% 本管線全面剔除 PPO Agent 載入，資產配置 100% 由 Phase 4 BO 最優規則與連續死區護欄接管。
 has_cio_agents = false;
-path_agg = fullfile(configObj.ModelDir, 'CIO_Aggressive.mat');
-path_bal = fullfile(configObj.ModelDir, 'CIO_Balanced.mat');
-path_con = fullfile(configObj.ModelDir, 'CIO_Conservative.mat');
-
-if exist(path_agg, 'file') && exist(path_bal, 'file') && exist(path_con, 'file')
-    try
-        agent_aggressive   = load(path_agg).agent_aggressive;
-        agent_balanced     = load(path_bal).agent_balanced;
-        agent_conservative = load(path_con).agent_conservative;
-        has_cio_agents = true;
-        disp('  🤖 成功加載 Phase 5 三軌 CIO 強化學習大腦。');
-    catch ME
-        warning('⚠️ 加載 CIO 代理人失敗 (%s)，將退回使用中立/BO 超參數路由。', ME.message);
-    end
-else
-    disp('  ℹ️ 未檢測到完整 Phase 5 CIO 權重檔，回測將使用 Config / Phase 4 最佳化超參數路由。');
-end
+disp('  🏛️ [決策架構] 已徹底剔除 PPO 強化學習，全面採用 Phase 4 貝氏最佳化規則與連續死區護欄。');
 
 fetcher = DataFetcher(configObj);
 dataStruct = fetcher.fetch_data();
 Opens_Raw = dataStruct.Opens;
-
 seqLen = configObj.SeqLen;
 numDaysRaw = length(Dates_Active);
 valid_idx = seqLen : numDaysRaw;
@@ -130,6 +115,7 @@ valid_idx = seqLen : numDaysRaw;
 % 對崩盤機率進行 20 日移動平均平滑
 P_crash_smooth_all = movmean(P_crash_all, [19, 0]);
 P_crash_smooth = P_crash_smooth_all(valid_idx);
+
 Prices_Active = Prices_Active(valid_idx, :);
 Opens_Active  = Opens_Raw(valid_idx, :);
 Expert_Active = Expert_Active(valid_idx, :);
@@ -146,34 +132,13 @@ if isempty(spy_idx), error('❌ 找不到 SPY 基準標的！'); end
 time_step1 = toc(t_step1);
 fprintf('⏱️ [步驟 1 完成] 耗時: %.2f 秒\n\n', time_step1);
 
-%% 2. 預計算 CIO 5 維狀態空間 
+%% 2. 預計算市場宏觀狀態與動態波動度
 t_step2 = tic;
-disp('--- 步驟 2：預計算 CIO 5 維狀態空間 ---');
-CIO_State = zeros(5, numDays, 'single');
-
+disp('--- 步驟 2：預計算市場波動度與宏觀指標 ---');
 spy_prices = Prices_Active(:, spy_idx);
 spy_rets = [0; diff(spy_prices) ./ (spy_prices(1:end-1) + 1e-8)];
 spy_rets(isnan(spy_rets) | isinf(spy_rets)) = 0;
 vol20 = movstd(spy_rets, [19, 0], 1) * sqrt(252);
-
-mdd252 = zeros(numDays, 1);
-for t = 1:numDays
-    start_t = max(1, t - 251);
-    cum_ret = cumprod(1 + spy_rets(start_t:t));
-    running_max = cummax(cum_ret);
-    mdd252(t) = min((cum_ret - running_max) ./ (running_max + 1e-8));
-end
-
-spy_ret20 = zeros(numDays, 1);
-for t = 21:numDays
-    spy_ret20(t) = (spy_prices(t) - spy_prices(t-20)) / (spy_prices(t-20) + 1e-8);
-end
-
-CIO_State(1, :) = P_crash_smooth'; 
-CIO_State(2, :) = spy_ret20';      
-CIO_State(3, :) = vol20';          
-CIO_State(4, :) = abs(mdd252)';    
-CIO_State(5, :) = 1.0;             
 
 time_step2 = toc(t_step2);
 fprintf('⏱️ [步驟 2 完成] 耗時: %.2f 秒\n\n', time_step2);
@@ -205,12 +170,13 @@ base_frict      = configObj.MoE_FrictionMask;
 Verbose_Log     = true; 
 is_bankrupt     = false; 
 
-% ★ 動態繼承全域調倉步進 (未指定時動態對齊 Horizon，杜絕硬編碼)
+% 動態繼承全域調倉步進 (未指定時動態對齊 Horizon，杜絕硬編碼)
 if isprop(configObj, 'RebalanceStride') && ~isempty(configObj.RebalanceStride)
     rebalance_stride = configObj.RebalanceStride;
 else
     rebalance_stride = configObj.Horizon;
 end
+
 cached_stock_props = zeros(numTickers, 1, 'single');
 
 % 提取 IS 期間 75% 雜訊分位數作為死區下限
@@ -258,7 +224,6 @@ fprintf('⏱️ [步驟 3 完成] 耗時: %.2f 秒\n\n', time_step3);
 t_step4 = tic;
 disp('--- 步驟 4：啟動逐日推論與交易結算 (同構前向回測) ---');
 fprintf(' 📡 回測正式起點：%s\n', datestr(Dates_Active(valid_start_t)));
-
 port_values(valid_start_t)   = 1.0;
 port_values(valid_start_t+1) = 1.0;
 spy_values(valid_start_t)    = 1.0;
@@ -307,59 +272,20 @@ for t = valid_start_t : numDays - 2
     available_cap = max(0, 1.0 - locked_sum);
     
     % -------------------------------------------------------------
-    % 3. 策略決策：專家權重 (★ Pure-Time 剪枝防稀釋)
+    % 3. 策略決策：專家權重 (時序專家 100% 保真傳遞)
     % -------------------------------------------------------------
     if ~enable_space
-        % 空間專家剪枝：強制時序權重 100%，杜絕排序得分被 0 權重稀釋
         w_time  = 1.0;
         w_space = 0.0;
-        if has_cio_agents
-            state_2d = CIO_State(:, t);
-            state_2d(5) = prev_cash;
-            [act_bal, ~] = agent_balanced.get_actions(state_2d, 0);
-            target_cash = max(0, min(1, act_bal(3)));
-        else
-            target_cash = 0.0;
-        end
     else
-        if has_cio_agents
-            state_2d = CIO_State(:, t);
-            state_2d(5) = prev_cash;
-            
-            [act_agg, ~] = agent_aggressive.get_actions(state_2d, 0);
-            [act_bal, ~] = agent_balanced.get_actions(state_2d, 0);
-            [act_con, ~] = agent_conservative.get_actions(state_2d, 0);
-            
-            if P_crash_smooth(t) > guard_high
-                prob_con = 0.80; prob_bal = 0.15; prob_agg = 0.05;
-            elseif vol20(t) > 0.20
-                prob_con = 0.20; prob_bal = 0.60; prob_agg = 0.20;
-            else
-                prob_con = 0.10; prob_bal = 0.30; prob_agg = 0.60;
-            end
-            
-            act_final = act_agg * prob_agg + act_bal * prob_bal + act_con * prob_con;
-            act_final(isnan(act_final)) = 0;
-            
-            w_time  = max(0, act_final(1));
-            w_space = max(0, act_final(2));
-            target_cash = max(0, min(1, act_final(3)));
-            
-            if (w_time + w_space) <= 1e-6
-                w_time = fallback_w_time; w_space = 1.0 - fallback_w_time;
-            else
-                sum_w = w_time + w_space;
-                w_time = w_time / sum_w; w_space = w_space / sum_w;
-            end
-        else
-            w_time = fallback_w_time;
-            w_space = 1.0 - fallback_w_time;
-            target_cash = 0.0;
-        end
+        w_time  = fallback_w_time;
+        w_space = 1.0 - fallback_w_time;
     end
     
     % -------------------------------------------------------------
-    % 4. 崩盤護欄死區連續縮放 (每日響應極端宏觀風險)
+    % 4. 崩盤護欄死區連續縮放 (由 Phase 4 BO 參數精確裁決)
+    %    ★ 關鍵優化：常態非危機時期基準現金鎖定 0.0，杜絕牛市現金拖累；
+    %    僅在宏觀 P(Crash) 突破死區下限時，動態連續拉升現金防禦水位。
     % -------------------------------------------------------------
     p_c = P_crash_smooth(t);
     if p_c <= guard_low
@@ -369,9 +295,8 @@ for t = valid_start_t : numDays - 2
     else
         risk_scale = (p_c - guard_low) / (guard_high - guard_low);
     end
-    target_cash = max(target_cash, risk_scale);
     
-    actual_cash_target = min(target_cash, available_cap);
+    actual_cash_target = min(risk_scale, available_cap);
     rem_cap_for_assets = available_cap - actual_cash_target;
     
     % -------------------------------------------------------------
@@ -384,7 +309,7 @@ for t = valid_start_t : numDays - 2
         if enable_space
             comb_p = P_time_M(:, t) * w_time + P_space_M(:, t) * w_space;
         else
-            comb_p = P_time_M(:, t); % 純時序保真傳遞
+            comb_p = P_time_M(:, t); % 純時序保真傳遞，無雜訊稀釋
         end
         comb_p = comb_p .* Expert_Active(t, :)';
         comb_p(halted_mask) = 0;
@@ -510,14 +435,12 @@ fprintf('-----------------------------------------------------------------------
 fprintf(' 全歷史累計(MARI)|  %+8.2f%% |     %+6.2f%%   |   %5.2f%%  |    %6.2f%%   |  %6.2f  |  %6.2f  |    %+6.2f    | %5.1f%%\n', ...
     full_m.TotalRet, full_m.CAGR, full_m.AnnVol, full_m.MDD, full_m.Sharpe, full_m.Calmar, full_m.IR, full_m.WinRate);
 fprintf('====================================================================================================\n\n');
-
 time_step5 = toc(t_step5);
 fprintf('⏱️ [步驟 5 完成] 耗時: %.2f 秒\n\n', time_step5);
 
 %% 6. 繪製視覺化診斷報表 (OOS 淨值獨立歸一化起算 & 回撤獨立歸零)
 t_step6 = tic;
 disp('--- 步驟 6：生成機構級視覺化報表 (白底黑字 - OOS 獨立歸一化與回撤歸零版) ---');
-
 fig_wf = figure('Name', 'MARI Quant Walk-Forward Backtest', ...
     'Color', 'w', 'Position', [100, 100, 1250, 1000], 'Visible', 'off');
 set(fig_wf, 'InvertHardcopy', 'off');
@@ -602,7 +525,6 @@ wfFigPath = fullfile(configObj.ModelDir, 'Phase6_WalkForward_Backtest.png');
 exportgraphics(fig_wf, wfFigPath, 'Resolution', 300, 'BackgroundColor', 'white');
 fprintf(' 📊 機構級前向回測報表 (白底黑字) 已儲存至: %s\n', wfFigPath);
 close(fig_wf);
-
 time_step6 = toc(t_step6);
 fprintf('⏱️ [步驟 6 完成] 耗時: %.2f 秒\n\n', time_step6);
 
@@ -619,7 +541,7 @@ fprintf('📊 【Phase 6 各階段耗時明細與總時長審計報告】\n');
 fprintf('=================================================================\n');
 fprintf(' 步驟 0：環境掛載與隨機串流鎖定   : %8.2f 秒 (%5.1f%%)\n', time_step0, (time_step0 / total_elapsed_sec) * 100);
 fprintf(' 步驟 1：快取與開盤價矩陣載入     : %8.2f 秒 (%5.1f%%)\n', time_step1, (time_step1 / total_elapsed_sec) * 100);
-fprintf(' 步驟 2：CIO 5 維狀態空間預計算   : %8.2f 秒 (%5.1f%%)\n', time_step2, (time_step2 / total_elapsed_sec) * 100);
+fprintf(' 步驟 2：宏觀波動度與狀態空間預計算: %8.2f 秒 (%5.1f%%)\n', time_step2, (time_step2 / total_elapsed_sec) * 100);
 fprintf(' 步驟 3：時間邊界劃分與死區校準   : %8.2f 秒 (%5.1f%%)\n', time_step3, (time_step3 / total_elapsed_sec) * 100);
 fprintf(' 步驟 4：前向滾動推論與定期調倉撮合: %8.2f 秒 (%5.1f%%)\n', time_step4, (time_step4 / total_elapsed_sec) * 100);
 fprintf(' 步驟 5：IS/OOS 財務計量指標分離  : %8.2f 秒 (%5.1f%%)\n', time_step5, (time_step5 / total_elapsed_sec) * 100);
