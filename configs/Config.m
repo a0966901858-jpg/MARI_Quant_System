@@ -1,10 +1,10 @@
 classdef Config < handle
     % =========================================================================
     % 類別: Config (系統全域超參數與路徑配置中心)
-    % 升級: Phase 15.5 20D 正式生產基準版 (★ 統一 20D 基準線全域參數單一來源、
-    %       PurgeEmbargo/HACLag 對齊 20 日時序隔離、RebalanceStride=20 日月步進、
-    %       mrg32k3a 獨立子串流隨機數引擎、DSR 熔斷防禦載入、SpaceExpertMixMode 空間模式、
-    %       ★ 集中新增 Phase 1 & 2 輸入層與時序雙軌深度正則化超參數)
+    % 升級: Phase 15.5 生產剪枝基準版 (★ 空間 DyGAT 全面剪枝開關、
+    %       單軌穩健 CIO 決策開關、統一 20D 月步進同構全域基準線、
+    %       PurgeEmbargo/HACLag 嚴格對齊、mrg32k3a 獨立子串流隨機數引擎、
+    %       DSR 熔斷防禦載入、深度正則化與 Huber+Soft-IC 損失 SSOT 集中管轄)
     % 職責: 作為 MARI 量化系統的超參數與組態單一真理來源 (Single Source of Truth)
     % =========================================================================
     
@@ -34,12 +34,18 @@ classdef Config < handle
     % 系統全域超參數 (Hyperparameters - 統一控管防禦 Hardcoding)
     % ---------------------------------------------------------
     properties
-        % --- 0. 模組執行開關 (Module Execution Flags) ---
-        EnableSpaceExpertTraining = true  % 空間專家訓練開關
-        SpaceExpertMixMode = 'gcn_only'   % 空間專家混合模式 ('gcn_only' | 'dynamic')
+        % --- 0. 剪枝計畫與模組執行開關 (★ Pruning Plan Switches) ---
+        EnableSpaceExpertTraining = false % ★ 空間專家 (DyGAT) 訓練開關 (依實驗結論全面剪枝)
+        EnableSpaceExpert         = false % ★ 空間專家建構別名 (支援下游 BuildDecoupledExtractors)
+        EnableGraphConstruction   = false % ★ 時變協整圖譜建構開關 (設為 false 旁路 Phase 1 數千次協整運算)
+        SpaceExpertMixMode        = 'gcn_only' % 空間專家混合模式 ('gcn_only' | 'dynamic')
+        
+        % --- 0.2 強化學習決策架構開關 (★ RL Simplification Switch) ---
+        EnableSingleTrackCIO      = true  % ★ 啟用單軌穩健 CIO 決策模式 (依 P2-3 結論消除三軌動態震盪)
+        RolloutSteps              = 40    % 向量化環境訓練回合步長 (動態對齊 Horizon*2)
         
         % --- 0.5 全域訊號與預測週期基準 (★ Unified 20D Configuration) ---
-        Horizon         = 20     % 全域超額報酬預測跨度 (切換為 20 日月度動能目標)
+        Horizon         = 20     % 全域超額報酬預測跨度 (20 日月度動能連續排序目標)
         PurgeEmbargo    = 20     % 時序交叉驗證隔離期 (Embargo >= Horizon，杜絕標籤洩漏)
         HACLag          = 20     % Newey-West HAC 滯後階數 (強制 lag >= Horizon 校正自相關)
         RebalanceStride = 20     % 回測調倉步進天數 (20 日定期換手，實現目標與執行週期嚴格同構)
@@ -59,14 +65,14 @@ classdef Config < handle
         DL_VarianceFloorTarget   = 1.0    % 每個 embedding 維度跨樣本標準差的目標下限
         DL_EarlyStoppingPatience = 5      % 早停容忍輪數
         
-        % ★ 深度學習輸入層與時空雙軌防過擬合正則化 (SSOT 集中控管)
+        % 深度學習輸入層與時序防過擬合正則化 (SSOT 集中控管)
         FeatureDropoutRate   = 0.15      % 特徵欄位隨機遮蔽率 (以指標維度為單位，破除單一強因子依賴)
         InputNoiseStd        = 0.02      % 輸入特徵高斯動態噪聲標準差 (模擬真實盤面滑價與微結構抖動)
         VariationalDropRate  = 0.20      % 時序循環 Dropout 率 (Sequence 全時間步共享 Mask，保持狀態連續)
         AttentionDropRate    = 0.10      % 自注意力權重丟棄率 (防止模型死記過往特定 K 線模式)
         
-        % ★ 複合損失函數超參數 (Huber + Soft-IC)
-        DL_HuberDelta        = 1.0       % Huber Loss 線性過渡門檻 (防禦金融厚尾極端值拉扯梯度)
+        % 複合損失函數超參數 (Huber + Soft-IC)
+        DL_HuberDelta        = 0.1       % ★ Huber Loss 線性過渡門檻 (對齊 0.1，防禦金融極端厚尾)
         DL_ICLossWeight      = 0.5       % Continuous Soft-IC 損失權重係數 (平衡點位誤差與截面排序力)
         
         % --- 2. VQ-VAE 向量量化降噪器 (Phase 1) ---
@@ -93,9 +99,9 @@ classdef Config < handle
         BaseFrictionFee  = 0.0005 % 基礎固定手續費 0.05%
         SlippageVolCoeff = 0.10   % 波動率動態衝擊成本係數 (日頻波動度基礎)
         
-        % 學術中立基準超參數 (當 BO 未達 DSR 顯著時的強制 Fallback 配置)
+        % 生產基準超參數 (★ 剪枝模式下 Time_W 鎖定為 1.0000 防止訊號稀釋)
         Guardrail_CrashProb = 0.0850 % 中立崩盤護欄硬熔斷閾值 (8.5%)
-        Expert_Time_Weight  = 0.5000 % 中立時空專家等權 (50% / 50%)
+        Expert_Time_Weight  = 1.0000 % ★ 時序專家權重鎖定為 100% (空間專家剪枝歸零)
         Top_K_Assets        = 20     % 中立標準持股分散度 (20 檔)
         
         % --- 6. 強化學習演算法 (RL Hyperparameters) ---
@@ -132,6 +138,13 @@ classdef Config < handle
             folders = {obj.DataDir, obj.CacheDir, obj.DataLakeDir, obj.ModelDir, obj.ResultDir};
             for i = 1:length(folders)
                 if ~exist(folders{i}, 'dir'), mkdir(folders{i}); end
+            end
+            
+            % ★ 剪枝邏輯自動防呆連動 (Auto-Interlocking)
+            if ~obj.EnableSpaceExpertTraining
+                obj.EnableSpaceExpert       = false;
+                obj.EnableGraphConstruction = false;
+                obj.Expert_Time_Weight      = 1.0000;
             end
             
             % 啟動初始化程序
@@ -213,7 +226,7 @@ classdef Config < handle
                     if isfield(data, 'dsr_val') && isfield(data, 'best_robust_score')
                         if data.dsr_val < 0.95 || data.best_robust_score <= 0.0
                             warning(['⚠️ [Config] 檢測到 BO 參數未達統計顯著性 (DSR = %.4f < 0.95 或 Score = %.4f <= 0)！\n' ...
-                                     '⚠️ 拒絕載入病態邊界參數，強制退回學術中立基準 (Time_W=0.50, TopK=20, Guard=0.0850)。'], ...
+                                     '⚠️ 拒絕載入病態邊界參數，強制退回生產基準配置。'], ...
                                      data.dsr_val, data.best_robust_score);
                             obj.applyNeutralDefaults();
                             return;
@@ -233,8 +246,13 @@ classdef Config < handle
                         end
                         
                         if isfield(bp, 'Expert_Time_Weight')
-                            obj.Expert_Time_Weight = bp.Expert_Time_Weight;
-                            fprintf('    - 時序專家權重 (Time_W): %.4f\n', obj.Expert_Time_Weight);
+                            if ~obj.EnableSpaceExpertTraining
+                                obj.Expert_Time_Weight = 1.0000; % 剪枝模式下強制鎖定 100%
+                                fprintf('    - 時序專家權重 (Time_W): %.4f (空間專家已剪枝，強制鎖定 1.0)\n', obj.Expert_Time_Weight);
+                            else
+                                obj.Expert_Time_Weight = bp.Expert_Time_Weight;
+                                fprintf('    - 時序專家權重 (Time_W): %.4f\n', obj.Expert_Time_Weight);
+                            end
                         end
                         
                         if isfield(bp, 'Top_K_Assets')
@@ -243,11 +261,11 @@ classdef Config < handle
                         end
                     end
                 catch ME
-                    warning('⚠️ 讀取 BO 參數失敗，強制退回學術中立基準。錯誤: %s', ME.message);
+                    warning('⚠️ 讀取 BO 參數失敗，強制退回生產基準配置。錯誤: %s', ME.message);
                     obj.applyNeutralDefaults();
                 end
             else
-                fprintf(' ℹ️ [Config] 未檢測到 BO 生產參數檔，啟用學術中立基準：\n');
+                fprintf(' ℹ️ [Config] 未檢測到 BO 生產參數檔，啟用生產基準配置：\n');
                 obj.applyNeutralDefaults();
             end
         end
@@ -255,15 +273,24 @@ classdef Config < handle
     
     methods (Access = private)
         % =========================================================
-        % 私有輔助函數：套用學術中立基準參數 (防止病態解傳導)
+        % 私有輔助函數：套用生產基準參數 (防範病態解或訊號稀釋)
         % =========================================================
         function applyNeutralDefaults(obj)
             obj.Guardrail_CrashProb = 0.0850;
-            obj.Expert_Time_Weight  = 0.5000;
             obj.Top_K_Assets        = 20;
-            fprintf('    - 崩盤護欄硬熔斷閾值 : %.4f (中立基準)\n', obj.Guardrail_CrashProb);
-            fprintf('    - 時序專家權重 (Time_W): %.4f (時空各 50%% 等權)\n', obj.Expert_Time_Weight);
-            fprintf('    - 集中度標的數 (Top_K) : %d (標準分散度)\n', obj.Top_K_Assets);
+            
+            % ★ 空間專家剪枝防呆判定
+            if ~obj.EnableSpaceExpertTraining
+                obj.Expert_Time_Weight = 1.0000;
+                fprintf('    - 崩盤護欄硬熔斷閾值 : %.4f (生產基準)\n', obj.Guardrail_CrashProb);
+                fprintf('    - 時序專家權重 (Time_W): %.4f (空間專家已剪枝，鎖定 100%%)\n', obj.Expert_Time_Weight);
+                fprintf('    - 集中度標的數 (Top_K) : %d (標準分散度)\n', obj.Top_K_Assets);
+            else
+                obj.Expert_Time_Weight = 0.5000;
+                fprintf('    - 崩盤護欄硬熔斷閾值 : %.4f (中立基準)\n', obj.Guardrail_CrashProb);
+                fprintf('    - 時序專家權重 (Time_W): %.4f (時空各 50%% 等權)\n', obj.Expert_Time_Weight);
+                fprintf('    - 集中度標的數 (Top_K) : %d (標準分散度)\n', obj.Top_K_Assets);
+            end
         end
     end
 end
