@@ -1,8 +1,8 @@
 classdef GBDTExpertAgent < handle
     % =========================================================================
     % 類別：GBDTExpertAgent (顯性風險預測流、LSBoost 連續迴歸選股與 SHAP 解釋器)
-    % 升級：Phase 15.5 參數驅動版 (★ 完整繼承 Config.m 全域參數、
-    %       Purged Expanding Window 動態 Embargo 隔離、Newey-West HAC 動態檢定、
+    % 升級：Phase 15.5 生產基準版 (★ 支援空間專家 Pure-Time 剪枝相容、
+    %       Purged Expanding Window 動態 Embargo 隔離、Newey-West HAC 內建防禦、
     %       消除 TreeSHAP 單查詢點並行警告、Platt 校準與時間衰減加權抽樣)
     % 職責：接收 DL 萃取之表徵與宏觀特徵，輸出 OOF/OOS 連續排序得分與崩盤校準機率
     % =========================================================================
@@ -11,7 +11,7 @@ classdef GBDTExpertAgent < handle
         ConfigObj           % 全域設定檔參考
         RngStream           % 隨機數串流物件 (支援 mrg32k3a 獨立子串流)
         MdlTime             % 最終時序專家 GBDT 迴歸模型 (LSBoost)
-        MdlSpace            % 最終空間專家 GBDT 迴歸模型 (LSBoost)
+        MdlSpace            % 最終空間專家 GBDT 迴歸模型 (LSBoost，可為空)
         MdlCrash            % 最終崩盤護欄 GBDT 分類模型 (RUSBoost)
         MdlPlatt            % 崩盤護欄之 Platt Scaling 機率校準模型
         
@@ -19,16 +19,17 @@ classdef GBDTExpertAgent < handle
         FeatureNamesSpace   % 空間特徵名稱
         FeatureNamesMacro   % 宏觀特徵名稱
 
-        TargetHorizon = 60  % 選股預測目標跨度 (預設 60 日)
-        EmbargoDays   = 60  % 時序交叉驗證隔離期 (預設 60 日，Embargo >= Horizon)
-        HACLag        = 60  % Newey-West HAC 滯後階數 (預設 60 日)
+        TargetHorizon = 20  % 選股預測目標跨度 (由 Config 動態繼承)
+        EmbargoDays   = 20  % 時序交叉驗證隔離期 (Embargo >= Horizon)
+        HACLag        = 20  % Newey-West HAC 滯後階數 (校正自相關)
+        EnableSpaceExpert = true % 空間專家啟用狀態
     end
     
     methods
         function obj = GBDTExpertAgent(configObj, stream)
             obj.ConfigObj = configObj; 
             
-            % 綁定隨機數串流
+            % 1. 綁定隨機數串流
             if nargin >= 2 && ~isempty(stream)
                 obj.RngStream = stream;
             elseif ~isempty(configObj) && ismethod(configObj, 'getRandStream')
@@ -37,25 +38,26 @@ classdef GBDTExpertAgent < handle
                 obj.RngStream = [];
             end
             
-            % ★ 核心修復 1：精確繼承 Config.m 獨立屬性，杜絕無條件覆蓋
+            % 2. 動態繼承 Config.m 參數 (杜絕無條件覆蓋或寫死)
             if ~isempty(configObj)
                 if isprop(configObj, 'Horizon') && ~isempty(configObj.Horizon)
                     obj.TargetHorizon = configObj.Horizon;
+                    obj.EmbargoDays   = configObj.Horizon;
+                    obj.HACLag        = configObj.Horizon;
                 end
                 if isprop(configObj, 'PurgeEmbargo') && ~isempty(configObj.PurgeEmbargo)
                     obj.EmbargoDays = configObj.PurgeEmbargo;
-                elseif isprop(configObj, 'Horizon') && ~isempty(configObj.Horizon)
-                    obj.EmbargoDays = configObj.Horizon;
                 end
                 if isprop(configObj, 'HACLag') && ~isempty(configObj.HACLag)
                     obj.HACLag = configObj.HACLag;
-                elseif isprop(configObj, 'Horizon') && ~isempty(configObj.Horizon)
-                    obj.HACLag = configObj.Horizon;
+                end
+                if isprop(configObj, 'EnableSpaceExpertTraining')
+                    obj.EnableSpaceExpert = configObj.EnableSpaceExpertTraining;
                 end
             end
             
-            fprintf(' ⚙️ [GBDTExpertAgent] 實例化完成。已啟動 LSBoost 連續選股迴歸 (Horizon=%dD, Embargo=%dD, HAC_Lag=%d)、折外 Rank IC 監控與 Platt 校準 (mrg32k3a 串流版)。\n', ...
-                obj.TargetHorizon, obj.EmbargoDays, obj.HACLag);
+            fprintf(' ⚙️ [GBDTExpertAgent] 實例化完成。已配置 LSBoost 連續選股 (Horizon=%dD, Embargo=%dD, HAC_Lag=%d, 空間專家: %d)。\n', ...
+                obj.TargetHorizon, obj.EmbargoDays, obj.HACLag, obj.EnableSpaceExpert);
         end
         
         % =========================================================
@@ -73,20 +75,32 @@ classdef GBDTExpertAgent < handle
             old_stream = RandStream.setGlobalStream(s);
             cleanupObj = onCleanup(@() RandStream.setGlobalStream(old_stream));
             
-            disp('--- 啟動 GBDT 雙軌橫截面專家訓練 (LSBoost 連續迴歸與 OOF Rank IC 即時監控) ---');
+            disp('--- 啟動 GBDT 橫截面專家訓練 (LSBoost 連續迴歸與 OOF Rank IC 即時監控) ---');
             
             [numDays, embedDim, numTickers] = size(E_time_3D);
             numMacro = size(Macro_2D, 2); 
             numRawFeats = size(X_norm_18D, 2);
             
+            % 判斷空間專家實際數據狀態 (雙重檢查：開關 + 非零元素判定)
+            has_space_data = ~isempty(E_space_3D) && any(E_space_3D(:) ~= 0);
+            run_space = obj.EnableSpaceExpert && has_space_data;
+            if ~run_space
+                disp('  ⏩ [Pure-Time 剪枝] 空間專家已停用，將自動略過空間 GBDT 之 Fold 訓練與推論。');
+            end
+            
             totalActive = sum(Expert_Active, 'all');
             fprintf('  -> 總有效橫截面樣本數: %d 筆 | 宏觀特徵維度: %d 維\n', totalActive, numMacro);
             
             X_time_flat  = zeros(totalActive, embedDim + numMacro, 'single');
-            X_space_flat = zeros(totalActive, embedDim + numMacro, 'single');
             X_raw_flat   = zeros(totalActive, numRawFeats + numMacro, 'single');
             Y_flat       = zeros(totalActive, 1, 'single');
             row_mapping  = zeros(totalActive, 2, 'uint32'); 
+            
+            if run_space
+                X_space_flat = zeros(totalActive, embedDim + numMacro, 'single');
+            else
+                X_space_flat = [];
+            end
             
             idx = 1;
             for t = 1:numDays
@@ -95,14 +109,17 @@ classdef GBDTExpertAgent < handle
                 
                 if n_active > 0
                     e_t = permute(E_time_3D(t, :, active_idx), [3, 2, 1]);
-                    e_s = permute(E_space_3D(t, :, active_idx), [3, 2, 1]);
                     x_r = permute(X_norm_18D(t, :, active_idx), [3, 2, 1]);
                     mac = repmat(Macro_2D(t, :), n_active, 1);
                     
-                    X_time_flat(idx : idx+n_active-1, :)  = [e_t, mac];
-                    X_space_flat(idx : idx+n_active-1, :) = [e_s, mac];
-                    X_raw_flat(idx : idx+n_active-1, :)   = [x_r, mac];
-                    Y_flat(idx : idx+n_active-1)          = Y_Cont_3D(t, active_idx)';
+                    X_time_flat(idx : idx+n_active-1, :) = [e_t, mac];
+                    X_raw_flat(idx : idx+n_active-1, :)  = [x_r, mac];
+                    Y_flat(idx : idx+n_active-1)         = Y_Cont_3D(t, active_idx)';
+                    
+                    if run_space
+                        e_s = permute(E_space_3D(t, :, active_idx), [3, 2, 1]);
+                        X_space_flat(idx : idx+n_active-1, :) = [e_s, mac];
+                    end
                     
                     row_mapping(idx : idx+n_active-1, 1) = uint32(t); 
                     row_mapping(idx : idx+n_active-1, 2) = uint32(active_idx(:));
@@ -113,19 +130,24 @@ classdef GBDTExpertAgent < handle
             macro_names = obj.get_macro_names(numMacro);
             obj.FeatureNamesMacro = macro_names;
             obj.FeatureNamesTime  = [arrayfun(@(x) sprintf('T_Emb_%d', x), 1:embedDim, 'UniformOutput', false), macro_names];
-            obj.FeatureNamesSpace = [arrayfun(@(x) sprintf('S_Emb_%d', x), 1:embedDim, 'UniformOutput', false), macro_names];
+            if run_space
+                obj.FeatureNamesSpace = [arrayfun(@(x) sprintf('S_Emb_%d', x), 1:embedDim, 'UniformOutput', false), macro_names];
+            else
+                obj.FeatureNamesSpace = {};
+            end
             
             t_tree = templateTree('MaxNumSplits', 20, 'MinLeafSize', 50); 
             
             oof_preds_time  = zeros(totalActive, 1, 'single');
-            oof_preds_space = zeros(totalActive, 1, 'single');
             oof_preds_raw   = zeros(totalActive, 1, 'single');
+            oof_preds_space = zeros(totalActive, 1, 'single');
             
             K = 5; 
             embargo = obj.EmbargoDays;
-            if isempty(embargo), embargo = 60; end
+            if isempty(embargo), embargo = obj.TargetHorizon; end
             hac_lag = obj.HACLag;
-            if isempty(hac_lag), hac_lag = 60; end
+            if isempty(hac_lag), hac_lag = obj.TargetHorizon; end
+            
             fprintf('  -> 啟動手動 %d-Fold 區塊時序 (Purged Expanding Window, Embargo=%d天) 連續迴歸交叉驗證...\n', K, embargo);
             
             day_array = double(row_mapping(:, 1));
@@ -152,7 +174,6 @@ classdef GBDTExpertAgent < handle
                 end
                 
                 X_T_train = X_time_flat(train_idx, :);
-                X_S_train = X_space_flat(train_idx, :);
                 X_R_train = X_raw_flat(train_idx, :);
                 Y_train   = Y_flat(train_idx);
                 
@@ -160,27 +181,32 @@ classdef GBDTExpertAgent < handle
                     'Learners', t_tree, 'NumLearningCycles', 30, 'LearnRate', 0.1, ...
                     'PredictorNames', obj.FeatureNamesTime);
                     
-                mdl_s = fitrensemble(X_S_train, Y_train, 'Method', 'LSBoost', ...
-                    'Learners', t_tree, 'NumLearningCycles', 30, 'LearnRate', 0.1, ...
-                    'PredictorNames', obj.FeatureNamesSpace);
-                    
                 mdl_r = fitrensemble(X_R_train, Y_train, 'Method', 'LSBoost', ...
                     'Learners', t_tree, 'NumLearningCycles', 30, 'LearnRate', 0.1);
+                
+                if run_space
+                    X_S_train = X_space_flat(train_idx, :);
+                    mdl_s = fitrensemble(X_S_train, Y_train, 'Method', 'LSBoost', ...
+                        'Learners', t_tree, 'NumLearningCycles', 30, 'LearnRate', 0.1, ...
+                        'PredictorNames', obj.FeatureNamesSpace);
+                end
                 
                 chunk_size = 100000;
                 for start_idx = 1:chunk_size:length(val_idx)
                     end_idx = min(start_idx + chunk_size - 1, length(val_idx));
                     curr_val_idx = val_idx(start_idx:end_idx);
                     
-                    oof_preds_time(curr_val_idx)  = single(predict(mdl_t, X_time_flat(curr_val_idx, :)));
-                    oof_preds_space(curr_val_idx) = single(predict(mdl_s, X_space_flat(curr_val_idx, :)));
-                    oof_preds_raw(curr_val_idx)   = single(predict(mdl_r, X_raw_flat(curr_val_idx, :)));
+                    oof_preds_time(curr_val_idx) = single(predict(mdl_t, X_time_flat(curr_val_idx, :)));
+                    oof_preds_raw(curr_val_idx)  = single(predict(mdl_r, X_raw_flat(curr_val_idx, :)));
+                    if run_space
+                        oof_preds_space(curr_val_idx) = single(predict(mdl_s, X_space_flat(curr_val_idx, :)));
+                    end
                 end
                 
                 val_days_k = unique(day_array(val_idx));
                 ic_t_vec = zeros(length(val_days_k), 1);
-                ic_s_vec = zeros(length(val_days_k), 1);
                 ic_r_vec = zeros(length(val_days_k), 1);
+                ic_s_vec = zeros(length(val_days_k), 1);
                 v_cnt = 0;
                 
                 for d_i = 1:length(val_days_k)
@@ -190,25 +216,32 @@ classdef GBDTExpertAgent < handle
                         v_cnt = v_cnt + 1;
                         yt_d = Y_flat(val_idx(d_m));
                         ic_t_vec(v_cnt) = corr(oof_preds_time(val_idx(d_m)), yt_d, 'Type', 'Spearman', 'Rows', 'complete');
-                        ic_s_vec(v_cnt) = corr(oof_preds_space(val_idx(d_m)), yt_d, 'Type', 'Spearman', 'Rows', 'complete');
                         ic_r_vec(v_cnt) = corr(oof_preds_raw(val_idx(d_m)), yt_d, 'Type', 'Spearman', 'Rows', 'complete');
+                        if run_space
+                            ic_s_vec(v_cnt) = corr(oof_preds_space(val_idx(d_m)), yt_d, 'Type', 'Spearman', 'Rows', 'complete');
+                        end
                     end
                 end
                 
                 fold_ic_t = mean(ic_t_vec(1:v_cnt), 'omitnan');
-                fold_ic_s = mean(ic_s_vec(1:v_cnt), 'omitnan');
                 fold_ic_r = mean(ic_r_vec(1:v_cnt), 'omitnan');
                 
-                fprintf('完成！(Fold %d OOF Rank IC -> Raw: %+.4f | Time: %+.4f | Space: %+.4f)\n', ...
-                    k, fold_ic_r, fold_ic_t, fold_ic_s);
+                if run_space
+                    fold_ic_s = mean(ic_s_vec(1:v_cnt), 'omitnan');
+                    fprintf('完成！(Fold %d OOF Rank IC -> Raw: %+.4f | Time: %+.4f | Space: %+.4f)\n', ...
+                        k, fold_ic_r, fold_ic_t, fold_ic_s);
+                else
+                    fprintf('完成！(Fold %d OOF Rank IC -> Raw: %+.4f | Time: %+.4f)\n', ...
+                        k, fold_ic_r, fold_ic_t);
+                end
             end
             
             % 全域評估：計算逐日橫截面 Rank IC 與 HAC 顯著性
             eval_idx_all = find(fold_indices >= 2);
             eval_days_all = unique(day_array(eval_idx_all));
             ic_t_all = zeros(length(eval_days_all), 1);
-            ic_s_all = zeros(length(eval_days_all), 1);
             ic_r_all = zeros(length(eval_days_all), 1);
+            ic_s_all = zeros(length(eval_days_all), 1);
             v_all = 0;
             
             for d_i = 1:length(eval_days_all)
@@ -218,22 +251,26 @@ classdef GBDTExpertAgent < handle
                     v_all = v_all + 1;
                     yt_d = Y_flat(eval_idx_all(d_m));
                     ic_t_all(v_all) = corr(oof_preds_time(eval_idx_all(d_m)), yt_d, 'Type', 'Spearman', 'Rows', 'complete');
-                    ic_s_all(v_all) = corr(oof_preds_space(eval_idx_all(d_m)), yt_d, 'Type', 'Spearman', 'Rows', 'complete');
                     ic_r_all(v_all) = corr(oof_preds_raw(eval_idx_all(d_m)), yt_d, 'Type', 'Spearman', 'Rows', 'complete');
+                    if run_space
+                        ic_s_all(v_all) = corr(oof_preds_space(eval_idx_all(d_m)), yt_d, 'Type', 'Spearman', 'Rows', 'complete');
+                    end
                 end
             end
             ic_t_all = ic_t_all(1:v_all);
-            ic_s_all = ic_s_all(1:v_all);
             ic_r_all = ic_r_all(1:v_all);
             
-            [~, p_hac_t] = hac_significance_test(ic_t_all, hac_lag);
-            [~, p_hac_s] = hac_significance_test(ic_s_all, hac_lag);
-            [~, p_hac_r] = hac_significance_test(ic_r_all, hac_lag);
+            p_hac_t = obj.execute_hac_test(ic_t_all, hac_lag);
+            p_hac_r = obj.execute_hac_test(ic_r_all, hac_lag);
             
             fprintf('\n 📊 [GBDT 連續迴歸交叉驗證總評] 全域 OOF Spearman Rank IC (HAC p-val, lag=%d):\n', hac_lag);
             fprintf('    > 原始 18D 基準線 : %+.4f (p = %.4f)\n', mean(ic_r_all), p_hac_r);
             fprintf('    > 時序專家 (Time) : %+.4f (p = %.4f)\n', mean(ic_t_all), p_hac_t);
-            fprintf('    > 空間專家 (Space): %+.4f (p = %.4f)\n', mean(ic_s_all), p_hac_s);
+            if run_space
+                ic_s_all = ic_s_all(1:v_all);
+                p_hac_s = obj.execute_hac_test(ic_s_all, hac_lag);
+                fprintf('    > 空間專家 (Space): %+.4f (p = %.4f)\n', mean(ic_s_all), p_hac_s);
+            end
             
             % 將連續預測值每日轉換為 (0, 1] 橫截面百分位排序分數
             Score_time_oof  = zeros(numDays, numTickers, 'single');
@@ -244,10 +281,12 @@ classdef GBDTExpertAgent < handle
                 if any(mask_t)
                     tics = row_mapping(mask_t, 2);
                     pt = oof_preds_time(mask_t);
-                    ps = oof_preds_space(mask_t);
+                    Score_time_oof(t, tics) = single(tiedrank(pt) / length(pt));
                     
-                    Score_time_oof(t, tics)  = single(tiedrank(pt) / length(pt));
-                    Score_space_oof(t, tics) = single(tiedrank(ps) / length(ps));
+                    if run_space
+                        ps = oof_preds_space(mask_t);
+                        Score_space_oof(t, tics) = single(tiedrank(ps) / length(ps));
+                    end
                 end
             end
             
@@ -261,10 +300,14 @@ classdef GBDTExpertAgent < handle
                 'Method', 'LSBoost', 'Learners', t_tree, 'NumLearningCycles', 50, ...
                 'LearnRate', 0.1, 'PredictorNames', obj.FeatureNamesTime);
                 
-            obj.MdlSpace = fitrensemble(X_space_flat(final_train_idx, :), Y_flat(final_train_idx), ...
-                'Method', 'LSBoost', 'Learners', t_tree, 'NumLearningCycles', 50, ...
-                'LearnRate', 0.1, 'PredictorNames', obj.FeatureNamesSpace);
-                
+            if run_space
+                obj.MdlSpace = fitrensemble(X_space_flat(final_train_idx, :), Y_flat(final_train_idx), ...
+                    'Method', 'LSBoost', 'Learners', t_tree, 'NumLearningCycles', 50, ...
+                    'LearnRate', 0.1, 'PredictorNames', obj.FeatureNamesSpace);
+            else
+                obj.MdlSpace = [];
+            end
+            
             disp('✅ 個股橫截面 GBDT 訓練與 OOF 百分位排序得分重組完畢！');
         end
         
@@ -406,17 +449,18 @@ classdef GBDTExpertAgent < handle
                 n_active = length(active_idx);
                 if n_active > 0
                     e_t = permute(E_time_3D(t, :, active_idx), [3, 2, 1]);
-                    e_s = permute(E_space_3D(t, :, active_idx), [3, 2, 1]);
                     mac = repmat(Macro_2D(t, :), n_active, 1);
-                    
                     X_t = [e_t, mac];
-                    X_s = [e_s, mac];
                     
                     s_t = predict(obj.MdlTime, X_t);
-                    s_s = predict(obj.MdlSpace, X_s);
+                    Score_time_oos(t, active_idx) = single(tiedrank(s_t) / n_active);
                     
-                    Score_time_oos(t, active_idx)  = single(tiedrank(s_t) / n_active);
-                    Score_space_oos(t, active_idx) = single(tiedrank(s_s) / n_active);
+                    if ~isempty(obj.MdlSpace) && ~isempty(E_space_3D)
+                        e_s = permute(E_space_3D(t, :, active_idx), [3, 2, 1]);
+                        X_s = [e_s, mac];
+                        s_s = predict(obj.MdlSpace, X_s);
+                        Score_space_oos(t, active_idx) = single(tiedrank(s_s) / n_active);
+                    end
                 end
             end
             
@@ -449,6 +493,10 @@ classdef GBDTExpertAgent < handle
                 target_mdl = obj.MdlTime;
                 var_names = obj.FeatureNamesTime;
             elseif strcmp(mode, 'space')
+                if isempty(obj.MdlSpace)
+                    disp('⏩ 空間專家已剪枝未訓練，略過空間 SHAP 分析。');
+                    return;
+                end
                 target_mdl = obj.MdlSpace;
                 var_names = obj.FeatureNamesSpace;
             else
@@ -468,7 +516,7 @@ classdef GBDTExpertAgent < handle
             
             explainer = shapley(target_mdl, X_bg_tbl);
             
-            % ★ 核心修復 2：消除單查詢點傳遞 'UseParallel' 造成的無效參數警告
+            % 消除單查詢點傳遞 'UseParallel' 造成的無效參數警告
             if use_parallel_flag
                 shap_results = fit(explainer, X_query_tbl, 'UseParallel', true);
             else
@@ -487,7 +535,7 @@ classdef GBDTExpertAgent < handle
     
     methods (Access = private)
         % =========================================================
-        % 私有輔助函數：解析優先級 (外部傳入 > 成員變數 > Config > Global)
+        % 私有輔助函數：解析隨機串流優先級
         % =========================================================
         function s = resolveStream(obj, stream_in)
             if nargin >= 2 && ~isempty(stream_in)
@@ -510,6 +558,46 @@ classdef GBDTExpertAgent < handle
                 extra_names = arrayfun(@(x) sprintf('Macro_%d', x), (length(base_names)+1):numMacro, 'UniformOutput', false);
                 names = [base_names, extra_names];
             end
+        end
+        
+        % 內建 Newey-West HAC 檢驗防禦引擎 (外部相依缺失時自動接管)
+        function p_val = execute_hac_test(~, series, max_lag)
+            series = series(~isnan(series) & ~isinf(series));
+            N = length(series);
+            if N < 5
+                p_val = 1.0;
+                return;
+            end
+            
+            if exist('hac_significance_test', 'file') == 2
+                try
+                    [~, p_val] = hac_significance_test(series, max_lag);
+                    return;
+                catch
+                end
+            end
+            
+            % 內建 Newey-West 變異數估計
+            mu = mean(series);
+            e = series - mu;
+            gamma0 = sum(e.^2) / N;
+            
+            weights_sum = 0;
+            for l = 1:min(max_lag, N - 1)
+                gamma_l = sum(e(1+l:end) .* e(1:end-l)) / N;
+                w_l = 1 - (l / (max_lag + 1)); % Bartlett 核
+                weights_sum = weights_sum + 2 * w_l * gamma_l;
+            end
+            
+            v_hac = (gamma0 + weights_sum) / N;
+            if v_hac <= 0 || isnan(v_hac)
+                se = std(series) / sqrt(N);
+            else
+                se = sqrt(v_hac);
+            end
+            
+            t_stat = mu / (se + 1e-8);
+            p_val = 2 * (1 - normcdf(abs(t_stat)));
         end
     end
 end
