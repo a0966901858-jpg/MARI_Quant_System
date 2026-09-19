@@ -1,25 +1,23 @@
 % =========================================================================
 % 腳本：6_Run_WalkForward_Backtest.m
-% 升級：Phase 15.5 60D 基準線版 (★ 20日定期調倉步進對齊、消除慢速訊號過度換手、
-%       mrg32k3a 隨機串流鎖定、Open-to-Open 權重漂移、停牌資產鎖死、
-%       死區護欄連續縮放、CIO 彈性退回中立規則、因果時間軸校正、
-%       各階段獨立高精度計時、樣本外 OOS 淨值歸一化重頭起算、
-%       樣本外水下回撤獨立歸零結算與視覺化診斷報表)
+% 升級：Phase 15.5 生產基準版 (★ Pure-Time 剪枝防訊號稀釋、
+%       Phase 4 BO 最佳化參數自動優先繼承、Config.Horizon 調倉步進動態同構、
+%       mrg32k3a 確定性串流鎖定、Open-to-Open 權重漂移與停牌鎖死防護、
+%       死區連續縮放護欄、OOS 盲測期獨立歸一化起算與水下回撤歸零結算、
+%       各階段獨立高精度計時與總運行耗時審計)
 % 職責：執行嚴格的因果律滾動回測，產出無縫的 IS/OOS 真實績效、交易軌跡與視覺化診斷報表
 % =========================================================================
 clear; clc; close all;
 
 % 啟動全域總計時器
 t_total_start = tic;
-
 disp('=================================================================');
-disp('🚀 [Phase 15.5] 啟動 MARI 嚴格前向滾動回測 (60D 基準線與定期調倉版)');
+disp('🚀 [Phase 15.5] 啟動 MARI 嚴格前向滾動回測管線 (生產基準同構版)');
 disp('=================================================================');
 
 %% 0. 環境路徑掛載與隨機串流管理
 t_step0 = tic;
 disp('--- 步驟 0：環境路徑掛載、Config 載入與隨機串流鎖定 ---');
-
 currentFile = mfilename('fullpath');
 if isempty(currentFile)
     currentPath = pwd;
@@ -54,13 +52,12 @@ configObj = Config();
 stream = configObj.getRandStream(1);
 RandStream.setGlobalStream(stream);
 disp('🔒 已掛載 mrg32k3a 主隨機串流 (Substream=1)，鎖定前向回測環境。');
-
 time_step0 = toc(t_step0);
 fprintf('⏱️ [步驟 0 完成] 耗時: %.2f 秒\n\n', time_step0);
 
-%% 1. 載入全域快取、DataFetcher 與大腦權重
+%% 1. 載入全域快取、DataFetcher 與模型權重
 t_step1 = tic;
-disp('--- 步驟 1：載入全域快取、DataFetcher 開盤價與多軌大腦 ---');
+disp('--- 步驟 1：載入全域快取、DataFetcher 開盤價與模型參數 ---');
 cachePath = fullfile(configObj.CacheDir, 'features_denoised.mat');
 gbdtPath  = fullfile(configObj.ModelDir, 'GBDT_Guards.mat');
 
@@ -76,7 +73,33 @@ tz = Dates_Active.TimeZone;
 
 load(gbdtPath, 'P_crash_all', 'P_time_all', 'P_space_all');
 
-% CIO 權重彈性載入防護 (若未訓練則優雅退回 Config/BO 基準)
+% ★ 空間專家狀態探針：檢查是否剪枝空間專家 (DyGAT)
+enable_space = isprop(configObj, 'EnableSpaceExpertTraining') && configObj.EnableSpaceExpertTraining && any(P_space_all(:) ~= 0);
+if enable_space
+    disp('  -> 空間專家狀態: 【已啟用】(橫截面選股將綜合時序與空間表徵)');
+else
+    disp('  -> 空間專家狀態: 【⏩ 已剪枝】(Pure-Time 模式：強制時序權重=1.0，杜絕排序稀釋)');
+end
+
+% ★ 優先載入 Phase 4 貝氏最佳化通過 DSR 顯著性之正式生產參數
+prod_bo_path = fullfile(configObj.ModelDir, 'BO_Hyperparameters.mat');
+if exist(prod_bo_path, 'file')
+    try
+        bo_data = load(prod_bo_path);
+        configObj.Guardrail_CrashProb = bo_data.best_params.Guardrail_CrashProb;
+        configObj.Expert_Time_Weight  = bo_data.best_params.Expert_Time_Weight;
+        configObj.Top_K_Assets        = bo_data.best_params.Top_K_Assets;
+        fprintf('  🎯 [Phase 4 參數載入] 成功繼承通過 DSR 檢定 (DSR=%.4f) 之 BO 最佳參數：\n', bo_data.dsr_val);
+        fprintf('     > 崩盤護欄閾值: %.4f | 時序專家權重: %.4f | 集中度 Top-K: %d\n', ...
+            configObj.Guardrail_CrashProb, configObj.Expert_Time_Weight, configObj.Top_K_Assets);
+    catch ME
+        warning('⚠️ 載入 BO 參數失敗 (%s)，將使用 Config 基準參數。', ME.message);
+    end
+else
+    disp('  ℹ️ 未檢測到正式 BO_Hyperparameters.mat，回測將使用 Config 預設基準配置。');
+end
+
+% CIO 權重彈性載入防護 (若未訓練則退回規則路由)
 has_cio_agents = false;
 path_agg = fullfile(configObj.ModelDir, 'CIO_Aggressive.mat');
 path_bal = fullfile(configObj.ModelDir, 'CIO_Balanced.mat');
@@ -88,7 +111,7 @@ if exist(path_agg, 'file') && exist(path_bal, 'file') && exist(path_con, 'file')
         agent_balanced     = load(path_bal).agent_balanced;
         agent_conservative = load(path_con).agent_conservative;
         has_cio_agents = true;
-        disp('  🤖 成功加載 Phase 5 三軌 CIO 強化學習大腦 (Aggressive, Balanced, Conservative)。');
+        disp('  🤖 成功加載 Phase 5 三軌 CIO 強化學習大腦。');
     catch ME
         warning('⚠️ 加載 CIO 代理人失敗 (%s)，將退回使用中立/BO 超參數路由。', ME.message);
     end
@@ -118,7 +141,7 @@ numDays   = length(Dates_Active);
 numTickers = configObj.NumTickers;
 
 spy_idx = find(strcmp(configObj.IdxTickers, 'SPY'));
-if isempty(spy_idx), error('❌ 找不到 SPY 基準！'); end
+if isempty(spy_idx), error('❌ 找不到 SPY 基準標的！'); end
 
 time_step1 = toc(t_step1);
 fprintf('⏱️ [步驟 1 完成] 耗時: %.2f 秒\n\n', time_step1);
@@ -127,6 +150,7 @@ fprintf('⏱️ [步驟 1 完成] 耗時: %.2f 秒\n\n', time_step1);
 t_step2 = tic;
 disp('--- 步驟 2：預計算 CIO 5 維狀態空間 ---');
 CIO_State = zeros(5, numDays, 'single');
+
 spy_prices = Prices_Active(:, spy_idx);
 spy_rets = [0; diff(spy_prices) ./ (spy_prices(1:end-1) + 1e-8)];
 spy_rets(isnan(spy_rets) | isinf(spy_rets)) = 0;
@@ -154,10 +178,9 @@ CIO_State(5, :) = 1.0;
 time_step2 = toc(t_step2);
 fprintf('⏱️ [步驟 2 完成] 耗時: %.2f 秒\n\n', time_step2);
 
-%% 3. 定義嚴格時間邊界與崩盤護欄死區 (Deadband) 校準
+%% 3. 定義嚴格時間邊界與崩盤護欄死區校準
 t_step3 = tic;
 disp('--- 步驟 3：時間邊界劃分與校準崩盤護欄死區 ---');
-
 spy_inception_idx = find(spy_prices > 10, 1);
 if isempty(spy_inception_idx), spy_inception_idx = 252; end
 
@@ -182,11 +205,11 @@ base_frict      = configObj.MoE_FrictionMask;
 Verbose_Log     = true; 
 is_bankrupt     = false; 
 
-% 讀取全域調倉步進 (預設 20 日)
+% ★ 動態繼承全域調倉步進 (未指定時動態對齊 Horizon，杜絕硬編碼)
 if isprop(configObj, 'RebalanceStride') && ~isempty(configObj.RebalanceStride)
     rebalance_stride = configObj.RebalanceStride;
 else
-    rebalance_stride = 20;
+    rebalance_stride = configObj.Horizon;
 end
 cached_stock_props = zeros(numTickers, 1, 'single');
 
@@ -215,12 +238,13 @@ if guard_low >= guard_high
     guard_low = guard_high * 0.85;
 end
 
-fprintf(' 🔍 [護欄參數校準]\n');
+fprintf(' 🔍 [護欄與調倉參數校準]\n');
 fprintf('    > IS 非危機期 P(Crash) 75%% 雜訊分位數 (tau_noise) : %.4f\n', tau_noise);
 fprintf('    > 硬熔斷上限 (Guard_High)                      : %.4f\n', guard_high);
 fprintf('    > 死區縮放下限 (Guard_Low)                       : %.4f\n', guard_low);
 fprintf('    > 有效連續緩衝區間寬度                           : %.4f\n', guard_high - guard_low);
-fprintf('    > 統一調倉步進 (RebalanceStride)                : 每 %d 個交易日定期換手\n', rebalance_stride);
+fprintf('    > 統一調倉步進 (RebalanceStride)                : 每 %d 個交易日定期換手 (對齊 Horizon=%d)\n', ...
+    rebalance_stride, configObj.Horizon);
 
 sample_vol_daily = mean(vol20) / sqrt(252);
 sample_tc = configObj.BaseFrictionFee + (configObj.SlippageVolCoeff * sample_vol_daily);
@@ -230,9 +254,9 @@ fprintf(' 📊 [成本模型檢查] 平均日波動度: %.4f%% | 預期平均換
 time_step3 = toc(t_step3);
 fprintf('⏱️ [步驟 3 完成] 耗時: %.2f 秒\n\n', time_step3);
 
-%% 5. 執行逐日回測 (★ 20日定期調倉 + Open-to-Open 權重漂移 + 停牌鎖死)
+%% 4. 執行逐日回測 (定期調倉 + Open-to-Open 權重漂移 + 停牌鎖死)
 t_step4 = tic;
-disp('--- 步驟 4：啟動逐日推論與 X 光級交易監控 (60D 定期調倉版) ---');
+disp('--- 步驟 4：啟動逐日推論與交易結算 (同構前向回測) ---');
 fprintf(' 📡 回測正式起點：%s\n', datestr(Dates_Active(valid_start_t)));
 
 port_values(valid_start_t)   = 1.0;
@@ -283,41 +307,55 @@ for t = valid_start_t : numDays - 2
     available_cap = max(0, 1.0 - locked_sum);
     
     % -------------------------------------------------------------
-    % 3. 策略決策：時空專家權重
+    % 3. 策略決策：專家權重 (★ Pure-Time 剪枝防稀釋)
     % -------------------------------------------------------------
-    if has_cio_agents
-        state_2d = CIO_State(:, t);
-        state_2d(5) = prev_cash;
-        
-        [act_agg, ~] = agent_aggressive.get_actions(state_2d, 0);
-        [act_bal, ~] = agent_balanced.get_actions(state_2d, 0);
-        [act_con, ~] = agent_conservative.get_actions(state_2d, 0);
-        
-        if P_crash_smooth(t) > guard_high
-            prob_con = 0.80; prob_bal = 0.15; prob_agg = 0.05;
-        elseif vol20(t) > 0.20
-            prob_con = 0.20; prob_bal = 0.60; prob_agg = 0.20;
+    if ~enable_space
+        % 空間專家剪枝：強制時序權重 100%，杜絕排序得分被 0 權重稀釋
+        w_time  = 1.0;
+        w_space = 0.0;
+        if has_cio_agents
+            state_2d = CIO_State(:, t);
+            state_2d(5) = prev_cash;
+            [act_bal, ~] = agent_balanced.get_actions(state_2d, 0);
+            target_cash = max(0, min(1, act_bal(3)));
         else
-            prob_con = 0.10; prob_bal = 0.30; prob_agg = 0.60;
-        end
-        
-        act_final = act_agg * prob_agg + act_bal * prob_bal + act_con * prob_con;
-        act_final(isnan(act_final)) = 0;
-        
-        w_time = max(0, act_final(1));
-        w_space = max(0, act_final(2));
-        target_cash = max(0, min(1, act_final(3)));
-        
-        if (w_time + w_space) <= 1e-6
-            w_time = fallback_w_time; w_space = 1.0 - fallback_w_time;
-        else
-            sum_w = w_time + w_space;
-            w_time = w_time / sum_w; w_space = w_space / sum_w;
+            target_cash = 0.0;
         end
     else
-        w_time = fallback_w_time;
-        w_space = 1.0 - fallback_w_time;
-        target_cash = 0.0;
+        if has_cio_agents
+            state_2d = CIO_State(:, t);
+            state_2d(5) = prev_cash;
+            
+            [act_agg, ~] = agent_aggressive.get_actions(state_2d, 0);
+            [act_bal, ~] = agent_balanced.get_actions(state_2d, 0);
+            [act_con, ~] = agent_conservative.get_actions(state_2d, 0);
+            
+            if P_crash_smooth(t) > guard_high
+                prob_con = 0.80; prob_bal = 0.15; prob_agg = 0.05;
+            elseif vol20(t) > 0.20
+                prob_con = 0.20; prob_bal = 0.60; prob_agg = 0.20;
+            else
+                prob_con = 0.10; prob_bal = 0.30; prob_agg = 0.60;
+            end
+            
+            act_final = act_agg * prob_agg + act_bal * prob_bal + act_con * prob_con;
+            act_final(isnan(act_final)) = 0;
+            
+            w_time  = max(0, act_final(1));
+            w_space = max(0, act_final(2));
+            target_cash = max(0, min(1, act_final(3)));
+            
+            if (w_time + w_space) <= 1e-6
+                w_time = fallback_w_time; w_space = 1.0 - fallback_w_time;
+            else
+                sum_w = w_time + w_space;
+                w_time = w_time / sum_w; w_space = w_space / sum_w;
+            end
+        else
+            w_time = fallback_w_time;
+            w_space = 1.0 - fallback_w_time;
+            target_cash = 0.0;
+        end
     end
     
     % -------------------------------------------------------------
@@ -337,13 +375,17 @@ for t = valid_start_t : numDays - 2
     rem_cap_for_assets = available_cap - actual_cash_target;
     
     % -------------------------------------------------------------
-    % 5. 定期調倉 vs. 被動價格漂移 (對齊 Phase 4/5 步進同構邏輯)
+    % 5. 定期調倉 vs. 被動價格漂移
     % -------------------------------------------------------------
     is_rebal_day = (step_idx == 1) || (mod(step_idx - 1, rebalance_stride) == 0);
     
     if is_rebal_day
         % 定期調倉日：重新計算專家排序並挑選 Top-K
-        comb_p = P_time_M(:, t) * w_time + P_space_M(:, t) * w_space;
+        if enable_space
+            comb_p = P_time_M(:, t) * w_time + P_space_M(:, t) * w_space;
+        else
+            comb_p = P_time_M(:, t); % 純時序保真傳遞
+        end
         comb_p = comb_p .* Expert_Active(t, :)';
         comb_p(halted_mask) = 0;
         
@@ -359,7 +401,7 @@ for t = valid_start_t : numDays - 2
         end
         target_active_weights = cached_stock_props .* rem_cap_for_assets;
     else
-        % 非調倉日：資產部位隨價格自然漂移；若現金防禦水位變更，等比例調節活躍持股
+        % 非調倉日：資產部位隨價格自然漂移；若防禦水位變更，等比例縮放活躍持股
         curr_active_sum = sum(w_drift(~halted_mask));
         if curr_active_sum > 1e-6 && rem_cap_for_assets > 0
             scale_ratio = rem_cap_for_assets / curr_active_sum;
@@ -376,7 +418,7 @@ for t = valid_start_t : numDays - 2
     asset_w(halted_mask) = locked_weights(halted_mask);
     
     % -------------------------------------------------------------
-    % 6. 機構級摩擦緩衝過濾 (Inertia Friction Mask)
+    % 6. 慣性摩擦過濾 (Inertia Friction Mask)
     % -------------------------------------------------------------
     turnover = abs(asset_w(~halted_mask) - w_drift(~halted_mask));
     ignore_sub = turnover < base_frict;
@@ -404,7 +446,7 @@ for t = valid_start_t : numDays - 2
         tc_rate = 0.0005 + (0.10 * current_vol_daily);
     end
     
-    % 僅對可交易標的主動換手收取成本 (非調倉日且無避險調節時自然為 0)
+    % 僅對可交易標的主動換手收取成本 (非調倉日無主動操作時換手自然為 0)
     cost = sum(abs(asset_w(~halted_mask) - w_drift(~halted_mask))) * tc_rate;
     tc_records(t+1) = cost;
     
@@ -432,11 +474,10 @@ for t = valid_start_t : numDays - 2
     end
 end
 cash_ratios(numDays) = w_cash;
-
 time_step4 = toc(t_step4);
 fprintf('⏱️ [步驟 4 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step4, time_step4 / 60);
 
-%% 6. 機構級績效結算 (IS 與 OOS 嚴格隔離)
+%% 5. 機構級績效結算 (IS 與 OOS 嚴格隔離)
 t_step5 = tic;
 disp('--- 步驟 5：嚴格 IS / OOS 績效分離結算 ---');
 is_idx  = (valid_start_t + 1) : idx_OOS_start;
@@ -447,13 +488,12 @@ is_spy   = spy_values(is_idx);
 oos_port = port_values(oos_idx);
 oos_spy  = spy_values(oos_idx);
 
-% 執行嚴格的 IS / OOS 指標評估 (OOS 內部獨立計算累積報酬與 MDD)
 is_m   = evaluate_financial_metrics(is_port, is_spy);
 oos_m  = evaluate_financial_metrics(oos_port, oos_spy);
 full_m = evaluate_financial_metrics(port_values(valid_start_t+1:numDays), spy_values(valid_start_t+1:numDays));
 
 fprintf('\n====================================================================================================\n');
-fprintf('📊 【MARI Quant System 機構級前向回測綜合報告 (Phase 15.5 60D 定期調倉版)】\n');
+fprintf('📊 【MARI Quant System 機構級前向回測綜合報告 (Phase 15.5 生產基準版)】\n');
 fprintf('====================================================================================================\n');
 fprintf(' 區間劃分        | 累積總報酬 | 年化報酬(CAGR) | 年化波動度 | 最大回撤(MDD) | 夏普比率 | 卡瑪比率 | 資訊比率(IR) | 日勝率\n');
 fprintf('----------------------------------------------------------------------------------------------------\n');
@@ -474,7 +514,7 @@ fprintf('=======================================================================
 time_step5 = toc(t_step5);
 fprintf('⏱️ [步驟 5 完成] 耗時: %.2f 秒\n\n', time_step5);
 
-%% 7. 繪製標準學術白底黑字視覺化報表 (★ OOS 淨值歸一化起算 & 回撤獨立歸零)
+%% 6. 繪製視覺化診斷報表 (OOS 淨值獨立歸一化起算 & 回撤獨立歸零)
 t_step6 = tic;
 disp('--- 步驟 6：生成機構級視覺化報表 (白底黑字 - OOS 獨立歸一化與回撤歸零版) ---');
 
@@ -482,16 +522,15 @@ fig_wf = figure('Name', 'MARI Quant Walk-Forward Backtest', ...
     'Color', 'w', 'Position', [100, 100, 1250, 1000], 'Visible', 'off');
 set(fig_wf, 'InvertHardcopy', 'off');
 
-% ★ 關鍵修復 1：計算 IS 與 OOS 分別從 1.0 開始起算的淨值曲線
-is_port_norm  = is_port ./ (is_port(1) + 1e-8);
-is_spy_norm   = is_spy  ./ (is_spy(1) + 1e-8);
+% 計算 IS 與 OOS 分別從 1.0 開始起算的淨值曲線
+is_port_norm  = is_port  ./ (is_port(1) + 1e-8);
+is_spy_norm   = is_spy   ./ (is_spy(1) + 1e-8);
 oos_port_norm = oos_port ./ (oos_port(1) + 1e-8);
 oos_spy_norm  = oos_spy  ./ (oos_spy(1) + 1e-8);
 
-% ★ 關鍵修復 2：水下回撤嚴格分離計算，OOS 在 2022 年起點強制歸零，杜絕繼承歷史高點
-is_mari_dd = (is_port_norm - cummax(is_port_norm)) ./ (cummax(is_port_norm) + 1e-8) * 100;
-is_spy_dd  = (is_spy_norm  - cummax(is_spy_norm))  ./ (cummax(is_spy_norm)  + 1e-8) * 100;
-
+% 水下回撤嚴格分離計算：OOS 在 2022 年起點強制歸零，杜絕繼承歷史高點
+is_mari_dd  = (is_port_norm  - cummax(is_port_norm))  ./ (cummax(is_port_norm)  + 1e-8) * 100;
+is_spy_dd   = (is_spy_norm   - cummax(is_spy_norm))   ./ (cummax(is_spy_norm)   + 1e-8) * 100;
 oos_mari_dd = (oos_port_norm - cummax(oos_port_norm)) ./ (cummax(oos_port_norm) + 1e-8) * 100;
 oos_spy_dd  = (oos_spy_norm  - cummax(oos_spy_norm))  ./ (cummax(oos_spy_norm)  + 1e-8) * 100;
 
@@ -504,7 +543,7 @@ plot(Dates_Active(oos_idx), log10(oos_spy_norm), 'LineWidth', 1.4, 'Color', '#4D
 xline(Dates_Active(idx_OOS_start), '--k', 'OOS Start (Rebased to 1.0)', 'LineWidth', 1.3, ...
     'LabelVerticalAlignment', 'bottom', 'Color', 'k', 'FontName', 'Helvetica', 'FontWeight', 'bold');
 yline(0, ':k', 'Wealth = 1.0', 'LineWidth', 1.0, 'HandleVisibility', 'off');
-title('Log-Scale Cumulative Equity Curve (IS & OOS Independently Rebased to 1.0)', ...
+title(sprintf('Log-Scale Cumulative Equity Curve (IS & OOS Rebased to 1.0, Stride=%dD)', rebalance_stride), ...
     'FontSize', 11, 'FontWeight', 'bold', 'Color', 'k');
 ylabel('Log_{10}(Wealth)', 'FontSize', 9, 'FontWeight', 'bold', 'Color', 'k');
 legend('Location', 'northwest', 'TextColor', 'k', 'Color', 'w', 'EdgeColor', [0.8 0.8 0.8]);
@@ -568,7 +607,7 @@ time_step6 = toc(t_step6);
 fprintf('⏱️ [步驟 6 完成] 耗時: %.2f 秒\n\n', time_step6);
 
 %% =========================================================================
-% 結算全流程執行時長審計
+% 結算全流程執行時長審計報告
 % =========================================================================
 total_elapsed_sec = toc(t_total_start);
 tot_hours = floor(total_elapsed_sec / 3600);
@@ -592,7 +631,7 @@ else
     fprintf('⏱️ 【總執行時長】: %d 分 %.2f 秒 (共 %.2f 秒)\n', tot_mins, tot_secs, total_elapsed_sec);
 end
 fprintf('=================================================================\n');
-disp('🎯 [Phase 15.5] 前向回測執行完畢！');
+disp('🎯 [Phase 15.5] 前向回測執行完畢！全管線同構閉環達成。');
 disp('=================================================================');
 
 %% =====================================================================
@@ -609,7 +648,14 @@ function m = evaluate_financial_metrics(v, v_bench)
     
     m = struct();
     m.TotalRet = (v(end) / v(1) - 1) * 100;
-    m.CAGR     = ((v(end) / v(1)) ^ (252 / max(1, n_days)) - 1) * 100;
+    
+    ratio = v(end) / v(1);
+    if ratio <= 0
+        m.CAGR = -100.0;
+    else
+        m.CAGR = (real(ratio ^ (252 / max(1, n_days))) - 1) * 100;
+    end
+    
     m.AnnVol   = std(r) * sqrt(252) * 100;
     m.MDD      = min((v - cummax(v)) ./ (cummax(v) + 1e-8)) * 100;
     m.Sharpe   = (mean(r) / (std(r) + 1e-8)) * sqrt(252);
@@ -617,7 +663,14 @@ function m = evaluate_financial_metrics(v, v_bench)
     m.WinRate  = mean(r > 0) * 100;
     
     m.BenchTotalRet = (v_bench(end) / v_bench(1) - 1) * 100;
-    m.BenchCAGR     = ((v_bench(end) / v_bench(1)) ^ (252 / max(1, n_days)) - 1) * 100;
+    
+    b_ratio = v_bench(end) / v_bench(1);
+    if b_ratio <= 0
+        m.BenchCAGR = -100.0;
+    else
+        m.BenchCAGR = (real(b_ratio ^ (252 / max(1, n_days))) - 1) * 100;
+    end
+    
     m.BenchAnnVol   = std(rb) * sqrt(252) * 100;
     m.BenchMDD      = min((v_bench - cummax(v_bench)) ./ (cummax(v_bench) + 1e-8)) * 100;
     m.BenchSharpe   = (mean(rb) / (std(rb) + 1e-8)) * sqrt(252);
