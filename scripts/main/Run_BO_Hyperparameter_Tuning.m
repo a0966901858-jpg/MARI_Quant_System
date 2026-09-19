@@ -143,7 +143,7 @@ end
 
 fprintf('  -> 護欄動態邊界鎖定：[%.4f (下界), %.4f (上界)]\n', p_80, p_99);
 var_guard = optimizableVariable('Guardrail_CrashProb', [p_80, p_99], 'Type', 'real');
-var_topk  = optimizableVariable('Top_K_Assets', [10, 40], 'Type', 'integer');
+var_topk  = optimizableVariable('Top_K_Assets', [5, 25], 'Type', 'integer');
 
 if enable_space
     % 空間專家未剪枝時，納入權重搜尋
