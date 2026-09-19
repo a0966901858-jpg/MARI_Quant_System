@@ -4,7 +4,7 @@
 %       嚴格繼承 Config.m 全域 Horizon/PurgeEmbargo/HACLag 參數、
 %       總經特徵資料覆蓋率品質即時審計、mrg32k3a 確定性子串流、
 %       LSBoost 連續選股迴歸、OOF 橫截面 Rank IC 監控、Platt 事後機率校準、
-%       Headless 伺服器友善 SHAP 視覺化、各階段獨立高精度計時與總耗時審計)
+%       修正 OOS 矩陣變數命名筆誤、各階段獨立高精度計時與總耗時審計)
 % 職責：訓練選股 GBDT 與崩盤護欄，輸出全域無洩漏 OOF/OOS 專家排序得分與崩盤機率矩陣
 % =========================================================================
 clear; clc; close all;
@@ -108,7 +108,7 @@ idx_macro = (numRel + numMicro + 1) : (numRel + numMicro + numMacro);
 X_norm_18D = X_norm_3D(:, idx_raw18, :); 
 Macro_2D   = X_norm_3D(:, idx_macro, 1); 
 
-% ★ 總經特徵即時審計：特別檢驗高收益債信用利差 (第 8 欄位 BAMLH0A0HYM2 / HY Spread)
+% ★ 總經特徵即時審計：檢驗高收益債信用利差 (第 8 欄位 BAMLH0A0HYM2 / HY Spread)
 hy_spread_raw = Macro_2D(:, 8);
 zero_ratio = sum(hy_spread_raw == 0) / numDaysRaw;
 fprintf('  -> 特徵維度: 個股微觀 %d 維 | 宏觀總經 %d 維\n', length(idx_raw18), length(idx_macro));
@@ -224,6 +224,7 @@ fprintf('⏱️ [步驟 5 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step
 %% 6. 執行 OOS 盲測期真實前向推論
 t_step6 = tic;
 disp('--- 步驟 6：執行 OOS 盲測期無洩漏推論 (LSBoost 排序推論 + Platt 崩盤校準) ---');
+% 產出 OOS 樣本外推論分數 (變數名稱規範以 _oos_sub 結尾)
 [Score_time_oos_sub, Score_space_oos_sub, P_crash_oos_sub] = gbdt_agent.predict_oos(...
     E_time_OOS, E_space_OOS, Macro_OOS, Expert_OOS);
 
@@ -242,9 +243,9 @@ P_time_all(idx_IS, :)   = Score_time_oof_IS;
 P_space_all(idx_IS, :)  = Score_space_oof_IS;
 P_crash_all(idx_IS)     = P_crash_oof_IS;
 
-% 填入 OOS 區間 (前向盲測百分位排序得分)
+% 填入 OOS 區間 (★ 正確對齊步驟 6 的 _oos_sub 變數)
 P_time_all(idx_OOS, :)  = Score_time_oos_sub;
-P_space_all(idx_OOS, :) = Score_space_oof_sub;
+P_space_all(idx_OOS, :) = Score_space_oos_sub;
 P_crash_all(idx_OOS)    = P_crash_oos_sub;
 
 % 非活躍標的強制作為 0 分，防止進入選股候選池
