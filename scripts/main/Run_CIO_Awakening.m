@@ -1,24 +1,23 @@
 % =========================================================================
 % 腳本：5_Run_CIO_HRL_Train.m (原 5_Run_CIO_Awakening.m)
-% 升級：Phase 15.5 60D 基準線版 (★ 20日定期調倉步進對齊、消除慢速訊號過度換手、
-%       PPO 動作探索綁定 mrg32k3a 獨立子串流、狀態空間對齊橫截面百分位排序得分、
-%       Open-to-Open 撮合與權重漂移同構化、死區連續縮放護欄、多體制驗證早停、
-%       各階段獨立高精度計時與總運行耗時審計)
-% 職責：在向量化平行模擬環境中，訓練三位具備不同風險偏好的 CIO 總管，追求高夏普與低回撤
+% 升級：Phase 15.5 生產基準版 (★ 相容 Pure-Time 剪枝防訊號稀釋、
+%       Config.m 全域 Horizon/RebalanceStride 動態繼承、
+%       支援單軌穩健決策與三軌並行雙模式、Headless 伺服器友善無 GUI 繪圖、
+%       PPO 動作探索綁定 mrg32k3a 獨立子串流、Open-to-Open 撮合與權重漂移同構、
+%       死區連續縮放護欄、跨體制驗證早停、各階段獨立計時與總耗時審計)
+% 職責：在向量化平行模擬環境中，訓練具備跨體制穩健性之 CIO 總管，動態管理權益與防禦部位
 % =========================================================================
 clear; clc; close all;
 
 % 啟動全域總計時器
 t_total_start = tic;
-
 disp('=================================================================');
-disp('🚀 [Phase 15.5] 啟動 CIO 三軌訓練 (60D 基準線與定期調倉同構版)');
+disp('🚀 [Phase 15.5] 啟動 CIO 強化學習訓練管線 (Pure-Time 剪枝與參數動態對齊版)');
 disp('=================================================================');
 
-%% 0. 環境路徑掛載與平行池啟動
+%% 0. 環境路徑掛載與隨機串流鎖定
 t_step0 = tic;
 disp('--- 步驟 0：環境路徑掛載、Config 載入與平行池啟動 ---');
-
 currentFile = mfilename('fullpath');
 if isempty(currentFile)
     currentPath = pwd;
@@ -49,20 +48,19 @@ if exist('Config', 'class') ~= 8
 end
 configObj = Config();
 
-% 使用 Config 統一生產 mrg32k3a 隨機數引擎，並設為全域主串流 (Substream = 1)
+% 由 Config 統一生產 mrg32k3a 隨機數引擎，並設為全域主串流 (Substream = 1)
 rng_seed = configObj.RNG_Seed;
 rng_gen  = configObj.RNG_Generator;
 stream_main = configObj.getRandStream(1);
 RandStream.setGlobalStream(stream_main);
-disp('🔒 已成功掛載 mrg32k3a 主隨機串流 (Substream=1)，鎖定 CIO 訓練環境。');
+disp('🔒 已成功掛載 mrg32k3a 主隨機串流 (Substream=1)，鎖定 CIO 訓練環境確定性。');
 
-% 啟動 MATLAB 平行運算池
+% 啟動 CPU 平行運算池
 poolobj = gcp('nocreate');
 if isempty(poolobj)
     disp(' ⚙️ 正在啟動 CPU 平行運算池 (Parallel Pool)...');
     parpool('Processes'); 
 end
-
 time_step0 = toc(t_step0);
 fprintf('⏱️ [步驟 0 完成] 耗時: %.2f 秒\n\n', time_step0);
 
@@ -101,10 +99,18 @@ Opens_Active  = Opens_Raw(valid_idx, :);
 Expert_Active = Expert_Active(valid_idx, :);
 Dates_Active  = Dates_Active(valid_idx);
 
-% P_time_M 與 P_space_M 為 Phase 3 產出之 (0, 1] 橫截面百分位排序得分
+% P_time_M 與 P_space_M 為 (0, 1] 橫截面百分位排序得分
 P_time_M  = P_time_all(valid_idx, :)'; 
 P_space_M = P_space_all(valid_idx, :)';
 numDays   = length(Dates_Active);
+
+% ★ 空間專家狀態探針：檢查是否剪枝空間專家
+enable_space = isprop(configObj, 'EnableSpaceExpertTraining') && configObj.EnableSpaceExpertTraining && any(P_space_all(:) ~= 0);
+if enable_space
+    disp('  -> 空間專家狀態: 【已啟用】(RL 將動態調配時序與空間專家權重)');
+else
+    disp('  -> 空間專家狀態: 【⏩ 已剪枝】(Pure-Time 模式：強制時序權重=1.0，杜絕排序稀釋)');
+end
 
 time_step1 = toc(t_step1);
 fprintf('⏱️ [步驟 1 完成] 耗時: %.2f 秒\n\n', time_step1);
@@ -137,7 +143,7 @@ for t = 21:numDays
     spy_ret20(t) = (spy_prices(t) - spy_prices(t-20)) / (spy_prices(t-20) + 1e-8);
 end
 
-CIO_State(1, :) = P_crash_M;          % 維度 1：大盤崩盤護欄機率 (Platt 校準平滑版)
+CIO_State(1, :) = P_crash_M;          % 維度 1：大盤崩盤護欄機率 (平滑版)
 CIO_State(2, :) = spy_ret20';         % 維度 2：大盤中期趨勢動能
 CIO_State(3, :) = vol20';             % 維度 3：大盤年化波動率
 CIO_State(4, :) = abs(mdd252)';       % 維度 4：一年期最大回撤絕對值
@@ -146,9 +152,9 @@ CIO_State(5, :) = 1.0;                % 維度 5：當前持倉現金比例
 time_step2 = toc(t_step2);
 fprintf('⏱️ [步驟 2 完成] 耗時: %.2f 秒\n\n', time_step2);
 
-%% 3. 校準崩盤護欄死區下限並實例化三軌代理人
+%% 3. 校準崩盤護欄死區下限並實例化代理人
 t_step3 = tic;
-disp('--- 步驟 3：校準崩盤護欄死區下限並實例化三軌 RL 代理人 ---');
+disp('--- 步驟 3：校準崩盤護欄死區下限並實例化 RL 代理人 ---');
 spy_inception_idx = find(spy_prices > 10, 1);
 if isempty(spy_inception_idx), spy_inception_idx = 1; end
 
@@ -181,9 +187,15 @@ non_crash_p = P_crash_M(is_non_crash_idx);
 tau_noise = prctile(non_crash_p, 75);
 fprintf('  -> IS 非危機期 P(Crash) 75%% 雜訊分位數 (tau_noise): %.4f\n', tau_noise);
 
-agent_aggressive   = Agent_PPO();   % 積極型：牛市主攻
-agent_balanced     = Agent_PPO();   % 平衡型：震盪市輪動
-agent_conservative = Agent_PPO();   % 保守型：熊市防禦
+% ★ 判斷是否採用單軌穩健 CIO 模式 (依據消融實驗結論，預設單軌大幅提升訓練效率)
+single_track_mode = isprop(configObj, 'EnableSingleTrackCIO') && configObj.EnableSingleTrackCIO;
+if single_track_mode
+    disp('  💡 [決策架構] 啟用【單軌穩健 CIO 決策模式】(消除無效三軌動態震盪，提升泛化力)。');
+    num_agents_train = 1;
+else
+    disp('  💡 [決策架構] 啟用【標準三軌自適應 CIO 模式】(Aggressive, Balanced, Conservative)。');
+    num_agents_train = 3;
+end
 
 base_lr    = configObj.HRL_LR;
 base_frict = configObj.MoE_FrictionMask; 
@@ -193,18 +205,29 @@ cfg_agg = struct('Frict', base_frict*0.5, 'GuardHigh', min(0.99, base_guard*1.15
 cfg_bal = struct('Frict', base_frict,     'GuardHigh', base_guard,                 'LR', base_lr,     'TauNoise', tau_noise);
 cfg_con = struct('Frict', base_frict*1.5, 'GuardHigh', base_guard*0.85,            'LR', base_lr*0.8, 'TauNoise', tau_noise);
 
+agent_aggressive   = Agent_PPO(); 
+agent_balanced     = Agent_PPO(); 
+agent_conservative = Agent_PPO(); 
+
 time_step3 = toc(t_step3);
 fprintf('⏱️ [步驟 3 完成] 耗時: %.2f 秒\n\n', time_step3);
 
-%% 4. 動態對齊時間軸並構建跨體制驗證池 (包含 PPO 訓練主迴圈)
+%% 4. 動態對齊時間軸並構建跨體制驗證池 (PPO 主迴圈)
 t_step4 = tic;
-disp('--- 步驟 4：切分訓練池與多體制驗證池 (解決短回合過擬合) ---');
-RolloutSteps = 60; 
+disp('--- 步驟 4：切分訓練池與多體制驗證池並啟動訓練 ---');
 
-% Open-to-Open 需存取 current_t + 2，嚴格截斷至 idx_OOS_start - RolloutSteps - 2
+% 動態對齊 RolloutSteps (根據全域 Horizon 自適應，不再寫死 60)
+if isprop(configObj, 'RolloutSteps') && ~isempty(configObj.RolloutSteps)
+    RolloutSteps = configObj.RolloutSteps;
+else
+    RolloutSteps = max(40, configObj.Horizon * 2);
+end
+fprintf('  -> 向量化訓練步長 (RolloutSteps): %d 步 (動態對齊 Horizon=%d)\n', RolloutSteps, configObj.Horizon);
+
+% Open-to-Open 需存取 current_t + 2，嚴格截斷
 valid_starts = valid_start_t : (idx_OOS_start - RolloutSteps - 2);
 
-% 跨體制驗證窗口 (鎖定 IS 內三段歷史衝擊)
+% 跨體制驗證窗口
 val_windows = { ...
     struct('start', datetime('2008-01-01','TimeZone',tz), 'end', datetime('2009-06-01','TimeZone',tz)), ...
     struct('start', datetime('2020-01-01','TimeZone',tz), 'end', datetime('2020-12-01','TimeZone',tz)), ...
@@ -225,106 +248,108 @@ fprintf(' 📡 時間軸切分完畢！訓練起點池: %d 天 | 跨體制驗證
 epochs = configObj.HRL_Epochs;
 batch_size = 128; 
 
-fig_train = figure('Name', 'Ensemble Agents Training Progress', ...
-    'Position', [100, 100, 950, 520], 'Color', 'w');
+% 初始化記錄容器 (Headless 環境預設不可見)
+fig_train = figure('Name', 'CIO Training Progress', ...
+    'Position', [100, 100, 950, 520], 'Color', 'w', 'Visible', 'off');
 set(fig_train, 'InvertHardcopy', 'off');
 
-ax = gca;
-set(ax, 'Color', 'w', 'XColor', 'k', 'YColor', 'k', 'LineWidth', 1.0, ...
-    'GridColor', [0.85 0.85 0.85], 'GridAlpha', 0.8, ...
-    'FontName', 'Helvetica', 'FontSize', 10);
-grid(ax, 'on'); 
-box(ax, 'on');
-
-hLineAgg = animatedline('Color', '#D95319', 'LineWidth', 1.5, 'DisplayName', 'Aggressive (Train)');
-hLineBal = animatedline('Color', '#0072BD', 'LineWidth', 1.5, 'DisplayName', 'Balanced (Train)');
-hLineCon = animatedline('Color', '#EDB120', 'LineWidth', 1.5, 'DisplayName', 'Conservative (Train)');
-hLineVal = animatedline('Color', '#7E2F8E', 'LineWidth', 2.0, 'LineStyle', '--', 'DisplayName', 'Ensemble (Multi-Regime Val)');
-
-title('HRL 3-Track CIO Training Progress & Multi-Regime Validation (60D Baseline)', ...
-    'FontSize', 12, 'FontWeight', 'bold', 'Color', 'k');
-xlabel('Epoch', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k'); 
-ylabel('Avg Step Reward', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k'); 
-legend('Location', 'northwest', 'TextColor', 'k', 'Color', 'w', 'EdgeColor', [0.8 0.8 0.8]); 
+history_train_rews = zeros(epochs, 3);
+history_val_rews   = zeros(epochs, 1);
 
 best_val_ensemble_reward = -inf;
 patience_counter = 0;
-patience_limit = 30; 
+patience_limit = 25; 
 best_agent_agg = []; best_agent_bal = []; best_agent_con = [];
 
 for ep = 1:epochs
     start_indices = randsample(stream_main, train_starts, batch_size)'; 
     noise_std = max(0.01, 0.2 - (0.2 / (epochs * 0.8)) * ep);
-    
     lr_decay = 0.8 ^ floor((ep - 1) / 50);
+    
     cfg_agg.LR = base_lr * 1.2 * lr_decay;
     cfg_bal.LR = base_lr * lr_decay;
     cfg_con.LR = base_lr * 0.8 * lr_decay;
     
-    agents_in = {agent_aggressive, agent_balanced, agent_conservative};
-    cfgs_in   = {cfg_agg, cfg_bal, cfg_con};
+    if single_track_mode
+        agents_in = {agent_balanced};
+        cfgs_in   = {cfg_bal};
+        cur_n     = 1;
+    else
+        agents_in = {agent_aggressive, agent_balanced, agent_conservative};
+        cfgs_in   = {cfg_agg, cfg_bal, cfg_con};
+        cur_n     = 3;
+    end
     
-    rews_out   = zeros(1, 3);
-    agents_out = cell(1, 3);
+    rews_out   = zeros(1, cur_n);
+    agents_out = cell(1, cur_n);
+    streams_train = cell(1, cur_n);
     
-    streams_train = cell(1, 3);
-    for a = 1:3
+    for a = 1:cur_n
         s_obj = RandStream(rng_gen, 'Seed', rng_seed);
         s_obj.Substream = ep * 10 + a;
         streams_train{a} = s_obj;
     end
     
-    parfor a = 1:3
+    parfor a = 1:cur_n
         [rews_out(a), agents_out{a}] = simulate_and_update(agents_in{a}, cfgs_in{a}, ...
             start_indices, RolloutSteps, CIO_State, P_time_M, P_space_M, P_crash_M, ...
-            Opens_Active, Expert_Active, noise_std, configObj, false, streams_train{a});
+            Opens_Active, Expert_Active, noise_std, configObj, false, streams_train{a}, enable_space);
     end
     
-    agent_aggressive   = agents_out{1};
-    agent_balanced     = agents_out{2};
-    agent_conservative = agents_out{3};
+    if single_track_mode
+        agent_balanced     = agents_out{1};
+        agent_aggressive   = agent_balanced;
+        agent_conservative = agent_balanced;
+        rew_bal = rews_out(1);
+        rew_agg = rew_bal; 
+        rew_con = rew_bal;
+    else
+        agent_aggressive   = agents_out{1};
+        agent_balanced     = agents_out{2};
+        agent_conservative = agents_out{3};
+        rew_agg = rews_out(1);
+        rew_bal = rews_out(2);
+        rew_con = rews_out(3);
+    end
     
-    rew_agg = rews_out(1);
-    rew_bal = rews_out(2);
-    rew_con = rews_out(3);
+    history_train_rews(ep, :) = [rew_agg, rew_bal, rew_con];
     
-    % 獨立驗證池評估多體制泛化表現 (noise_std = 0)
+    % 獨立多體制驗證 (無隨機噪聲)
     val_batch_size = min(length(val_starts), batch_size);
     val_sample_indices = randsample(stream_main, val_starts, val_batch_size)';
-    val_rews_out = zeros(1, 3);
+    val_rews_out = zeros(1, cur_n);
     
-    agents_eval = {agent_aggressive, agent_balanced, agent_conservative};
-    streams_val = cell(1, 3);
-    for a = 1:3
+    agents_eval = agents_out;
+    streams_val = cell(1, cur_n);
+    for a = 1:cur_n
         s_obj = RandStream(rng_gen, 'Seed', rng_seed);
         s_obj.Substream = ep * 10 + 5 + a;
         streams_val{a} = s_obj;
     end
     
-    parfor a = 1:3
+    parfor a = 1:cur_n
         [val_rews_out(a), ~] = simulate_and_update(agents_eval{a}, cfgs_in{a}, ...
             val_sample_indices, RolloutSteps, CIO_State, P_time_M, P_space_M, P_crash_M, ...
-            Opens_Active, Expert_Active, 0.0, configObj, true, streams_val{a});
+            Opens_Active, Expert_Active, 0.0, configObj, true, streams_val{a}, enable_space);
     end
     
     val_ensemble_reward = mean(val_rews_out);
-    
-    addpoints(hLineAgg, ep, rew_agg); 
-    addpoints(hLineBal, ep, rew_bal); 
-    addpoints(hLineCon, ep, rew_con);
-    addpoints(hLineVal, ep, val_ensemble_reward);
-    drawnow limitrate;
+    history_val_rews(ep) = val_ensemble_reward;
     
     if mod(ep, 10) == 0 || ep == 1
-        fprintf('Ep %3d | Agg R:%+6.2f | Bal R:%+6.2f | Con R:%+6.2f | Val R:%+6.2f | LR Decay: %.2f\n', ...
-            ep, rew_agg, rew_bal, rew_con, val_ensemble_reward, lr_decay);
+        if single_track_mode
+            fprintf('Ep %3d | Unified R:%+6.2f | Val R:%+6.2f | LR Decay: %.2f\n', ...
+                ep, rew_bal, val_ensemble_reward, lr_decay);
+        else
+            fprintf('Ep %3d | Agg R:%+6.2f | Bal R:%+6.2f | Con R:%+6.2f | Val R:%+6.2f | LR Decay: %.2f\n', ...
+                ep, rew_agg, rew_bal, rew_con, val_ensemble_reward, lr_decay);
+        end
     end
     
-    % Early Stopping 僅依賴多體制驗證集 Reward
+    % 早停依據：多體制驗證集 Reward
     if val_ensemble_reward > best_val_ensemble_reward + 1e-4
         best_val_ensemble_reward = val_ensemble_reward;
         patience_counter = 0;
-        
         best_agent_agg = agent_aggressive;
         best_agent_bal = agent_balanced;
         best_agent_con = agent_conservative;
@@ -332,13 +357,15 @@ for ep = 1:epochs
         patience_counter = patience_counter + 1;
     end
     
-    if patience_counter >= patience_limit && ep > 80
+    if patience_counter >= patience_limit && ep > 50
         fprintf('\n🛑 [Early Stopping] 跨體制驗證集連續 %d 輪未改善，提前於 Epoch %d 終止並回滾最佳快照！\n', patience_limit, ep);
         agent_aggressive   = best_agent_agg;
         agent_balanced     = best_agent_bal;
         agent_conservative = best_agent_con;
+        epochs_completed = ep;
         break;
     end
+    epochs_completed = ep;
 end
 
 if ~isempty(best_agent_agg)
@@ -350,24 +377,43 @@ end
 time_step4 = toc(t_step4);
 fprintf('⏱️ [步驟 4 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step4, time_step4 / 60);
 
-%% --- 步驟 5：儲存覺醒完成的三軌 CIO 大腦與訓練曲線 ---
+%% 5. 儲存 CIO 模型權重與訓練曲線報表
 t_step5 = tic;
-disp('--- 步驟 5：儲存覺醒完成的三軌 CIO 大腦與訓練曲線 (白底黑字) ---');
+disp('--- 步驟 5：儲存 CIO 代理人大腦與訓練曲線 (標準白底黑字) ---');
+
+% 繪製標準白底黑字訓練曲線
+ep_range = 1:epochs_completed;
+plot(ep_range, history_train_rews(ep_range, 1), 'Color', '#D95319', 'LineWidth', 1.5, 'DisplayName', 'Aggressive (Train)'); hold on;
+plot(ep_range, history_train_rews(ep_range, 2), 'Color', '#0072BD', 'LineWidth', 1.5, 'DisplayName', 'Balanced (Train)');
+plot(ep_range, history_train_rews(ep_range, 3), 'Color', '#EDB120', 'LineWidth', 1.5, 'DisplayName', 'Conservative (Train)');
+plot(ep_range, history_val_rews(ep_range), 'Color', '#7E2F8E', 'LineWidth', 2.0, 'LineStyle', '--', 'DisplayName', 'Multi-Regime Val');
+
+title(sprintf('HRL CIO Training Progress & Multi-Regime Validation (%dD Horizon)', configObj.Horizon), ...
+    'FontSize', 12, 'FontWeight', 'bold', 'Color', 'k');
+xlabel('Epoch', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k'); 
+ylabel('Avg Step Reward', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k'); 
+legend('Location', 'northwest', 'TextColor', 'k', 'Color', 'w', 'EdgeColor', [0.8 0.8 0.8]); 
+set(gca, 'Color', 'w', 'XColor', 'k', 'YColor', 'k', 'LineWidth', 1.0, ...
+    'GridColor', [0.85 0.85 0.85], 'GridAlpha', 0.8, 'FontName', 'Helvetica', 'FontSize', 10);
+grid on; box on;
+
+if ~exist(configObj.ModelDir, 'dir'), mkdir(configObj.ModelDir); end
 trainFigPath = fullfile(configObj.ModelDir, 'Phase5_CIO_Training_Curve.png');
 exportgraphics(fig_train, trainFigPath, 'Resolution', 300, 'BackgroundColor', 'white');
 fprintf(' 📊 訓練進度曲線 (白底黑字) 已儲存至: %s\n', trainFigPath);
 close(fig_train);
 
+% 儲存三軌大腦 (下游 Phase 6 嚴格相容)
 save(fullfile(configObj.ModelDir, 'CIO_Aggressive.mat'), 'agent_aggressive');
 save(fullfile(configObj.ModelDir, 'CIO_Balanced.mat'), 'agent_balanced');
 save(fullfile(configObj.ModelDir, 'CIO_Conservative.mat'), 'agent_conservative');
-disp('✅ Phase 5 訓練完成！最佳大腦已具備跨體制穩健性並安全落地。');
+disp('💾 CIO 代理人大腦權重已安全落地！');
 
 time_step5 = toc(t_step5);
 fprintf('⏱️ [步驟 5 完成] 耗時: %.2f 秒\n\n', time_step5);
 
 %% =========================================================================
-% 結算全流程執行時長審計
+% 結算全流程執行時長審計報告
 % =========================================================================
 total_elapsed_sec = toc(t_total_start);
 tot_hours = floor(total_elapsed_sec / 3600);
@@ -381,7 +427,7 @@ fprintf(' 步驟 0：環境掛載與平行池啟動     : %8.2f 秒 (%5.1f%%)\n'
 fprintf(' 步驟 1：快取載入與開盤價矩陣對齊 : %8.2f 秒 (%5.1f%%)\n', time_step1, (time_step1 / total_elapsed_sec) * 100);
 fprintf(' 步驟 2：CIO 5 維宏觀狀態空間計算 : %8.2f 秒 (%5.1f%%)\n', time_step2, (time_step2 / total_elapsed_sec) * 100);
 fprintf(' 步驟 3：死區下限校準與代理人實例化: %8.2f 秒 (%5.1f%%)\n', time_step3, (time_step3 / total_elapsed_sec) * 100);
-fprintf(' 步驟 4：三軌 HRL 訓練與多體制驗證: %8.2f 秒 (%5.1f%%)\n', time_step4, (time_step4 / total_elapsed_sec) * 100);
+fprintf(' 步驟 4：CIO 訓練與多體制驗證早停 : %8.2f 秒 (%5.1f%%)\n', time_step4, (time_step4 / total_elapsed_sec) * 100);
 fprintf(' 步驟 5：訓練曲線輸出與大腦權重存檔: %8.2f 秒 (%5.1f%%)\n', time_step5, (time_step5 / total_elapsed_sec) * 100);
 fprintf('-----------------------------------------------------------------\n');
 if tot_hours > 0
@@ -390,16 +436,17 @@ else
     fprintf('⏱️ 【總執行時長】: %d 分 %.2f 秒 (共 %.2f 秒)\n', tot_mins, tot_secs, total_elapsed_sec);
 end
 fprintf('=================================================================\n');
-disp('🎯 [Phase 5] CIO 三軌訓練完成！請進入 Phase 6。');
+disp('🎯 [Phase 5] CIO 訓練完成！請進入 Phase 6 前向回測。');
 disp('=================================================================');
 
 %% =====================================================================
-% 向量化環境模擬核心函數 (★ 定期調倉 + 權重漂移 + 死區縮放 + 串流約束)
+% 向量化環境模擬核心函數 (★ Pure-Time 剪枝防稀釋 + 定期調倉 + 死區縮放)
 % =====================================================================
 function [avg_reward, agent] = simulate_and_update(agent, cfg, start_indices, steps, ...
-    CIO_State, P_time, P_space, P_crash, Opens, Expert, noise_std, configObj, skip_update, stream)
+    CIO_State, P_time, P_space, P_crash, Opens, Expert, noise_std, configObj, skip_update, stream, enable_space)
     
     if nargin < 13, skip_update = false; end
+    if nargin < 15, enable_space = true; end
     
     if nargin >= 14 && ~isempty(stream)
         old_stream = RandStream.setGlobalStream(stream);
@@ -413,11 +460,11 @@ function [avg_reward, agent] = simulate_and_update(agent, cfg, start_indices, st
     top_k_val       = configObj.Top_K_Assets;
     fallback_w_time = configObj.Expert_Time_Weight;
     
-    % 讀取全域調倉步進 (預設 20 日)
+    % 動態繼承全域調倉步進 (未指定則動態對齊 Horizon)
     if isprop(configObj, 'RebalanceStride') && ~isempty(configObj.RebalanceStride)
         stride = configObj.RebalanceStride;
     else
-        stride = 20;
+        stride = configObj.Horizon;
     end
     
     ep_states    = zeros(5, batch_size, steps, 'single'); 
@@ -441,7 +488,6 @@ function [avg_reward, agent] = simulate_and_update(agent, cfg, start_indices, st
     
     for step_idx = 1:steps
         current_t = start_indices + step_idx - 1; 
-        
         assert(max(current_t) + 2 <= num_days_total, '❌ 向量化模擬環境時間索引溢出邊界！');
         
         current_state = CIO_State(:, current_t);  
@@ -474,20 +520,25 @@ function [avg_reward, agent] = simulate_and_update(agent, cfg, start_indices, st
         available_cap = max(0, 1.0 - locked_sum);
         
         % -------------------------------------------------------------
-        % 3. 動作正規化與死區連續縮放護欄 (每日響應宏觀風險)
+        % 3. 動作正規化 (★ Pure-Time 剪枝防稀釋：強制時序權重=1.0)
         % -------------------------------------------------------------
-        w_time = max(0, acts_raw(1, :));   
-        w_space = max(0, acts_raw(2, :));  
+        if ~enable_space
+            w_time  = ones(1, batch_size, 'single');
+            w_space = zeros(1, batch_size, 'single');
+        else
+            w_time  = max(0, acts_raw(1, :));   
+            w_space = max(0, acts_raw(2, :));  
+            sum_w   = w_time + w_space;
+            zero_w_mask = (sum_w <= 1e-6);
+            w_time(zero_w_mask)  = fallback_w_time; 
+            w_space(zero_w_mask) = 1.0 - fallback_w_time;
+            sum_w = w_time + w_space;
+            w_time  = w_time ./ sum_w;
+            w_space = w_space ./ sum_w;
+        end
         target_cash = max(0, min(1, acts_raw(3, :)));
         
-        sum_w = w_time + w_space;
-        zero_w_mask = (sum_w <= 1e-6);
-        w_time(zero_w_mask)  = fallback_w_time; 
-        w_space(zero_w_mask) = 1.0 - fallback_w_time;
-        sum_w = w_time + w_space;
-        w_time = w_time ./ sum_w;
-        w_space = w_space ./ sum_w;
-        
+        % 崩盤護欄死區連續縮放
         p_c = P_crash(current_t);
         risk_scale = zeros(1, batch_size, 'single');
         low_mask  = (p_c <= guard_low);
@@ -505,13 +556,17 @@ function [avg_reward, agent] = simulate_and_update(agent, cfg, start_indices, st
         rem_weight = available_cap - actual_cash_target;
         
         % -------------------------------------------------------------
-        % 4. 定期調倉 vs. 被動漂移資產配置 (對齊 60D 慢速訊號節奏)
+        % 4. 定期調倉 vs. 被動漂移資產配置
         % -------------------------------------------------------------
         is_rebal_step = (step_idx == 1) || (mod(step_idx - 1, stride) == 0);
         
         if is_rebal_step
-            % 定期調倉：融合專家排序並挑選 Top-K
-            comb_p = P_time(:, current_t) .* w_time + P_space(:, current_t) .* w_space; 
+            if enable_space
+                comb_p = P_time(:, current_t) .* w_time + P_space(:, current_t) .* w_space; 
+            else
+                comb_p = P_time(:, current_t); % 純時序保真傳遞
+            end
+            
             active_mask_batch = Expert(current_t, :)';
             comb_p = comb_p .* active_mask_batch; 
             comb_p(halted_mask) = 0;
@@ -533,7 +588,6 @@ function [avg_reward, agent] = simulate_and_update(agent, cfg, start_indices, st
             end
             target_active_weights = cached_stock_props .* rem_weight;
         else
-            % 非調倉日：資產隨價格被動漂移；若現金防禦部位調整，等比例縮放活躍持倉
             curr_active_sum = sum(w_drift .* (~halted_mask), 1);
             target_active_weights = zeros(num_tickers, batch_size, 'single');
             for b = 1:batch_size
@@ -586,9 +640,7 @@ function [avg_reward, agent] = simulate_and_update(agent, cfg, start_indices, st
             tc_rate = 0.0005 + (0.10 .* current_vol_daily);
         end
         
-        % 僅對非停牌可交易標的換手收取成本 (非調倉日且無風控操作時換手率趨近於 0)
         tc = tc_rate .* sum(abs(asset_weights(~halted_mask) - w_drift(~halted_mask)), 1); 
-        
         port_ret = sum(asset_weights .* ret, 1) - tc; 
         excess_return = port_ret - spy_ret;
         
@@ -621,7 +673,7 @@ function [avg_reward, agent] = simulate_and_update(agent, cfg, start_indices, st
         prev_cash   = w_cash;
     end
     
-    % 注入 Rollout 已實現波動度懲罰項
+    % Rollout 波動度懲罰
     port_rets_2d = reshape(permute(ep_port_rets, [2, 3, 1]), [batch_size, steps]);
     rollout_vol = std(port_rets_2d, 0, 2)' * sqrt(252);
     vol_penalty_coeff = 0.02;
@@ -643,10 +695,10 @@ function [avg_reward, agent] = simulate_and_update(agent, cfg, start_indices, st
     
     flat_returns = reshape(discounted_returns, 1, []);
     ret_mean = mean(flat_returns);
-    ret_std = std(flat_returns) + 1e-8;
+    ret_std  = std(flat_returns) + 1e-8;
     norm_returns = (flat_returns - ret_mean) ./ ret_std;
     
-    flat_states = reshape(ep_states, 5, []);
+    flat_states  = reshape(ep_states, 5, []);
     flat_actions = reshape(ep_actions, 3, []); 
     
     if ~skip_update
