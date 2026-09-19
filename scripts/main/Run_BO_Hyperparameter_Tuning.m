@@ -1,9 +1,9 @@
 % =========================================================================
 % 腳本：4_Run_BO_Hyperparameter_Tuning.m
-% 升級：Phase 15.5 60D 基準線版 (★ 20日定期調倉步進對齊、消除慢速訊號過度換手、
-%       平行池全域注入 mrg32k3a 獨立子串流、DSR 統計顯著性熔斷機制、
-%       防無效參數污染生產環境、死區護欄模擬器對齊、白底黑字學術視覺化報表、
-%       各階段獨立高精度計時與總運行耗時審計)
+% 升級：Phase 15.5 生產基準版 (★ 自適應空間剪枝尋優降階、
+%       消除無效 Time_W 搜尋以集中探索預算、微型沙盒防訊號稀釋、
+%       Config.Horizon/RebalanceStride 動態週期同構、DSR 統計顯著性熔斷防禦、
+%       平行池 mrg32k3a 獨立子串流注入、全流程高精度計時與總時長審計)
 % 職責：利用貝氏最佳化在多子窗口中聯合尋優，以 DSR 量化選擇偏誤；
 %       若未達顯著則啟動熔斷，防止邊界病態解覆寫生產管線。
 % =========================================================================
@@ -11,15 +11,13 @@ clear; clc; close all;
 
 % 啟動全域總計時器
 t_total_start = tic;
-
 disp('=================================================================');
-disp('🧠 [Phase 15.5] 啟動 CIO 總管動態路由貝氏超參數尋優 (60D 基準線與定期調倉版)');
+disp('🧠 [Phase 15.5] 啟動 CIO 總管動態路由貝氏超參數尋優 (生產剪枝自適應版)');
 disp('=================================================================');
 
-%% 0. 環境路徑掛載 (規範化階層回溯解析與路徑重新整理)
+%% 0. 環境路徑掛載與隨機串流鎖定
 t_step0 = tic;
 disp('--- 步驟 0：環境路徑掛載、Config 載入與隨機串流鎖定 ---');
-
 currentFile = mfilename('fullpath');
 if isempty(currentFile)
     currentPath = pwd;
@@ -52,7 +50,6 @@ configObj = Config();
 
 % 使用 Config 統一初始化主執行緒 mrg32k3a 隨機數引擎 (Substream = 1)
 configObj.initRNG(1);
-
 time_step0 = toc(t_step0);
 fprintf('⏱️ [步驟 0 完成] 耗時: %.2f 秒\n\n', time_step0);
 
@@ -88,8 +85,17 @@ Prices_Active = Prices_Active(valid_idx, :);
 Opens_Active  = Opens_Raw(valid_idx, :);
 Expert_Active = Expert_Active(valid_idx, :);
 Dates_Active  = Dates_Active(valid_idx);
+
 P_time_M  = P_time_all(valid_idx, :)';
 P_space_M = P_space_all(valid_idx, :)';
+
+% ★ 空間專家狀態探針：判斷是否已依實驗結論剪枝空間專家
+enable_space = isprop(configObj, 'EnableSpaceExpertTraining') && configObj.EnableSpaceExpertTraining && any(P_space_all(:) ~= 0);
+if enable_space
+    disp('  -> 空間專家狀態: 【已啟用】(貝氏最佳化將搜尋最佳時空權重配比)');
+else
+    disp('  -> 空間專家狀態: 【⏩ 已剪枝】(Pure-Time 模式：鎖定 Time_W=1.0，尋優空間自動降維)');
+end
 
 time_step1 = toc(t_step1);
 fprintf('⏱️ [步驟 1 完成] 耗時: %.2f 秒\n\n', time_step1);
@@ -112,19 +118,20 @@ Dates_IS   = Dates_Active(idx_IS);
 % 提取 IS 期間 75% 雜訊分位數，作為子窗口回測模擬的死區基準
 tau_noise = prctile(P_crash_IS, 75);
 fprintf('  -> IS 期間 P(Crash) 75%% 背景雜訊分位數 (tau_noise): %.4f\n', tau_noise);
-
 time_step2 = toc(t_step2);
 fprintf('⏱️ [步驟 2 完成] 耗時: %.2f 秒\n\n', time_step2);
 
-%% 3. 定義貝氏最佳化超參數空間 (自適應邊界加固)
+%% 3. 定義貝氏最佳化超參數空間 (★ 自適應剪枝降維加固)
 t_step3 = tic;
-disp('--- 步驟 3：定義貝氏最佳化超參數空間 (自適應邊界與間距保證) ---');
+disp('--- 步驟 3：定義貝氏最佳化超參數空間 (自適應維度降階) ---');
 p_80 = prctile(P_crash_IS, 80);
 p_99 = prctile(P_crash_IS, 99);
+
 if isnan(p_80) || isnan(p_99) || p_80 >= p_99
     p_80 = 0.05;
     p_99 = 0.30;
 end
+
 p_80 = max(0.01, min(0.90, p_80));
 if (p_99 - p_80) < 0.05
     p_99 = p_80 + 0.05;
@@ -135,10 +142,19 @@ if p_99 > 0.99
 end
 
 fprintf('  -> 護欄動態邊界鎖定：[%.4f (下界), %.4f (上界)]\n', p_80, p_99);
-var_guard  = optimizableVariable('Guardrail_CrashProb', [p_80, p_99], 'Type', 'real');
-var_weight = optimizableVariable('Expert_Time_Weight', [0.0, 1.0], 'Type', 'real');
-var_topk   = optimizableVariable('Top_K_Assets', [10, 40], 'Type', 'integer');
-bo_vars    = [var_guard, var_weight, var_topk];
+var_guard = optimizableVariable('Guardrail_CrashProb', [p_80, p_99], 'Type', 'real');
+var_topk  = optimizableVariable('Top_K_Assets', [10, 40], 'Type', 'integer');
+
+if enable_space
+    % 空間專家未剪枝時，納入權重搜尋
+    var_weight = optimizableVariable('Expert_Time_Weight', [0.0, 1.0], 'Type', 'real');
+    bo_vars = [var_guard, var_weight, var_topk];
+    disp('  ⚙️ 搜尋維度: 3 維 [Guardrail_CrashProb, Expert_Time_Weight, Top_K_Assets]');
+else
+    % ★ 空間專家已剪枝：移除 Expert_Time_Weight，集中 100% 搜尋預算至風控與集中度
+    bo_vars = [var_guard, var_topk];
+    disp('  ⚙️ 搜尋維度: 2 維 [Guardrail_CrashProb, Top_K_Assets] (Time_W 鎖定 1.0000)');
+end
 
 time_step3 = toc(t_step3);
 fprintf('⏱️ [步驟 3 完成] 耗時: %.2f 秒\n\n', time_step3);
@@ -159,9 +175,11 @@ spmd
     worker_stream.Substream = labindex;
     RandStream.setGlobalStream(worker_stream);
 end
-disp('🔒 已成功為平行池所有 Worker 注入 mrg32k3a 獨立隨機子串流 (確定性可重現模式)。');
+disp('🔒 已成功為平行池所有 Worker 注入 mrg32k3a 獨立隨機子串流。');
 
-obj_fun = @(x) evaluate_hrl_proxy_robust(x, Prices_IS, Opens_IS, Expert_IS, P_time_IS, P_space_IS, P_crash_IS, tau_noise, configObj);
+obj_fun = @(x) evaluate_hrl_proxy_robust(x, Prices_IS, Opens_IS, Expert_IS, ...
+    P_time_IS, P_space_IS, P_crash_IS, tau_noise, configObj, enable_space);
+
 results = bayesopt(obj_fun, bo_vars, ...
     'MaxObjectiveEvaluations', 25, ...                       
     'AcquisitionFunctionName', 'expected-improvement-plus', ...
@@ -174,12 +192,22 @@ fprintf('⏱️ [步驟 4 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step
 %% 5. 提取最佳參數、DSR 統計校正與斷路器檢驗
 t_step5 = tic;
 disp('--- 步驟 5：提取最佳參數、DSR 統計檢驗與熔斷裁決 ---');
+
 if isempty(results.XAtMinObjective) || height(results.XAtMinObjective) == 0
-    best_params = table(p_99, 0.5, 20, 'VariableNames', {'Guardrail_CrashProb', 'Expert_Time_Weight', 'Top_K_Assets'});
-    warning('⚠️ 優化未收斂，將自動採用預設值');
+    if enable_space
+        best_params = table(p_99, 0.5, 20, 'VariableNames', {'Guardrail_CrashProb', 'Expert_Time_Weight', 'Top_K_Assets'});
+    else
+        best_params = table(p_99, 1.0, 20, 'VariableNames', {'Guardrail_CrashProb', 'Expert_Time_Weight', 'Top_K_Assets'});
+    end
+    warning('⚠️ 優化未收斂，將自動採用基準防呆值');
 else
     best_params = results.XAtMinObjective;
+    % 若為剪枝模式，補齊結構中的 Expert_Time_Weight 欄位以利下游統一載入
+    if ~enable_space && ~ismember('Expert_Time_Weight', best_params.Properties.VariableNames)
+        best_params.Expert_Time_Weight = 1.0000;
+    end
 end
+
 best_robust_score = -results.MinObjective;
 
 % 執行單一完整 IS 模擬以提取最佳逐日超額報酬序列
@@ -195,10 +223,10 @@ sim_start_t = warmup_days + 1;
 sim_end_t   = size(Prices_IS, 1) - 2;
 
 [~, best_excess_returns] = run_subwindow_simulation(best_params, Prices_IS, Opens_IS, Expert_IS, ...
-    P_time_IS, P_space_IS, P_crash_IS, vol20_is, spy_idx, sim_start_t, sim_end_t, tau_noise, configObj);
+    P_time_IS, P_space_IS, P_crash_IS, vol20_is, spy_idx, sim_start_t, sim_end_t, tau_noise, configObj, enable_space);
 
 pct_days_guarded = mean(P_crash_IS > best_params.Guardrail_CrashProb) * 100;
-fprintf('\n🏆 【Phase 15.5 貝氏最佳化候選結果 (60D 定期調倉)】 🏆\n');
+fprintf('\n🏆 【Phase 15.5 貝氏最佳化候選結果 (Horizon=%dD)】 🏆\n', configObj.Horizon);
 fprintf('  > 候選 崩盤護欄閥值 (Guardrail) : %.4f\n', best_params.Guardrail_CrashProb);
 fprintf('  > 候選 時序專家權重 (Time_W)  : %.4f\n', best_params.Expert_Time_Weight);
 fprintf('  > 候選 集中度標的數 (Top_K)   : %d\n', best_params.Top_K_Assets);
@@ -211,9 +239,8 @@ trial_scores = -results.ObjectiveTrace;
 
 % 診斷邊界警示
 boundary_tol = 0.02;
-if abs(best_params.Expert_Time_Weight - 0.0) < boundary_tol || abs(best_params.Expert_Time_Weight - 1.0) < boundary_tol
-    warning('⚠️ 警告：Expert_Time_Weight (%.4f) 落在搜索邊界，可能代表 P_time/P_space 高度相關！', ...
-        best_params.Expert_Time_Weight);
+if enable_space && (abs(best_params.Expert_Time_Weight - 0.0) < boundary_tol || abs(best_params.Expert_Time_Weight - 1.0) < boundary_tol)
+    warning('⚠️ 警告：Expert_Time_Weight (%.4f) 落在搜索邊界！', best_params.Expert_Time_Weight);
 end
 if best_params.Top_K_Assets <= 11 || best_params.Top_K_Assets >= 39
     warning('⚠️ 警告：Top_K_Assets (%d) 落在搜索邊界，可能代表選股訊號排序集中度邊界！', best_params.Top_K_Assets);
@@ -240,12 +267,17 @@ else
     fprintf('   尋優結果未達統計顯著性 (DSR = %.4f < 0.95 或 Robust Score = %.4f <= 0)！\n', dsr_val, best_robust_score);
     fprintf('   未能拒絕「尋優結果純屬多重試驗過擬合噪聲」之虛無假設。\n');
     fprintf('   ❌ 拒絕將病態邊界參數寫入生產環境配置！\n');
-    fprintf('   🔄 系統退回學術中立基準 (Time_W=0.50, Top_K=20, Guard=0.0850)。\n');
-    fprintf('⚠️ =========================================================================\n\n');
     
+    if ~enable_space
+        configObj.Expert_Time_Weight = 1.0000; % 剪枝架構下鎖定純時序
+        fprintf('   🔄 系統退回生產基準 (Time_W=1.0000 [剪枝鎖定], Top_K=20, Guard=0.0850)。\n');
+    else
+        configObj.Expert_Time_Weight = 0.5000;
+        fprintf('   🔄 系統退回學術中立基準 (Time_W=0.5000 [等權], Top_K=20, Guard=0.0850)。\n');
+    end
     configObj.Guardrail_CrashProb = 0.0850;
-    configObj.Expert_Time_Weight  = 0.5000;
     configObj.Top_K_Assets        = 20;
+    fprintf('⚠️ =========================================================================\n\n');
     
     if exist(prod_bo_path, 'file')
         delete(prod_bo_path);
@@ -253,13 +285,13 @@ else
     end
     
     save(diag_bo_path, 'best_params', 'results', 'dsr_val', 'psr_val', 'sr0_val', 'best_robust_score');
-    fprintf('💾 尋優診斷數據已獨立存檔至: %s (供論文假說 H1d 證偽引用)\n', diag_bo_path);
+    fprintf('💾 尋優診斷數據已獨立存檔至: %s (供論文假說證偽引用)\n', diag_bo_path);
 end
 
 time_step5 = toc(t_step5);
 fprintf('⏱️ [步驟 5 完成] 耗時: %.2f 秒\n\n', time_step5);
 
-%% 6. 產出 BayesOpt 收斂軌跡與超額收益視覺化報表 (標準學術白底黑字)
+%% 6. 產出 BayesOpt 收斂軌跡與超額收益視覺化報表 (標準白底黑字)
 t_step6 = tic;
 disp('--- 步驟 6：產出 BayesOpt 尋優收斂與超額收益報表 (白底黑字) ---');
 fig_bo = figure('Name', 'Phase 4: BayesOpt Tuning Report', ...
@@ -301,12 +333,11 @@ boFigPath = fullfile(configObj.ModelDir, 'Phase4_BayesOpt_Convergence.png');
 exportgraphics(fig_bo, boFigPath, 'Resolution', 300, 'BackgroundColor', 'white');
 fprintf(' 📊 尋優收斂與超額收益圖 (白底黑字) 已儲存至: %s\n', boFigPath);
 close(fig_bo);
-
 time_step6 = toc(t_step6);
 fprintf('⏱️ [步驟 6 完成] 耗時: %.2f 秒\n\n', time_step6);
 
 %% =========================================================================
-% 結算全流程執行時長審計
+% 結算全流程執行時長審計報告
 % =========================================================================
 total_elapsed_sec = toc(t_total_start);
 tot_hours = floor(total_elapsed_sec / 3600);
@@ -330,13 +361,14 @@ else
     fprintf('⏱️ 【總執行時長】: %d 分 %.2f 秒 (共 %.2f 秒)\n', tot_mins, tot_secs, total_elapsed_sec);
 end
 fprintf('=================================================================\n');
-disp('🎯 [Phase 4] 執行完畢！熔斷檢定與參數狀態已鎖定。');
+disp('🎯 [Phase 4] 執行完畢！熔斷檢定與參數狀態已鎖定。請推進至 Phase 5 或 Phase 6。');
 disp('=================================================================');
 
 %% =====================================================================
 % 多子窗口穩健代理評估函數
 % =====================================================================
-function neg_robust_IR = evaluate_hrl_proxy_robust(params, Prices, Opens, Expert, P_time, P_space, P_crash, tau_noise, config)
+function neg_robust_IR = evaluate_hrl_proxy_robust(params, Prices, Opens, Expert, ...
+    P_time, P_space, P_crash, tau_noise, config, enable_space)
     try
         numDays = size(Prices, 1);
         n_folds = 4;
@@ -364,8 +396,8 @@ function neg_robust_IR = evaluate_hrl_proxy_robust(params, Prices, Opens, Expert
                 continue;
             end
             
-            [fold_IRs(f), ~] = run_subwindow_simulation(params, Prices, Opens, Expert, P_time, P_space, P_crash, ...
-                vol20, spy_idx, f_start, f_end, tau_noise, config);
+            [fold_IRs(f), ~] = run_subwindow_simulation(params, Prices, Opens, Expert, ...
+                P_time, P_space, P_crash, vol20, spy_idx, f_start, f_end, tau_noise, config, enable_space);
         end
         
         mean_ir = mean(fold_IRs);
@@ -382,7 +414,9 @@ end
 %% =====================================================================
 % 微型子窗口撮合模擬器 (定期調倉 + 死區連續縮放護欄 + 動態摩擦成本)
 % =====================================================================
-function [ir_val, excess_returns] = run_subwindow_simulation(params, ~, Opens, Expert, P_time, P_space, P_crash, vol20, spy_idx, start_t, end_t, tau_noise, config)
+function [ir_val, excess_returns] = run_subwindow_simulation(params, ~, Opens, Expert, ...
+    P_time, P_space, P_crash, vol20, spy_idx, start_t, end_t, tau_noise, config, enable_space)
+    
     numTickers = size(Opens, 2);
     steps = end_t - start_t + 1;
     
@@ -391,9 +425,16 @@ function [ir_val, excess_returns] = run_subwindow_simulation(params, ~, Opens, E
     excess_returns = zeros(steps, 1, 'single');
     
     opt_guard = params.Guardrail_CrashProb;
-    w_time    = params.Expert_Time_Weight;
-    w_space   = 1.0 - w_time;
     top_k     = round(params.Top_K_Assets);
+    
+    % ★ 權重解構防呆：剪枝模式下強制時序權重 1.0
+    if enable_space && ismember('Expert_Time_Weight', params.Properties.VariableNames)
+        w_time  = params.Expert_Time_Weight;
+        w_space = 1.0 - w_time;
+    else
+        w_time  = 1.0;
+        w_space = 0.0;
+    end
     
     % 校準死區緩衝帶
     guard_high = opt_guard;
@@ -402,11 +443,11 @@ function [ir_val, excess_returns] = run_subwindow_simulation(params, ~, Opens, E
         guard_low = guard_high * 0.85;
     end
     
-    % 讀取定期調倉步進 (預設 20 日)
+    % 優先讀取全域定期調倉步進 (未指定則動態對齊 Horizon)
     if isprop(config, 'RebalanceStride') && ~isempty(config.RebalanceStride)
         stride = config.RebalanceStride;
     else
-        stride = 20;
+        stride = config.Horizon;
     end
     
     cached_stock_props = zeros(numTickers, 1, 'single');
@@ -452,8 +493,13 @@ function [ir_val, excess_returns] = run_subwindow_simulation(params, ~, Opens, E
         is_rebal_day = (s_i == 1) || (mod(s_i - 1, stride) == 0);
         
         if is_rebal_day
-            % 定期調倉：重新計算專家加權得分與 Top-K 選股
-            comb_p = P_time(:, t) * w_time + P_space(:, t) * w_space;
+            % 定期調倉：重新計算專家加權得分並篩選 Top-K
+            if enable_space
+                comb_p = P_time(:, t) * w_time + P_space(:, t) * w_space;
+            else
+                comb_p = P_time(:, t); % 純時序保真傳遞，杜絕訊號減半
+            end
+            
             comb_p = comb_p .* Expert(t, :)';
             comb_p(halted_mask) = 0;
             
@@ -497,7 +543,6 @@ function [ir_val, excess_returns] = run_subwindow_simulation(params, ~, Opens, E
             tc_rate = 0.0005 + (0.10 * current_vol_daily);
         end
         
-        % 僅對非停牌主動換手收取成本 (非調倉日且無風控動作時換手率自然為 0)
         turnover = sum(abs(asset_weights(~halted_mask) - w_drift(~halted_mask)));
         frict_cost = turnover * tc_rate;
         
