@@ -1,25 +1,23 @@
 % =========================================================================
 % 腳本：3_Run_GBDT_and_SHAP.m (階段 3：顯性風險預測流與 SHAP 解釋器)
-% 升級：Phase 15.5 參數驅動版 (★ 自動繼承 Config.m 之 Horizon/PurgeEmbargo/HACLag、
-%       嚴格對齊 Phase 2 預訓練特徵表徵、mrg32k3a 獨立子串流注入、
-%       背景樣本 randsample 與 K-Means 質心壓縮隨機串流顯式綁定、
-%       LSBoost 連續迴歸選股、OOF 橫截面 Rank IC 監控、Platt 事後機率校準、
-%       各階段獨立高精度計時與總運行耗時審計)
-% 職責：訓練雙軌選股 GBDT 與崩盤護欄，輸出全域無洩漏 OOF/OOS 專家排序得分與崩盤機率矩陣
+% 升級：Phase 15.5 生產基準版 (★ 完整相容 Pure-Time 剪枝架構、
+%       嚴格繼承 Config.m 全域 Horizon/PurgeEmbargo/HACLag 參數、
+%       總經特徵資料覆蓋率品質即時審計、mrg32k3a 確定性子串流、
+%       LSBoost 連續選股迴歸、OOF 橫截面 Rank IC 監控、Platt 事後機率校準、
+%       Headless 伺服器友善 SHAP 視覺化、各階段獨立高精度計時與總耗時審計)
+% 職責：訓練選股 GBDT 與崩盤護欄，輸出全域無洩漏 OOF/OOS 專家排序得分與崩盤機率矩陣
 % =========================================================================
 clear; clc; close all;
 
 % 啟動全域總計時器
 t_total_start = tic;
-
 disp('=================================================================');
-disp('🚀 [Phase 15.5] 啟動 GBDT 連續迴歸選股預測流與 SHAP 歸因分析管線 (Config 參數動態對齊版)');
+disp('🚀 [Phase 15.5] 啟動 GBDT 連續迴歸選股預測流與 SHAP 歸因分析管線 (生產基準版)');
 disp('=================================================================');
 
 %% 0. 環境路徑掛載 (規範化階層回溯解析與路徑重新整理)
 t_step0 = tic;
 disp('--- 步驟 0：環境路徑掛載、Config 載入與隨機串流鎖定 ---');
-
 currentFile = mfilename('fullpath');
 if isempty(currentFile)
     currentPath = pwd;
@@ -54,13 +52,12 @@ configObj = Config();
 stream = configObj.getRandStream(1);
 RandStream.setGlobalStream(stream);
 disp('🔒 已成功掛載 mrg32k3a 主隨機串流 (Substream=1)，鎖定 GBDT 訓練、抽樣與 SHAP 歸因確定性。');
-
 time_step0 = toc(t_step0);
 fprintf('⏱️ [步驟 0 完成] 耗時: %.2f 秒\n\n', time_step0);
 
 %% 1. 載入特徵快取與 Phase 2 萃取之 Embedding 表徵
 t_step1 = tic;
-disp('--- 步驟 1：載入全域降噪特徵與 DL 雙軌表徵 ---');
+disp('--- 步驟 1：載入全域降噪特徵與 DL 表徵 ---');
 cachePath = fullfile(configObj.CacheDir, 'features_denoised.mat');
 modelPath = fullfile(configObj.ModelDir, 'DL_Extractors.mat');
 
@@ -76,23 +73,31 @@ numDaysRaw = length(Dates_Active);
 numT = configObj.NumTickers;
 seqLen = configObj.SeqLen;
 
-% ★ 核心修復 1：優先繼承 Config.m 全域 Horizon，徹底消除硬編碼
+% ★ 動態繼承 Config.m 全域 Horizon (單一事實來源 SSOT)
 if isprop(configObj, 'Horizon') && ~isempty(configObj.Horizon)
     horizon_stock = configObj.Horizon;
 else
-    horizon_stock = 60;
+    horizon_stock = 20;
 end
 
-horizon_crash = 10;  % 崩盤護欄維持 10 日短期極端回撤
+horizon_crash = 10;  % 崩盤護欄固定為 10 日短期極端回撤
 max_horizon = max(horizon_stock, horizon_crash);
 valid_idx = seqLen : (numDaysRaw - max_horizon);
+
+% ★ 空間專家狀態探針：檢查是否啟用空間專家且具備非零特徵
+enable_space = isprop(configObj, 'EnableSpaceExpertTraining') && configObj.EnableSpaceExpertTraining && any(E_space_all(:) ~= 0);
+if enable_space
+    disp('  -> 空間專家狀態: 【已啟用】(DyGAT 雙軌特徵共同參與橫截面選股)');
+else
+    disp('  -> 空間專家狀態: 【⏩ 已剪枝】(Pure-Time 純時序架構，杜絕圖卷積過度平滑噪聲)');
+end
 
 time_step1 = toc(t_step1);
 fprintf('⏱️ [步驟 1 完成] 耗時: %.2f 秒\n\n', time_step1);
 
-%% 2. 動態特徵切片 (18D 微觀/相對特徵與 10D 宏觀總經特徵)
+%% 2. 動態特徵切片與總經資料品質審計
 t_step2 = tic;
-disp('--- 步驟 2：執行特徵矩陣動態通道解構 (防範硬編碼索引缺失) ---');
+disp('--- 步驟 2：執行特徵矩陣動態通道解構與總經品質健檢 ---');
 numRel   = 3;
 numMicro = configObj.NumMicroFeatures; % 預設 15
 numMacro = configObj.NumMacroFeatures; % 預設 10
@@ -103,18 +108,23 @@ idx_macro = (numRel + numMicro + 1) : (numRel + numMicro + numMacro);
 X_norm_18D = X_norm_3D(:, idx_raw18, :); 
 Macro_2D   = X_norm_3D(:, idx_macro, 1); 
 
-fprintf('  -> 原始特徵維度: %d 維 (Rel %d + Micro %d) | 宏觀特徵維度: %d 維\n', ...
-    length(idx_raw18), numRel, numMicro, length(idx_macro));
+% ★ 總經特徵即時審計：特別檢驗高收益債信用利差 (第 8 欄位 BAMLH0A0HYM2 / HY Spread)
+hy_spread_raw = Macro_2D(:, 8);
+zero_ratio = sum(hy_spread_raw == 0) / numDaysRaw;
+fprintf('  -> 特徵維度: 個股微觀 %d 維 | 宏觀總經 %d 維\n', length(idx_raw18), length(idx_macro));
+fprintf('  -> [總經品質審計] 信用利差特徵零值佔比: %.2f%% (標準差: %.4f)\n', zero_ratio * 100, std(hy_spread_raw, 'omitnan'));
+if zero_ratio > 0.30
+    warning('⚠️ 信用利差存在顯著常數或缺失回填區間！Fold 5 崩盤護欄 AUC 增益需謹慎歸因。');
+end
 
 time_step2 = toc(t_step2);
 fprintf('⏱️ [步驟 2 完成] 耗時: %.2f 秒\n\n', time_step2);
 
 %% 3. 構建橫截面連續選股標籤與大盤崩盤標籤
 t_step3 = tic;
-% ★ 核心修復 2：終端提示動態反映當前 Horizon
 fprintf('--- 步驟 3：構建 %d 日連續橫截面超額報酬與 10 日累積崩盤護欄標籤 ---\n', horizon_stock);
 
-% 3.1 橫截面遠期連續超額報酬 Z-Score (與 Phase 2 預訓練目標函數嚴格同構)
+% 3.1 橫截面遠期連續超額報酬 Z-Score (與 Phase 2 預訓練目標函數嚴格對齊)
 R_fwd = NaN(numDaysRaw, numT, 'single');
 R_fwd(1:end-horizon_stock, :) = (Prices_Active(1+horizon_stock:end, :) - Prices_Active(1:end-horizon_stock, :)) ...
                                 ./ (Prices_Active(1:end-horizon_stock, :) + 1e-8);
@@ -174,16 +184,17 @@ Expert_OOS  = Expert_Active(idx_OOS, :);
 
 fprintf('✅ 時間軸劃分完畢！IS 訓練區間: %d 天 | OOS 盲測推論區間: %d 天\n', ...
     length(idx_IS), length(idx_OOS));
-
 time_step4 = toc(t_step4);
 fprintf('⏱️ [步驟 4 完成] 耗時: %.2f 秒\n\n', time_step4);
 
 %% 5. 啟動 GBDT 連續迴歸專家訓練與 OOF 排序得分生成
 t_step5 = tic;
 disp('--- 步驟 5：實例化 GBDT 專家並執行 Expanding-Window 迴歸交叉驗證 ---');
+disp(' 💡 [時序交叉驗證機制說明]：Fold 1 作為初始訓練基準（無更早樣本可供驗證），故驗證自 Fold 2 展開。');
+
 gbdt_agent = GBDTExpertAgent(configObj, stream);
 
-% ★ 核心修復 3：優先讀取 Config.m 的時序交叉驗證參數
+% 優先繼承 Config.m 之交叉驗證隔離島天數與 HAC 滯後階數
 if isprop(configObj, 'PurgeEmbargo') && ~isempty(configObj.PurgeEmbargo)
     embargo_days = configObj.PurgeEmbargo;
 else
@@ -200,11 +211,11 @@ if isprop(gbdt_agent, 'TargetHorizon'), gbdt_agent.TargetHorizon = horizon_stock
 if isprop(gbdt_agent, 'EmbargoDays'),   gbdt_agent.EmbargoDays   = embargo_days; end
 if isprop(gbdt_agent, 'HACLag'),        gbdt_agent.HACLag        = hac_lag; end
 
-% 執行 LSBoost 連續迴歸訓練與折外 Rank IC 監控 (傳入 stream 鎖定抽樣確定性)
+% 執行 LSBoost 連續迴歸訓練與折外 Rank IC 監控 (內部自動辨識空間剪枝)
 [Score_time_oof_IS, Score_space_oof_IS] = gbdt_agent.train_and_predict_oof_cross_sectional(...
     E_time_IS, E_space_IS, X_18D_IS, Macro_IS, Y_Labels_IS, Expert_IS, stream);
 
-% 訓練崩盤護欄與 Platt Scaling 事後校準 (傳入 stream 鎖定 500 次 Bootstrap 抽樣確定性)
+% 訓練崩盤護欄與 Platt Scaling 事後校準
 P_crash_oof_IS = gbdt_agent.train_and_predict_oof_crash(Macro_IS, Y_Crash_IS, stream);
 
 time_step5 = toc(t_step5);
@@ -213,7 +224,6 @@ fprintf('⏱️ [步驟 5 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step
 %% 6. 執行 OOS 盲測期真實前向推論
 t_step6 = tic;
 disp('--- 步驟 6：執行 OOS 盲測期無洩漏推論 (LSBoost 排序推論 + Platt 崩盤校準) ---');
-% ★ 核心修復 4：變數規範命名為 _oos_sub，消除 _oof_ 筆誤
 [Score_time_oos_sub, Score_space_oos_sub, P_crash_oos_sub] = gbdt_agent.predict_oos(...
     E_time_OOS, E_space_OOS, Macro_OOS, Expert_OOS);
 
@@ -232,9 +242,9 @@ P_time_all(idx_IS, :)   = Score_time_oof_IS;
 P_space_all(idx_IS, :)  = Score_space_oof_IS;
 P_crash_all(idx_IS)     = P_crash_oof_IS;
 
-% 填入 OOS 區間 (前向盲測百分位排序得分，精確對齊步驟 6 的 oos_sub 變數)
+% 填入 OOS 區間 (前向盲測百分位排序得分)
 P_time_all(idx_OOS, :)  = Score_time_oos_sub;
-P_space_all(idx_OOS, :) = Score_space_oos_sub;
+P_space_all(idx_OOS, :) = Score_space_oof_sub;
 P_crash_all(idx_OOS)    = P_crash_oos_sub;
 
 % 非活躍標的強制作為 0 分，防止進入選股候選池
@@ -244,9 +254,10 @@ P_space_all(~Expert_Active) = 0.0;
 time_step7 = toc(t_step7);
 fprintf('⏱️ [步驟 7 完成] 耗時: %.2f 秒\n\n', time_step7);
 
-%% 8. 快速抽樣 SHAP 解釋性視覺化 (白底黑字 + K-Means 串流顯式約束)
+%% 8. 抽樣 SHAP 解釋性分析 (白底黑字 + Headless 伺服器防禦)
 t_step8 = tic;
-disp('--- 步驟 8：產出 SHAP 特徵邊際貢獻度視覺化 (白底黑字 - 確定性無漂移版) ---');
+disp('--- 步驟 8：產出 SHAP 特徵邊際貢獻度視覺化 (確定性無漂移版) ---');
+
 try
     sample_active_idx = find(Expert_IS(end, :), 1, 'first');
     
@@ -269,7 +280,7 @@ try
         gbdt_agent.explain_shapley(x_query, x_bg, 'time', stream);
         
         fig_shap = gcf;
-        set(fig_shap, 'Color', 'w', 'InvertHardcopy', 'off');
+        set(fig_shap, 'Visible', 'off', 'Color', 'w', 'InvertHardcopy', 'off');
         
         all_axes = findall(fig_shap, 'type', 'axes');
         for ax_i = 1:length(all_axes)
@@ -303,18 +314,17 @@ end
 time_step8 = toc(t_step8);
 fprintf('⏱️ [步驟 8 完成] 耗時: %.2f 秒\n\n', time_step8);
 
-%% 9. 儲存 GBDT 模型與全域得分矩陣
+%% 9. 儲存 GBDT 模型實體與全域得分矩陣
 t_step9 = tic;
 disp('--- 步驟 9：儲存 GBDT 模型實體與全域選股得分矩陣 ---');
 savePath = fullfile(configObj.ModelDir, 'GBDT_Guards.mat');
 save(savePath, 'gbdt_agent', 'P_time_all', 'P_space_all', 'P_crash_all', '-v7.3');
 fprintf('💾 顯性風險與連續排序得分已安全落地至: %s\n', savePath);
-
 time_step9 = toc(t_step9);
 fprintf('⏱️ [步驟 9 完成] 耗時: %.2f 秒\n\n', time_step9);
 
 %% =========================================================================
-% 結算全流程執行時長審計
+% 結算全流程執行時長審計報告
 % =========================================================================
 total_elapsed_sec = toc(t_total_start);
 tot_hours = floor(total_elapsed_sec / 3600);
@@ -326,7 +336,7 @@ fprintf('📊 【Phase 3 各階段耗時明細與總時長審計報告】\n');
 fprintf('=================================================================\n');
 fprintf(' 步驟 0：環境掛載與隨機串流鎖定   : %8.2f 秒 (%5.1f%%)\n', time_step0, (time_step0 / total_elapsed_sec) * 100);
 fprintf(' 步驟 1：降噪特徵與 DL 表徵載入   : %8.2f 秒 (%5.1f%%)\n', time_step1, (time_step1 / total_elapsed_sec) * 100);
-fprintf(' 步驟 2：動態特徵切片 (18D + 10D) : %8.2f 秒 (%5.1f%%)\n', time_step2, (time_step2 / total_elapsed_sec) * 100);
+fprintf(' 步驟 2：動態特徵解構與總經品質健檢: %8.2f 秒 (%5.1f%%)\n', time_step2, (time_step2 / total_elapsed_sec) * 100);
 fprintf(' 步驟 3：連續選股與崩盤護欄標籤構建: %8.2f 秒 (%5.1f%%)\n', time_step3, (time_step3 / total_elapsed_sec) * 100);
 fprintf(' 步驟 4：時間軸解耦切分 (IS vs OOS): %8.2f 秒 (%5.1f%%)\n', time_step4, (time_step4 / total_elapsed_sec) * 100);
 fprintf(' 步驟 5：GBDT 交叉驗證與護欄校準  : %8.2f 秒 (%5.1f%%)\n', time_step5, (time_step5 / total_elapsed_sec) * 100);
@@ -341,5 +351,5 @@ else
     fprintf('⏱️ 【總執行時長】: %d 分 %.2f 秒 (共 %.2f 秒)\n', tot_mins, tot_secs, total_elapsed_sec);
 end
 fprintf('=================================================================\n');
-disp('🎯 [Phase 3] 連續迴歸選股流與 SHAP 歸因執行完成！');
+disp('🎯 [Phase 3] 連續迴歸選股流與 SHAP 歸因執行完成！請推進至 Phase 4。');
 disp('=================================================================');
