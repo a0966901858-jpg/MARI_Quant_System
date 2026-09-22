@@ -92,27 +92,25 @@
 >> 
 
 =================================================================
-🚀 [Phase 15.5] 啟動 DL 特徵萃取器預訓練管線 (Warmup保護與餘弦退火版)
+🚀 [Phase 15.5] 啟動 DL 特徵萃取器預訓練管線 (權重 EMA ＋ 解耦退火版)
 =================================================================
 --- 步驟 0：環境路徑掛載、Config 載入與隨機串流鎖定 ---
  🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
  ⚡ [Config] 成功注入通過 DSR 顯著性檢定之 Phase 4 BO 最佳化參數：
     - 崩盤護欄硬熔斷閾值 : 0.0978
     - 時序專家權重 (Time_W): 1.0000 (空間專家已剪枝，強制鎖定 1.0)
-    - 集中度標的數 (Top_K) : 10
+    - 集中度標的數 (Top_K) : 17
 🔒 已成功掛載 mrg32k3a 主隨機串流 (Substream=1)，鎖定預訓練確定性。
-⏱️ [步驟 0 完成] 耗時: 0.86 秒
+⏱️ [步驟 0 完成] 耗時: 1.09 秒
 
 --- 步驟 1：載入淨化 3D 特徵面板與時間軸嚴格對齊 ---
   -> 宇宙規模: 504 檔 | 交易天數: 8467 天 | 原始特徵維度: 28 維 | 預測視窗: 20 日
-⏱️ [步驟 1 完成] 耗時: 4.10 秒
+⏱️ [步驟 1 完成] 耗時: 3.49 秒
 
 --- 步驟 1.5：特徵切片 (剝離 Macro)、1D/HAC-ICIR 健檢與特徵注意力加權 ---
  ⚙️ [FeatureEvaluator] 初始化完成。已載入可配置 Horizon 橫截面 IC 與 HAC-ICIR 檢定引擎。
 --- 啟動極速多核心橫截面特徵信心評估 (Spearman IC, Horizon=1日) ---
   -> 啟動 Parpool 平行運算，評估 18 維特徵的橫截面預測力 (動態門檻: 25 檔)...
-Starting parallel pool (parpool) using the 'Processes' profile ...
-Connected to parallel pool with 8 workers.
   -> 執行時間平移與滾動平滑 (生成無未來函數之 IC 強度)...
   -> 執行能量守恆 Softmax 注意力縮放 (Energy-Preserving Normalization)...
 ✅ 橫截面 Spearman IC 評估與能量守恆注意力權重生成完畢！
@@ -199,14 +197,14 @@ Connected to parallel pool with 8 workers.
 
  -> 執行特徵注意力遮罩融合 (Energy-Preserving Feature Gate)...
   -> [萃取器通道健檢] 18 維特徵標準差範圍: [0.1108, 3.2452] (平均: 1.0903)
-⏱️ [步驟 1.5 完成] 耗時: 21.91 秒 (0.37 分鐘)
+⏱️ [步驟 1.5 完成] 耗時: 4.82 秒 (0.08 分鐘)
 
 --- 步驟 2：構建橫截面連續超額報酬標籤 (Direction 2: 20D Continuous Z-Score) ---
-⏱️ [步驟 2 完成] 耗時: 0.15 秒
+⏱️ [步驟 2 完成] 耗時: 0.13 秒
 
 --- 步驟 3：切分時間軸 (嚴格 IS 內 Purged Embargo 跨體制驗證集) ---
 ✅ Purged 多體制時間軸劃分成功！訓練樣本: 3020 筆 | 跨體制驗證樣本: 925 筆 (嚴格 Embargo: 20 天)
-⏱️ [步驟 3 完成] 耗時: 0.02 秒
+⏱️ [步驟 3 完成] 耗時: 0.01 秒
 
 --- 步驟 4：初始化特徵萃取網路 (連續預測頭 - mrg32k3a 確定性初值) ---
  ⚙️ [NetworkFactory] 啟動特徵萃取器構建工廠 (Pure-Time 剪枝與直通殘差加強版)...
@@ -218,149 +216,203 @@ Connected to parallel pool with 8 workers.
 ⏩ 空間專家 (DyGAT) 已依組態剪枝跳過構建，節省顯存與前向運算開銷[cite: 1]。
 ⏩ [Pure-Time 模式] 空間專家已剪枝，已略過空間線性頭初始化。
 🎮 成功捕獲圖形加速卡：【NVIDIA GeForce RTX 4060 Laptop GPU】，開啟深度學習加速。
-⏱️ [步驟 4 完成] 耗時: 0.65 秒
+🪞 [EMA 引擎啟用] 影子權重已初始化完成 (基礎衰減率 Beta = 0.990，具備動態偏差校正)。
+⏱️ [步驟 4 完成] 耗時: 0.28 秒
 
---- 步驟 5：執行萃取器預訓練 (Warmup保護 + 餘弦退火排程 + 跨體制早停) ---
- -> Epoch  1/30 (LR: 3.25e-04 | FeatDrop: 0.06) | Train ContLoss (T: 0.5483) | Val Multi-Regime (T: 0.5590)
-    [診斷] GradNorm(T: 2.93e-01) | E_Var(T: 1.0340)
+--- 步驟 5：執行萃取器預訓練 (Warmup保護 + 解耦餘弦退火排程 + 權重 EMA 平滑) ---
+🎯 [退火排程解耦] 餘弦退火週期固定為 35 輪 (總輪數: 50 輪 | 超期將鎖定於 min_lr 平滑搜尋)。
+ -> Epoch  1/50 (LR: 3.25e-04 | FeatDrop: 0.06) | Train ContLoss (T: 0.5483) | Val_EMA Multi-Regime (T: 0.5590)
+    [診斷] GradNorm(T: 3.85e-01) | E_Var_EMA(T: 1.0310)
     ⏳ [預熱保護期] Epoch  1 <= 5，暫不鎖定最佳快照與早停計數。
- -> Epoch  2/30 (LR: 5.50e-04 | FeatDrop: 0.06) | Train ContLoss (T: 0.5359) | Val Multi-Regime (T: 0.5638)
-    [診斷] GradNorm(T: 4.18e-01) | E_Var(T: 1.0737)
+ -> Epoch  2/50 (LR: 5.50e-04 | FeatDrop: 0.06) | Train ContLoss (T: 0.5356) | Val_EMA Multi-Regime (T: 0.5619)
+    [診斷] GradNorm(T: 4.48e-01) | E_Var_EMA(T: 1.0661)
     ⏳ [預熱保護期] Epoch  2 <= 5，暫不鎖定最佳快照與早停計數。
- -> Epoch  3/30 (LR: 7.75e-04 | FeatDrop: 0.06) | Train ContLoss (T: 0.5277) | Val Multi-Regime (T: 0.5604)
-    [診斷] GradNorm(T: 4.25e-01) | E_Var(T: 1.1068)
+ -> Epoch  3/50 (LR: 7.75e-04 | FeatDrop: 0.06) | Train ContLoss (T: 0.5279) | Val_EMA Multi-Regime (T: 0.5577)
+    [診斷] GradNorm(T: 3.73e-01) | E_Var_EMA(T: 1.0988)
     ⏳ [預熱保護期] Epoch  3 <= 5，暫不鎖定最佳快照與早停計數。
- -> Epoch  4/30 (LR: 1.00e-03 | FeatDrop: 0.06) | Train ContLoss (T: 0.5188) | Val Multi-Regime (T: 0.5515)
-    [診斷] GradNorm(T: 6.56e-01) | E_Var(T: 1.1366)
+ -> Epoch  4/50 (LR: 1.00e-03 | FeatDrop: 0.06) | Train ContLoss (T: 0.5182) | Val_EMA Multi-Regime (T: 0.5516)
+    [診斷] GradNorm(T: 6.32e-01) | E_Var_EMA(T: 1.1279)
     ⏳ [預熱保護期] Epoch  4 <= 5，暫不鎖定最佳快照與早停計數。
- -> Epoch  5/30 (LR: 9.97e-04 | FeatDrop: 0.06) | Train ContLoss (T: 0.5058) | Val Multi-Regime (T: 0.5641)
-    [診斷] GradNorm(T: 5.06e-01) | E_Var(T: 1.1527)
+ -> Epoch  5/50 (LR: 9.98e-04 | FeatDrop: 0.06) | Train ContLoss (T: 0.5044) | Val_EMA Multi-Regime (T: 0.5567)
+    [診斷] GradNorm(T: 5.69e-01) | E_Var_EMA(T: 1.1435)
     ⏳ [預熱保護期] Epoch  5 <= 5，暫不鎖定最佳快照與早停計數。
- -> Epoch  6/30 (LR: 9.87e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.5122) | Val Multi-Regime (T: 0.5561)
-    [診斷] GradNorm(T: 5.27e-01) | E_Var(T: 1.1636)
-    🌟 [最佳快照更新] 於正式訓練期鎖定新低點 Val Loss = 0.5561！
- -> Epoch  7/30 (LR: 9.71e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.5059) | Val Multi-Regime (T: 0.5571)
-    [診斷] GradNorm(T: 7.88e-01) | E_Var(T: 1.1662)
- -> Epoch  8/30 (LR: 9.48e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4996) | Val Multi-Regime (T: 0.5538)
-    [診斷] GradNorm(T: 5.67e-01) | E_Var(T: 1.1752)
-    🌟 [最佳快照更新] 於正式訓練期鎖定新低點 Val Loss = 0.5538！
- -> Epoch  9/30 (LR: 9.20e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4924) | Val Multi-Regime (T: 0.5476)
-    [診斷] GradNorm(T: 7.01e-01) | E_Var(T: 1.1768)
-    🌟 [最佳快照更新] 於正式訓練期鎖定新低點 Val Loss = 0.5476！
- -> Epoch 10/30 (LR: 8.87e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4883) | Val Multi-Regime (T: 0.5545)
-    [診斷] GradNorm(T: 5.59e-01) | E_Var(T: 1.1822)
- -> Epoch 11/30 (LR: 8.48e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4826) | Val Multi-Regime (T: 0.5556)
-    [診斷] GradNorm(T: 7.13e-01) | E_Var(T: 1.1856)
- -> Epoch 12/30 (LR: 8.06e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4780) | Val Multi-Regime (T: 0.5507)
-    [診斷] GradNorm(T: 5.95e-01) | E_Var(T: 1.1833)
- -> Epoch 13/30 (LR: 7.59e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4730) | Val Multi-Regime (T: 0.5543)
-    [診斷] GradNorm(T: 8.31e-01) | E_Var(T: 1.1867)
- -> Epoch 14/30 (LR: 7.10e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4675) | Val Multi-Regime (T: 0.5553)
-    [診斷] GradNorm(T: 8.50e-01) | E_Var(T: 1.1937)
- -> Epoch 15/30 (LR: 6.58e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4648) | Val Multi-Regime (T: 0.5416)
-    [診斷] GradNorm(T: 6.99e-01) | E_Var(T: 1.1994)
-    🌟 [最佳快照更新] 於正式訓練期鎖定新低點 Val Loss = 0.5416！
- -> Epoch 16/30 (LR: 6.04e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4611) | Val Multi-Regime (T: 0.5594)
-    [診斷] GradNorm(T: 7.42e-01) | E_Var(T: 1.2040)
- -> Epoch 17/30 (LR: 5.50e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4567) | Val Multi-Regime (T: 0.5593)
-    [診斷] GradNorm(T: 1.06e+00) | E_Var(T: 1.2080)
- -> Epoch 18/30 (LR: 4.96e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4523) | Val Multi-Regime (T: 0.5525)
-    [診斷] GradNorm(T: 7.19e-01) | E_Var(T: 1.2103)
- -> Epoch 19/30 (LR: 4.42e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4492) | Val Multi-Regime (T: 0.5548)
-    [診斷] GradNorm(T: 6.75e-01) | E_Var(T: 1.2110)
- -> Epoch 20/30 (LR: 3.90e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4464) | Val Multi-Regime (T: 0.5595)
-    [診斷] GradNorm(T: 8.12e-01) | E_Var(T: 1.2127)
- -> Epoch 21/30 (LR: 3.41e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4454) | Val Multi-Regime (T: 0.5495)
-    [診斷] GradNorm(T: 1.27e+00) | E_Var(T: 1.2146)
- -> Epoch 22/30 (LR: 2.94e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4429) | Val Multi-Regime (T: 0.5624)
-    [診斷] GradNorm(T: 1.04e+00) | E_Var(T: 1.2145)
- -> Epoch 23/30 (LR: 2.52e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4391) | Val Multi-Regime (T: 0.5611)
-    [診斷] GradNorm(T: 7.57e-01) | E_Var(T: 1.2155)
- -> Epoch 24/30 (LR: 2.13e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4390) | Val Multi-Regime (T: 0.5556)
-    [診斷] GradNorm(T: 8.02e-01) | E_Var(T: 1.2193)
- -> Epoch 25/30 (LR: 1.80e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4375) | Val Multi-Regime (T: 0.5521)
-    [診斷] GradNorm(T: 6.80e-01) | E_Var(T: 1.2199)
-🛑 [Early Stopping] 多體制驗證損失連續 10 輪未改善，提前於 Epoch 25 終止訓練並回滾最佳快照！
+ -> Epoch  6/50 (LR: 9.91e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.5130) | Val_EMA Multi-Regime (T: 0.5581)
+    [診斷] GradNorm(T: 5.37e-01) | E_Var_EMA(T: 1.1629)
+    🌟 [EMA 最佳快照更新] 於正式訓練期鎖定平滑新低點 Val Loss = 0.5581！
+ -> Epoch  7/50 (LR: 9.79e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.5054) | Val_EMA Multi-Regime (T: 0.5616)
+    [診斷] GradNorm(T: 5.50e-01) | E_Var_EMA(T: 1.1664)
+ -> Epoch  8/50 (LR: 9.64e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4986) | Val_EMA Multi-Regime (T: 0.5521)
+    [診斷] GradNorm(T: 6.64e-01) | E_Var_EMA(T: 1.1764)
+    🌟 [EMA 最佳快照更新] 於正式訓練期鎖定平滑新低點 Val Loss = 0.5521！
+ -> Epoch  9/50 (LR: 9.43e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4932) | Val_EMA Multi-Regime (T: 0.5497)
+    [診斷] GradNorm(T: 7.68e-01) | E_Var_EMA(T: 1.1809)
+    🌟 [EMA 最佳快照更新] 於正式訓練期鎖定平滑新低點 Val Loss = 0.5497！
+ -> Epoch 10/50 (LR: 9.19e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4880) | Val_EMA Multi-Regime (T: 0.5549)
+    [診斷] GradNorm(T: 5.82e-01) | E_Var_EMA(T: 1.1882)
+ -> Epoch 11/50 (LR: 8.91e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4841) | Val_EMA Multi-Regime (T: 0.5556)
+    [診斷] GradNorm(T: 1.06e+00) | E_Var_EMA(T: 1.1947)
+ -> Epoch 12/50 (LR: 8.60e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4787) | Val_EMA Multi-Regime (T: 0.5531)
+    [診斷] GradNorm(T: 6.56e-01) | E_Var_EMA(T: 1.1969)
+ -> Epoch 13/50 (LR: 8.25e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4735) | Val_EMA Multi-Regime (T: 0.5554)
+    [診斷] GradNorm(T: 6.19e-01) | E_Var_EMA(T: 1.2041)
+ -> Epoch 14/50 (LR: 7.88e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4681) | Val_EMA Multi-Regime (T: 0.5565)
+    [診斷] GradNorm(T: 8.57e-01) | E_Var_EMA(T: 1.2163)
+ -> Epoch 15/50 (LR: 7.48e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4650) | Val_EMA Multi-Regime (T: 0.5498)
+    [診斷] GradNorm(T: 9.03e-01) | E_Var_EMA(T: 1.2259)
+ -> Epoch 16/50 (LR: 7.06e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4605) | Val_EMA Multi-Regime (T: 0.5604)
+    [診斷] GradNorm(T: 1.20e+00) | E_Var_EMA(T: 1.2338)
+ -> Epoch 17/50 (LR: 6.63e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4566) | Val_EMA Multi-Regime (T: 0.5558)
+    [診斷] GradNorm(T: 1.33e+00) | E_Var_EMA(T: 1.2448)
+ -> Epoch 18/50 (LR: 6.18e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4524) | Val_EMA Multi-Regime (T: 0.5572)
+    [診斷] GradNorm(T: 7.76e-01) | E_Var_EMA(T: 1.2527)
+ -> Epoch 19/50 (LR: 5.73e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4494) | Val_EMA Multi-Regime (T: 0.5593)
+    [診斷] GradNorm(T: 9.54e-01) | E_Var_EMA(T: 1.2543)
+ -> Epoch 20/50 (LR: 5.27e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4463) | Val_EMA Multi-Regime (T: 0.5603)
+    [診斷] GradNorm(T: 8.20e-01) | E_Var_EMA(T: 1.2610)
+ -> Epoch 21/50 (LR: 4.82e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4434) | Val_EMA Multi-Regime (T: 0.5536)
+    [診斷] GradNorm(T: 9.89e-01) | E_Var_EMA(T: 1.2670)
+ -> Epoch 22/50 (LR: 4.37e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4397) | Val_EMA Multi-Regime (T: 0.5622)
+    [診斷] GradNorm(T: 8.49e-01) | E_Var_EMA(T: 1.2719)
+ -> Epoch 23/50 (LR: 3.94e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4371) | Val_EMA Multi-Regime (T: 0.5650)
+    [診斷] GradNorm(T: 7.86e-01) | E_Var_EMA(T: 1.2756)
+ -> Epoch 24/50 (LR: 3.52e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4354) | Val_EMA Multi-Regime (T: 0.5599)
+    [診斷] GradNorm(T: 7.92e-01) | E_Var_EMA(T: 1.2852)
+ -> Epoch 25/50 (LR: 3.12e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4329) | Val_EMA Multi-Regime (T: 0.5590)
+    [診斷] GradNorm(T: 8.10e-01) | E_Var_EMA(T: 1.2888)
+ -> Epoch 26/50 (LR: 2.75e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4311) | Val_EMA Multi-Regime (T: 0.5599)
+    [診斷] GradNorm(T: 6.57e-01) | E_Var_EMA(T: 1.2944)
+ -> Epoch 27/50 (LR: 2.40e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4287) | Val_EMA Multi-Regime (T: 0.5601)
+    [診斷] GradNorm(T: 7.91e-01) | E_Var_EMA(T: 1.2971)
+ -> Epoch 28/50 (LR: 2.09e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4269) | Val_EMA Multi-Regime (T: 0.5611)
+    [診斷] GradNorm(T: 1.06e+00) | E_Var_EMA(T: 1.2994)
+ -> Epoch 29/50 (LR: 1.81e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4263) | Val_EMA Multi-Regime (T: 0.5645)
+    [診斷] GradNorm(T: 7.64e-01) | E_Var_EMA(T: 1.3037)
+ -> Epoch 30/50 (LR: 1.57e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4252) | Val_EMA Multi-Regime (T: 0.5589)
+    [診斷] GradNorm(T: 7.23e-01) | E_Var_EMA(T: 1.3064)
+ -> Epoch 31/50 (LR: 1.36e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4241) | Val_EMA Multi-Regime (T: 0.5623)
+    [診斷] GradNorm(T: 8.84e-01) | E_Var_EMA(T: 1.3054)
+ -> Epoch 32/50 (LR: 1.21e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4230) | Val_EMA Multi-Regime (T: 0.5601)
+    [診斷] GradNorm(T: 9.01e-01) | E_Var_EMA(T: 1.3084)
+ -> Epoch 33/50 (LR: 1.09e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4221) | Val_EMA Multi-Regime (T: 0.5556)
+    [診斷] GradNorm(T: 8.01e-01) | E_Var_EMA(T: 1.3083)
+ -> Epoch 34/50 (LR: 1.02e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4212) | Val_EMA Multi-Regime (T: 0.5597)
+    [診斷] GradNorm(T: 8.67e-01) | E_Var_EMA(T: 1.3127)
+ -> Epoch 35/50 (LR: 1.00e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4208) | Val_EMA Multi-Regime (T: 0.5551)
+    [診斷] GradNorm(T: 6.59e-01) | E_Var_EMA(T: 1.3119)
+ -> Epoch 36/50 (LR: 1.00e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4206) | Val_EMA Multi-Regime (T: 0.5598)
+    [診斷] GradNorm(T: 1.14e+00) | E_Var_EMA(T: 1.3115)
+ -> Epoch 37/50 (LR: 1.00e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4208) | Val_EMA Multi-Regime (T: 0.5599)
+    [診斷] GradNorm(T: 6.68e-01) | E_Var_EMA(T: 1.3126)
+ -> Epoch 38/50 (LR: 1.00e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4200) | Val_EMA Multi-Regime (T: 0.5628)
+    [診斷] GradNorm(T: 1.22e+00) | E_Var_EMA(T: 1.3148)
+ -> Epoch 39/50 (LR: 1.00e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4198) | Val_EMA Multi-Regime (T: 0.5661)
+    [診斷] GradNorm(T: 8.38e-01) | E_Var_EMA(T: 1.3181)
+ -> Epoch 40/50 (LR: 1.00e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4187) | Val_EMA Multi-Regime (T: 0.5582)
+    [診斷] GradNorm(T: 8.18e-01) | E_Var_EMA(T: 1.3207)
+ -> Epoch 41/50 (LR: 1.00e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4177) | Val_EMA Multi-Regime (T: 0.5626)
+    [診斷] GradNorm(T: 7.79e-01) | E_Var_EMA(T: 1.3190)
+ -> Epoch 42/50 (LR: 1.00e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4180) | Val_EMA Multi-Regime (T: 0.5606)
+    [診斷] GradNorm(T: 1.08e+00) | E_Var_EMA(T: 1.3232)
+ -> Epoch 43/50 (LR: 1.00e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4175) | Val_EMA Multi-Regime (T: 0.5679)
+    [診斷] GradNorm(T: 9.96e-01) | E_Var_EMA(T: 1.3231)
+ -> Epoch 44/50 (LR: 1.00e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4171) | Val_EMA Multi-Regime (T: 0.5614)
+    [診斷] GradNorm(T: 1.11e+00) | E_Var_EMA(T: 1.3238)
+ -> Epoch 45/50 (LR: 1.00e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4167) | Val_EMA Multi-Regime (T: 0.5632)
+    [診斷] GradNorm(T: 9.78e-01) | E_Var_EMA(T: 1.3254)
+ -> Epoch 46/50 (LR: 1.00e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4163) | Val_EMA Multi-Regime (T: 0.5607)
+    [診斷] GradNorm(T: 7.95e-01) | E_Var_EMA(T: 1.3244)
+ -> Epoch 47/50 (LR: 1.00e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4157) | Val_EMA Multi-Regime (T: 0.5599)
+    [診斷] GradNorm(T: 8.85e-01) | E_Var_EMA(T: 1.3263)
+ -> Epoch 48/50 (LR: 1.00e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4157) | Val_EMA Multi-Regime (T: 0.5601)
+    [診斷] GradNorm(T: 7.36e-01) | E_Var_EMA(T: 1.3306)
+ -> Epoch 49/50 (LR: 1.00e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4155) | Val_EMA Multi-Regime (T: 0.5531)
+    [診斷] GradNorm(T: 6.55e-01) | E_Var_EMA(T: 1.3273)
+ -> Epoch 50/50 (LR: 1.00e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4145) | Val_EMA Multi-Regime (T: 0.5592)
+    [診斷] GradNorm(T: 7.73e-01) | E_Var_EMA(T: 1.3306)
 
-📊 萃取器收斂診斷 (跨體制驗證集基準):
-  > 時序專家 (T) 最終 Val Continuous Loss: 0.5521
-  > 空間專家 (S) 狀態: ⏩ 已依實驗結論成功剪枝 (Pure-Time 模式)[cite: 1]
-✅ 萃取器連續目標訓練完畢，成功建立抗過擬合連續超額報酬特徵表徵！[cite: 1]
-⏱️ [步驟 5 完成] 耗時: 2013.91 秒 (33.57 分鐘)
+💾 正在將全域模型權重切換至歷史最佳 EMA 快照 (Val Loss = 0.5497)...
 
---- 步驟 6：全歷史強固特徵表徵提煉與落地 (提取 3D 張量) ---
+📊 萃取器收斂診斷 (跨體制 EMA 驗證基準):
+  > 時序專家 (T) 最終 Val_EMA Continuous Loss: 0.5592
+  > 時序專家 (T) 歷史最佳快照 Val Loss      : 0.5497
+  > 空間專家 (S) 狀態: ⏩ 已依實驗結論成功剪枝 (Pure-Time 模式)
+✅ 萃取器連續目標訓練完畢，成功建立抗過擬合連續超額報酬特徵表徵！
+⏱️ [步驟 5 完成] 耗時: 4141.30 秒 (69.02 分鐘)
+
+--- 步驟 6：全歷史強固特徵表徵提煉與落地 (使用 EMA 最佳權重提取 3D 張量) ---
   -> 正在提煉全歷史節點級別表徵 (共 8388 筆有效天數，批次步長: 16)...
-⏱️ [步驟 6 完成] 耗時: 60.73 秒 (1.01 分鐘)
+⏱️ [步驟 6 完成] 耗時: 57.09 秒 (0.95 分鐘)
 
 --- 步驟 7：產出 Loss 曲線視覺化報表與模型檔案存檔 ---
 IdleTimeout has been reached.
 Parallel pool using the 'Processes' profile is shutting down.
  📊 Loss 曲線 (白底黑字，已截斷真實輪次) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/models/Phase2_Loss_Curve.png
 💾 DL 萃取器預訓練完畢！[Days, 64, Tickers] 節點表徵已存至: /home/andy/Documents/MARI_Quant_System/results/models/DL_Extractors.mat
-⏱️ [步驟 7 完成] 耗時: 26.84 秒
+⏱️ [步驟 7 完成] 耗時: 23.22 秒
 
 =================================================================
 📊 【Phase 2 各階段耗時明細與總時長審計報告】
 =================================================================
- 步驟 0：環境掛載與隨機串流鎖定   :     0.86 秒 (  0.0%)
- 步驟 1：3D 特徵快取載入與對齊   :     4.10 秒 (  0.2%)
- 步驟 1.5：HAC-ICIR 健檢與閘門融合:    21.91 秒 (  1.0%)
- 步驟 2：連續超額報酬 Z-Score 構建:     0.15 秒 (  0.0%)
- 步驟 3：Purged 多體制時間軸劃分  :     0.02 秒 (  0.0%)
- 步驟 4：網路拓撲與線性預測頭初始化:     0.65 秒 (  0.0%)
- 步驟 5：萃取器預訓練與跨體制早停 :  2013.91 秒 ( 94.6%)
- 步驟 6：全歷史 64D 表徵提煉落地 :    60.73 秒 (  2.9%)
- 步驟 7：曲線繪製與模型權重存檔   :    26.84 秒 (  1.3%)
+ 步驟 0：環境掛載與隨機串流鎖定   :     1.09 秒 (  0.0%)
+ 步驟 1：3D 特徵快取載入與對齊   :     3.49 秒 (  0.1%)
+ 步驟 1.5：HAC-ICIR 健檢與閘門融合:     4.82 秒 (  0.1%)
+ 步驟 2：連續超額報酬 Z-Score 構建:     0.13 秒 (  0.0%)
+ 步驟 3：Purged 多體制時間軸劃分  :     0.01 秒 (  0.0%)
+ 步驟 4：網路拓撲與線性預測頭初始化:     0.28 秒 (  0.0%)
+ 步驟 5：萃取器預訓練與跨體制早停 :  4141.30 秒 ( 97.9%)
+ 步驟 6：全歷史 64D 表徵提煉落地 :    57.09 秒 (  1.3%)
+ 步驟 7：曲線繪製與模型權重存檔   :    23.22 秒 (  0.5%)
 -----------------------------------------------------------------
-⏱️ 【總執行時長】: 35 分 29.17 秒 (共 2129.17 秒)
+⏱️ 【總執行時長】: 1 小時 10 分 31.43 秒 (共 4231.43 秒)
 =================================================================
 🎯 [Phase 2] 連續迴歸萃取器預訓練完成！請推進至 Phase 3。
 =================================================================
 >> 
 
 =================================================================
-🚀 [Phase 15.5] 啟動 GBDT 連續迴歸選股預測流與 SHAP 歸因分析管線 (生產基準版)
+🚀 [Phase 15.5] 啟動 特徵標籤工程 ＋ GBDT 守衛訓練整合管線 (All-in-One)
 =================================================================
 --- 步驟 0：環境路徑掛載、Config 載入與隨機串流鎖定 ---
  🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
  ⚡ [Config] 成功注入通過 DSR 顯著性檢定之 Phase 4 BO 最佳化參數：
     - 崩盤護欄硬熔斷閾值 : 0.0978
     - 時序專家權重 (Time_W): 1.0000 (空間專家已剪枝，強制鎖定 1.0)
-    - 集中度標的數 (Top_K) : 10
-🔒 已成功掛載 mrg32k3a 主隨機串流 (Substream=1)，鎖定 GBDT 訓練、抽樣與 SHAP 歸因確定性。
-⏱️ [步驟 0 完成] 耗時: 0.67 秒
+    - 集中度標的數 (Top_K) : 17
+🔒 已成功掛載 mrg32k3a 主隨機串流 (Substream=1)，鎖定 GBDT 訓練、抽樣與 SHAP 確定性。
+⏱️ [步驟 0 完成] 耗時: 1.43 秒
 
---- 步驟 1：載入全域降噪特徵與 DL 表徵 ---
+--- 步驟 1：載入全域降噪特徵與 Phase 2 最佳快照 DL 表徵 ---
   -> 空間專家狀態: 【⏩ 已剪枝】(Pure-Time 純時序架構，杜絕圖卷積過度平滑噪聲)
-⏱️ [步驟 1 完成] 耗時: 10.83 秒
+⏱️ [步驟 1 完成] 耗時: 9.28 秒
 
---- 步驟 2：執行特徵矩陣動態通道解構與總經品質健檢 ---
-  -> 特徵維度: 個股微觀 18 維 | 宏觀總經 10 維
+--- 步驟 2：特徵切片、通道解構與總經資料品質審計 ---
+  -> 特徵維度配置: 個股微觀 18 維 | 宏觀總經 10 維 | DL 表徵 64 維
   -> [總經品質審計] 信用利差特徵零值佔比: 20.31% (標準差: 1.2922)
-⏱️ [步驟 2 完成] 耗時: 0.11 秒
+⏱️ [步驟 2 完成] 耗時: 0.09 秒
 
---- 步驟 3：構建 20 日連續橫截面超額報酬與 10 日累積崩盤護欄標籤 ---
-⏱️ [步驟 3 完成] 耗時: 0.16 秒
+--- 步驟 3：構建 20 日連續橫截面超額報酬 Z-Score 與 10 日崩盤標籤 ---
+💾 [資料集落盤] GBDT 訓練特徵與標籤資料集已成功快取至: /home/andy/Documents/MARI_Quant_System/data/cache/GBDT_Dataset.mat
+⏱️ [步驟 3 完成] 耗時: 28.16 秒
 
---- 步驟 4：切分樣本時間軸 (Train IS vs. Blind OOS) ---
+--- 步驟 4：切分樣本時間軸 (Train IS 2006-2021 vs. Blind OOS 2022-2026) ---
 ✅ 時間軸劃分完畢！IS 訓練區間: 4028 天 | OOS 盲測推論區間: 1162 天
-⏱️ [步驟 4 完成] 耗時: 0.53 秒
+⏱️ [步驟 4 完成] 耗時: 0.49 秒
 
 --- 步驟 5：實例化 GBDT 專家並執行 Expanding-Window 迴歸交叉驗證 ---
- 💡 [時序交叉驗證機制說明]：Fold 1 作為初始訓練基準（無更早樣本可供驗證），故驗證自 Fold 2 展開。
+ 💡 [時序交叉驗證機制]：Fold 1 作為初始訓練基準，折外驗證自 Fold 2 依序展開。
  ⚙️ [GBDTExpertAgent] 實例化完成。已配置 LSBoost 連續選股 (Horizon=20D, Embargo=20D, HAC_Lag=20, 空間專家: 0)。
 --- 啟動 GBDT 橫截面專家訓練 (LSBoost 連續迴歸與 OOF Rank IC 即時監控) ---
   ⏩ [Pure-Time 剪枝] 空間專家已停用，將自動略過空間 GBDT 之 Fold 訓練與推論。
   -> 總有效橫截面樣本數: 1788804 筆 | 宏觀特徵維度: 10 維
   -> 啟動手動 5-Fold 區塊時序 (Purged Expanding Window, Embargo=20天) 連續迴歸交叉驗證...
-     - 正在訓練時間區塊 Fold 2/5 (LSBoost 嚴格防洩漏) ... 完成！(Fold 2 OOF Rank IC -> Raw: +0.0306 | Time: +0.1390)
-     - 正在訓練時間區塊 Fold 3/5 (LSBoost 嚴格防洩漏) ... 完成！(Fold 3 OOF Rank IC -> Raw: +0.0297 | Time: +0.1402)
-     - 正在訓練時間區塊 Fold 4/5 (LSBoost 嚴格防洩漏) ... 完成！(Fold 4 OOF Rank IC -> Raw: +0.0306 | Time: +0.1180)
-     - 正在訓練時間區塊 Fold 5/5 (LSBoost 嚴格防洩漏) ... 完成！(Fold 5 OOF Rank IC -> Raw: +0.0250 | Time: +0.1303)
+     - 正在訓練時間區塊 Fold 2/5 (LSBoost 嚴格防洩漏) ... 完成！(Fold 2 OOF Rank IC -> Raw: +0.0306 | Time: +0.1256)
+     - 正在訓練時間區塊 Fold 3/5 (LSBoost 嚴格防洩漏) ... 完成！(Fold 3 OOF Rank IC -> Raw: +0.0297 | Time: +0.1162)
+     - 正在訓練時間區塊 Fold 4/5 (LSBoost 嚴格防洩漏) ... 完成！(Fold 4 OOF Rank IC -> Raw: +0.0306 | Time: +0.1051)
+     - 正在訓練時間區塊 Fold 5/5 (LSBoost 嚴格防洩漏) ... 完成！(Fold 5 OOF Rank IC -> Raw: +0.0250 | Time: +0.1114)
 
  📊 [GBDT 連續迴歸交叉驗證總評] 全域 OOF Spearman Rank IC (HAC p-val, lag=20):
     > 原始 18D 基準線 : +0.0290 (p = 0.0000)
-    > 時序專家 (Time) : +0.1319 (p = 0.0000)
+    > 時序專家 (Time) : +0.1146 (p = 0.0000)
   -> 訓練最終全域橫截面模型 (LSBoost 時間衰減加權抽樣版)...
 ✅ 個股橫截面 GBDT 訓練與 OOF 百分位排序得分重組完畢！
 --- 啟動崩盤護欄 GBDT 訓練 (正樣本分層時序 OOF、Bootstrap 95% CI 與 Platt 校準) ---
@@ -378,76 +430,77 @@ Parallel pool using the 'Processes' profile is shutting down.
 -----------------------------------------------------------------
 
 ✅ 崩盤護欄 GBDT 訓練與 OOF Platt 校準機率產出完畢！
-⏱️ [步驟 5 完成] 耗時: 299.19 秒 (4.99 分鐘)
+⏱️ [步驟 5 完成] 耗時: 258.92 秒 (4.32 分鐘)
 
 --- 步驟 6：執行 OOS 盲測期無洩漏推論 (LSBoost 排序推論 + Platt 崩盤校準) ---
-⏱️ [步驟 6 完成] 耗時: 4.99 秒
+⏱️ [步驟 6 完成] 耗時: 4.41 秒
 
 --- 步驟 7：組裝全歷史選股排序得分與崩盤機率矩陣 ---
-⏱️ [步驟 7 完成] 耗時: 0.02 秒
+⏱️ [步驟 7 完成] 耗時: 0.01 秒
 
 --- 步驟 8：產出 SHAP 特徵邊際貢獻度視覺化 (確定性無漂移版) ---
 --- 啟動 TIME 專家 SHAP 歸因分析 (K-Means 加速) ---
   -> 執行 K-Means 壓縮背景樣本至 100 個質心...
 ✅ SHAP 圖表已生成！
  📊 SHAP 特徵歸因圖 (白底黑字) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/models/Phase3_SHAP_TimeExpert.png
-⏱️ [步驟 8 完成] 耗時: 1.75 秒
+⏱️ [步驟 8 完成] 耗時: 2.62 秒
 
 --- 步驟 9：儲存 GBDT 模型實體與全域選股得分矩陣 ---
 💾 顯性風險與連續排序得分已安全落地至: /home/andy/Documents/MARI_Quant_System/results/models/GBDT_Guards.mat
-⏱️ [步驟 9 完成] 耗時: 4.00 秒
+⏱️ [步驟 9 完成] 耗時: 3.38 秒
 
 =================================================================
 📊 【Phase 3 各階段耗時明細與總時長審計報告】
 =================================================================
- 步驟 0：環境掛載與隨機串流鎖定   :     0.67 秒 (  0.2%)
- 步驟 1：降噪特徵與 DL 表徵載入   :    10.83 秒 (  3.4%)
- 步驟 2：動態特徵解構與總經品質健檢:     0.11 秒 (  0.0%)
- 步驟 3：連續選股與崩盤護欄標籤構建:     0.16 秒 (  0.0%)
- 步驟 4：時間軸解耦切分 (IS vs OOS):     0.53 秒 (  0.2%)
- 步驟 5：GBDT 交叉驗證與護欄校準  :   299.19 秒 ( 92.8%)
- 步驟 6：OOS 盲測期真實前向推論   :     4.99 秒 (  1.5%)
- 步驟 7：全歷史得分與崩盤矩陣縫合 :     0.02 秒 (  0.0%)
- 步驟 8：SHAP 特徵貢獻歸因分析    :     1.75 秒 (  0.5%)
- 步驟 9：GBDT 模型與全域得分矩陣存檔:     4.00 秒 (  1.2%)
+ 步驟 0：環境掛載與隨機串流鎖定   :     1.43 秒 (  0.5%)
+ 步驟 1：降噪特徵與 DL 表徵載入   :     9.28 秒 (  3.0%)
+ 步驟 2：動態特徵解構與總經品質健檢:     0.09 秒 (  0.0%)
+ 步驟 3：選股標籤構建與資料集快取 :    28.16 秒 (  9.1%)
+ 步驟 4：時間軸解耦切分 (IS vs OOS):     0.49 秒 (  0.2%)
+ 步驟 5：GBDT 交叉驗證與護欄校準  :   258.92 秒 ( 83.9%)
+ 步驟 6：OOS 盲測期真實前向推論   :     4.41 秒 (  1.4%)
+ 步驟 7：全歷史得分與崩盤矩陣縫合 :     0.01 秒 (  0.0%)
+ 步驟 8：SHAP 特徵貢獻歸因分析    :     2.62 秒 (  0.8%)
+ 步驟 9：GBDT 模型與全域得分矩陣存檔:     3.38 秒 (  1.1%)
 -----------------------------------------------------------------
-⏱️ 【總執行時長】: 5 分 22.25 秒 (共 322.25 秒)
+⏱️ 【總執行時長】: 5 分 8.78 秒 (共 308.78 秒)
 =================================================================
-🎯 [Phase 3] 連續迴歸選股流與 SHAP 歸因執行完成！請推進至 Phase 4。
+🎯 [Phase 3] 特徵標籤生成、GBDT 訓練與 SHAP 歸因一鍵執行完畢！請推進至 Phase 4。
 =================================================================
 >> 
 
-
 =================================================================
-🧠 [Phase 15.5] 啟動 CIO 總管動態路由貝氏超參數尋優 (生產剪枝自適應版)
+🧠 [Phase 15.5] 啟動 CIO 總管動態路由貝氏超參數尋優 (DSR + PBO 雙重防禦版)
 =================================================================
 --- 步驟 0：環境路徑掛載、Config 載入與隨機串流鎖定 ---
  🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
  ⚡ [Config] 成功注入通過 DSR 顯著性檢定之 Phase 4 BO 最佳化參數：
     - 崩盤護欄硬熔斷閾值 : 0.0978
     - 時序專家權重 (Time_W): 1.0000 (空間專家已剪枝，強制鎖定 1.0)
-    - 集中度標的數 (Top_K) : 10
-⏱️ [步驟 0 完成] 耗時: 1.33 秒
+    - 集中度標的數 (Top_K) : 17
+⏱️ [步驟 0 完成] 耗時: 0.61 秒
 
 --- 步驟 1：載入快取與時間軸嚴格對齊 (引入 Opens 矩陣) ---
 --- 啟動 Data Lake 面板資料載入與極速矩陣映射 ---
  -> 建立基準時間軸 (以 SPY 作為絕對交易日曆)...
  -> 執行極速矩陣映射 (Bypassing Unstack 效能優化)...
  -> 啟動多核心 parfor 執行極速矩陣映射 (記憶體防爆版)...
+Starting parallel pool (parpool) using the 'Processes' profile ...
+Connected to parallel pool with 8 workers.
 --- 執行大宇宙數據邊界與品質斷言檢查 ---
 ⚠️ 攔截到 9050 筆異常 (報價異常: 1, 真實停牌枯竭: 9049，已排除 Macro 指數)，已強制物理損毀交由下游 omitnan 濾除。
 💾 成功以 SPY 基準時間軸對齊大宇宙資料 (共 504 檔標的，8467 個真實交易日)。
   -> 空間專家狀態: 【⏩ 已剪枝】(Pure-Time 模式：鎖定 Time_W=1.0，尋優空間自動降維)
-⏱️ [步驟 1 完成] 耗時: 6.60 秒
+⏱️ [步驟 1 完成] 耗時: 21.87 秒
 
 --- 步驟 2：切分 In-Sample 訓練區間與校準背景雜訊底線 ---
   -> IS 期間 P(Crash) 75% 背景雜訊分位數 (tau_noise): 0.0449
-⏱️ [步驟 2 完成] 耗時: 0.04 秒
+⏱️ [步驟 2 完成] 耗時: 0.02 秒
 
 --- 步驟 3：定義貝氏最佳化超參數空間 (自適應維度降階) ---
   -> 護欄動態邊界鎖定：[0.0478 (下界), 0.0978 (上界)]
   ⚙️ 搜尋維度: 2 維 [Guardrail_CrashProb, Top_K_Assets] (Time_W 鎖定 1.0000)
-⏱️ [步驟 3 完成] 耗時: 0.02 秒
+⏱️ [步驟 3 完成] 耗時: 0.01 秒
 
 --- 步驟 4：啟動 BayesOpt 尋優引擎 (4 子窗口穩健目標函數 - 多核平行) ---
 🔒 已成功為平行池所有 Worker 注入 mrg32k3a 獨立隨機子串流。
@@ -457,10 +510,7 @@ Done copying objective function to workers.
 | Iter | Active  | Eval   | Objective   | Objective   | BestSoFar   | BestSoFar   | Guardrail_Cr-| Top_K_Assets |
 |      | workers | result |             | runtime     | (observed)  | (estim.)    | ashProb      |              |
 |===============================================================================================================|
-|    1 |       5 | Accept |     -1.1063 |     0.53405 |     -2.5338 |     -2.5338 |      0.05079 |           12 |
-|    2 |       5 | Accept |     -1.0217 |     0.38208 |     -2.5338 |     -2.5338 |     0.053769 |           21 |
-|    3 |       5 | Accept |     -2.5209 |     0.35453 |     -2.5338 |     -2.5338 |     0.090253 |           11 |
-|    4 |       5 | Best   |     -2.5338 |     0.37166 |     -2.5338 |     -2.5338 |     0.095172 |           24 |
+|    1 |       8 | Best   |    -0.74608 |     0.42977 |    -0.74608 |    -0.74608 |     0.053769 |           21 |
 Warning: PlotFcn 1 failed. 
 > In bayesoptim.warn (line 6)
 In BayesianOptimization/callPlotFcn (line 16)
@@ -469,107 +519,126 @@ In BayesianOptimization/runParallel (line 86)
 In BayesianOptimization/run (line 7)
 In BayesianOptimization (line 193)
 In bayesopt (line 323)
-In Run_BO_Hyperparameter_Tuning (line 183) 
+In Run_BO_Hyperparameter_Tuning (line 182) 
 The error message follows:
 Specify the coordinates as vectors or matrices of the same size, or as a vector and a matrix that share the same length in at least one dimension.
-|    5 |       5 | Accept |     -2.2666 |     0.68287 |     -2.5338 |     -2.5344 |     0.088176 |           24 |
-|    6 |       5 | Accept |     -1.3222 |     0.63062 |     -2.5338 |     -2.5344 |     0.063056 |           11 |
-|    7 |       5 | Accept |     -2.0576 |     0.69279 |     -2.5338 |     -2.5344 |     0.082119 |           11 |
-|    8 |       5 | Accept |     -1.3541 |     0.46958 |     -2.5338 |     -2.5344 |     0.065849 |           15 |
-|    9 |       5 | Accept |     -2.4478 |     0.31579 |     -2.5338 |     -2.5385 |     0.089169 |            9 |
-|   10 |       5 | Accept |      -1.789 |     0.22849 |     -2.5338 |     -2.5385 |     0.078335 |           12 |
-|   11 |       5 | Accept |     -2.1217 |     0.43391 |     -2.5338 |     -2.5385 |     0.083299 |           10 |
-|   12 |       5 | Accept |     -1.2952 |     0.21481 |     -2.5338 |     -2.5385 |     0.065946 |           18 |
-|   13 |       5 | Best   |     -2.6457 |     0.40885 |     -2.6457 |     -2.6465 |     0.097698 |            5 |
-|   14 |       5 | Accept |     -2.5433 |     0.31834 |     -2.6457 |     -2.6465 |     0.091308 |           12 |
-|   15 |       5 | Accept |     -1.5677 |      0.2633 |     -2.6457 |     -2.6465 |      0.07504 |           16 |
-|   16 |       5 | Accept |     -2.1096 |     0.20539 |     -2.6457 |     -2.6465 |     0.083385 |           15 |
-|   17 |       5 | Accept |     -2.5679 |     0.42163 |     -2.6457 |      -2.646 |      0.09768 |           25 |
-|   18 |       5 | Accept |     -1.1161 |     0.24001 |     -2.6457 |      -2.646 |     0.060627 |           21 |
-|   19 |       5 | Accept |     -1.6101 |     0.34146 |     -2.6457 |      -2.646 |     0.076409 |           18 |
-|   20 |       5 | Accept |     -2.3308 |     0.19217 |     -2.6457 |      -2.646 |     0.088524 |           23 |
+|    2 |       2 | Accept |    -0.71013 |      1.1445 |     -2.3274 |     -2.3276 |      0.05079 |           12 |
+|    3 |       2 | Accept |     -1.9939 |     0.53701 |     -2.3274 |     -2.3276 |     0.088176 |           24 |
+|    4 |       2 | Accept |     -2.0681 |     0.67878 |     -2.3274 |     -2.3276 |     0.090253 |           11 |
+|    5 |       2 | Accept |    -0.88211 |     0.85631 |     -2.3274 |     -2.3276 |     0.063056 |           11 |
+|    6 |       2 | Accept |      -1.535 |     0.70556 |     -2.3274 |     -2.3276 |     0.082119 |           11 |
+|    7 |       2 | Accept |    -0.96973 |     0.51706 |     -2.3274 |     -2.3276 |     0.065849 |           15 |
+|    8 |       2 | Best   |     -2.3274 |     0.79586 |     -2.3274 |     -2.3276 |     0.095172 |           24 |
+|    9 |       8 | Accept |     -2.0928 |     0.21522 |     -2.3274 |     -2.3284 |     0.089169 |            9 |
+|   10 |       2 | Best   |     -2.3516 |     0.20456 |     -2.3516 |     -2.3641 |     0.097736 |           25 |
+|   11 |       2 | Accept |     -2.1079 |      0.3495 |     -2.3516 |     -2.3641 |     0.089461 |            9 |
+|   12 |       2 | Accept |     -1.5328 |      0.2094 |     -2.3516 |     -2.3641 |     0.080842 |            8 |
+|   13 |       2 | Accept |     -1.2822 |       0.219 |     -2.3516 |     -2.3641 |     0.077948 |           20 |
+|   14 |       2 | Accept |    -0.93769 |     0.44498 |     -2.3516 |     -2.3641 |      0.05736 |            7 |
+|   15 |       2 | Accept |     -1.5931 |     0.40316 |     -2.3516 |     -2.3641 |     0.081723 |            9 |
+|   16 |       2 | Accept |    -0.72127 |     0.44715 |     -2.3516 |     -2.3641 |     0.050569 |           13 |
+|   17 |       8 | Best   |      -2.403 |     0.14922 |      -2.403 |     -2.3836 |     0.097764 |           22 |
+|   18 |       2 | Accept |     -2.3582 |     0.24256 |      -2.403 |     -2.3774 |      0.09777 |            5 |
+|   19 |       2 | Accept |     -2.3218 |     0.27042 |      -2.403 |     -2.3774 |     0.093468 |           16 |
+|   20 |       2 | Accept |     -1.2347 |     0.36636 |      -2.403 |     -2.3774 |     0.075436 |            6 |
 |===============================================================================================================|
 | Iter | Active  | Eval   | Objective   | Objective   | BestSoFar   | BestSoFar   | Guardrail_Cr-| Top_K_Assets |
 |      | workers | result |             | runtime     | (observed)  | (estim.)    | ashProb      |              |
 |===============================================================================================================|
-|   21 |       5 | Best   |     -2.6637 |     0.20314 |     -2.6637 |      -2.665 |     0.097758 |           12 |
-|   22 |       5 | Accept |     -1.6942 |     0.33479 |     -2.6637 |      -2.665 |      0.07599 |            9 |
-|   23 |       5 | Accept |     -1.2159 |     0.20226 |     -2.6637 |      -2.665 |     0.057286 |           12 |
-|   24 |       5 | Accept |      -1.369 |     0.29346 |     -2.6637 |      -2.665 |     0.071995 |           22 |
-|   25 |       6 | Accept |     -2.6552 |     0.20973 |     -2.6637 |      -2.659 |     0.097727 |           13 |
-|   26 |       6 | Accept |     -2.5151 |     0.24733 |     -2.6637 |      -2.659 |     0.091222 |           20 |
-|   27 |       6 | Accept |     -2.6068 |     0.22179 |     -2.6637 |      -2.659 |     0.094734 |           13 |
+|   21 |       2 | Accept |    -0.79127 |     0.34488 |      -2.403 |     -2.3774 |     0.053639 |           15 |
+|   22 |       2 | Accept |    -0.82226 |     0.30216 |      -2.403 |     -2.3774 |     0.056827 |           16 |
+|   23 |       2 | Accept |     -2.0714 |     0.21425 |      -2.403 |     -2.3774 |     0.089591 |            7 |
+|   24 |       2 | Accept |     -0.7265 |     0.20808 |      -2.403 |     -2.3774 |      0.05163 |           11 |
+|   25 |       8 | Accept |     -2.3582 |     0.18879 |      -2.403 |     -2.3751 |     0.097765 |            5 |
 
 __________________________________________________________
 Optimization completed.
 MaxObjectiveEvaluations of 25 reached.
-Total function evaluations: 27
-Total elapsed time: 5.1348 seconds
-Total objective function evaluation time: 9.4148
+Total function evaluations: 25
+Total elapsed time: 6.9196 seconds
+Total objective function evaluation time: 10.4445
 
 Best observed feasible point:
     Guardrail_CrashProb    Top_K_Assets
     ___________________    ____________
 
-         0.097758               12     
+         0.097764               22     
 
-Observed objective function value = -2.6637
-Estimated objective function value = -2.659
-Function evaluation time = 0.20314
+Observed objective function value = -2.403
+Estimated objective function value = -2.3751
+Function evaluation time = 0.14922
 
 Best estimated feasible point (according to models):
     Guardrail_CrashProb    Top_K_Assets
     ___________________    ____________
 
-         0.097758               12     
+         0.097764               22     
 
-Estimated objective function value = -2.659
-Estimated function evaluation time = 0.29129
+Estimated objective function value = -2.3751
+Estimated function evaluation time = 0.35973
 
-⏱️ [步驟 4 完成] 耗時: 6.08 秒 (0.10 分鐘)
+⏱️ [步驟 4 完成] 耗時: 7.97 秒 (0.13 分鐘)
 
---- 步驟 5：提取最佳參數、DSR 統計檢驗與熔斷裁決 ---
+--- 步驟 5：提取最佳參數、DSR 與 PBO 統計檢驗與斷路器裁決 ---
 
 🏆 【Phase 15.5 貝氏最佳化候選結果 (Horizon=20D)】 🏆
   > 候選 崩盤護欄閥值 (Guardrail) : 0.0978
-  > 候選 時序專家權重 (Time_W)  : 1.0000
-  > 候選 集中度標的數 (Top_K)   : 12
-  > 穩健綜合指標 (Robust Score) : 2.6637
-  > 護欄觸發比例 (IS 期間)      : 0.2% 的交易日啟用完全避險
+  > 候選 時序專家權重 (Time_W)   : 1.0000
+  > 候選 集中度標的數 (Top_K)    : 22
+  > 穩健綜合指標 (Robust Score) : 2.4030
+  > 護欄觸發比例 (IS 期間)       : 0.2% 的交易日啟用完全避險
 
 =================================================================
 📊 【Phase 15.5 Deflated Sharpe Ratio (DSR) 選擇偏誤校正報告】
 =================================================================
-  > BayesOpt 試驗次數 N         : 27 次
-  > 試驗噪聲基準 (Sharpe0 Floor): 1.1856 (高於此值才具統計顯著性)
-  > 最佳參數觀測年化 Sharpe     : 3.6888
+  > BayesOpt 試驗次數 N         : 25 次
+  > 試驗噪聲基準 (Sharpe0 Floor): 1.3129 (高於此值才具統計顯著性)
+  > 最佳參數觀測年化 Sharpe     : 3.0687
   > Deflated Sharpe Ratio (DSR) : 1.0000
 -----------------------------------------------------------------
   ✅ 在 95% 信心水準下，尋優結果統計上顯著超越多重試驗運氣！
 =================================================================
 
-✅ 尋優成功！通過 DSR 顯著性檢驗 (DSR >= 0.95 且 Robust Score > 0)，落地為正式生產參數。
-💾 生產環境 BO 參數檔已成功寫入: /home/andy/Documents/MARI_Quant_System/results/models/BO_Hyperparameters.mat
-⏱️ [步驟 5 完成] 耗時: 0.82 秒
+  ⏳ 正在啟動 CSCV 引擎計算 PBO (窮舉 12,870 條時序組合路徑)...
+=================================================================
+📊 【Phase 15.5 Probability of Backtest Overfitting (PBO) 審計報告】
+=================================================================
+  > CSCV 切片數 (S)               : 16 個時序區塊 (各約 1 年)
+  > 組合路徑總數 (C = C(16,8))    : 12870 條時序路徑
+  > 候選策略試驗數 (N)            : 25 組超參數
+  > PBO (OOS Sharpe <= 0 機率)   : 0.0000 (0.00%)
+  > PBO (劣於中位數 Rank <= 0.5)  : 0.0716 (7.16%)
+  > OOS 最佳策略期望年化 Sharpe   : 2.9519
+-----------------------------------------------------------------
+  ✅ PBO <= 10% 門檻：策略在全體時序重組路徑中具備極高泛化韌性！
+=================================================================
 
---- 步驟 6：產出 BayesOpt 尋優收斂與超額收益報表 (白底黑字) ---
- 📊 尋優收斂與超額收益圖 (白底黑字) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/models/Phase4_BayesOpt_Convergence.png
-⏱️ [步驟 6 完成] 耗時: 1.36 秒
+✅ 尋優成功！通過 DSR 與 PBO 雙重顯著性檢驗 (DSR >= 0.95, PBO <= 10% 且 Robust Score > 0)，落地為正式生產參數。
+💾 生產環境 BO 參數檔已成功寫入: /home/andy/Documents/MARI_Quant_System/results/models/BO_Hyperparameters.mat
+⏱️ [步驟 5 完成] 耗時: 2.10 秒
+
+--- 步驟 6：產出 BayesOpt 尋優收斂、PBO 分佈與超額收益報表 (白底黑字) ---
+Warning: Error in state of SceneNode.
+String scalar or character vector must have valid interpreter syntax:
+PBO (SR\\le0): 0.00% | Median Rank: 0.07 | N=25 Trials
+ 
+ 📊 尋優收斂、PBO 分佈與超額收益圖 (白底黑字 3-Panel) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/models/Phase4_BayesOpt_Convergence.png
+⏱️ [步驟 6 完成] 耗时: 2.23 秒
 
 =================================================================
 📊 【Phase 4 各階段耗時明細與總時長審計報告】
 =================================================================
- 步驟 0：環境掛載與隨機串流鎖定   :     1.33 秒 (  8.2%)
- 步驟 1：快取與時間軸對齊 (Opens) :     6.60 秒 ( 40.6%)
- 步驟 2：IS 切分與雜訊底線校準    :     0.04 秒 (  0.3%)
- 步驟 3：超參數空間自適應邊界定義 :     0.02 秒 (  0.1%)
- 步驟 4：BayesOpt 尋優平行引擎運行:     6.08 秒 ( 37.4%)
- 步驟 5：DSR 統計檢驗與斷路器裁決 :     0.82 秒 (  5.1%)
- 步驟 6：收斂軌跡與超額收益報表繪製:     1.36 秒 (  8.4%)
+ 步驟 0：環境掛載與隨機串流鎖定   :     0.61 秒 (  1.7%)
+ 步驟 1：快取與時間軸對齊 (Opens) :    21.87 秒 ( 62.8%)
+ 步驟 2：IS 切分與雜訊底線校準    :     0.02 秒 (  0.1%)
+ 步驟 3：超參數空間自適應邊界定義 :     0.01 秒 (  0.0%)
+ 步驟 4：BayesOpt 尋優平行引擎運行:     7.97 秒 ( 22.9%)
+ 步驟 5：DSR 與 PBO 統計審計裁決  :     2.10 秒 (  6.0%)
+ 步驟 6：收斂軌跡與 PBO 圖表繪製  :     2.23 秒 (  6.4%)
 -----------------------------------------------------------------
-⏱️ 【總執行時長】: 0 分 16.26 秒 (共 16.26 秒)
+⏱️ 【總執行時長】: 0 分 34.80 秒 (共 34.80 秒)
 =================================================================
-🎯 [Phase 4] 執行完畢！熔斷檢定與參數狀態已鎖定。請推進至 Phase 5 或 Phase 6。
+🎯 [Phase 4] 執行完畢！DSR + PBO 雙重檢定已鎖定。請推進至 Phase 5 或 Phase 6。
 =================================================================
 >> 
 
@@ -581,25 +650,23 @@ Estimated function evaluation time = 0.29129
  ⚡ [Config] 成功注入通過 DSR 顯著性檢定之 Phase 4 BO 最佳化參數：
     - 崩盤護欄硬熔斷閾值 : 0.0978
     - 時序專家權重 (Time_W): 1.0000 (空間專家已剪枝，強制鎖定 1.0)
-    - 集中度標的數 (Top_K) : 12
+    - 集中度標的數 (Top_K) : 22
 🔒 已掛載 mrg32k3a 主隨機串流 (Substream=1)，鎖定前向回測環境。
-⏱️ [步驟 0 完成] 耗時: 0.59 秒
+⏱️ [步驟 0 完成] 耗時: 1.25 秒
 
 --- 步驟 1：載入全域快取、DataFetcher 開盤價與模型參數 ---
   -> 空間專家狀態: 【⏩ 已剪枝】(Pure-Time 模式：強制時序權重=1.0，杜絕排序稀釋)
   🎯 [Phase 4 參數載入] 成功繼承通過 DSR 檢定 (DSR=1.0000) 之 BO 最佳參數：
-     > 崩盤護欄閾值: 0.0978 | 時序專家權重: 1.0000 | 集中度 Top-K: 12
+     > 崩盤護欄閾值: 0.0978 | 時序專家權重: 1.0000 | 集中度 Top-K: 22
   🏛️ [決策架構] 已徹底剔除 PPO 強化學習，全面採用 Phase 4 貝氏最佳化規則與連續死區護欄。
 --- 啟動 Data Lake 面板資料載入與極速矩陣映射 ---
  -> 建立基準時間軸 (以 SPY 作為絕對交易日曆)...
  -> 執行極速矩陣映射 (Bypassing Unstack 效能優化)...
  -> 啟動多核心 parfor 執行極速矩陣映射 (記憶體防爆版)...
-Starting parallel pool (parpool) using the 'Processes' profile ...
-Connected to parallel pool with 8 workers.
 --- 執行大宇宙數據邊界與品質斷言檢查 ---
 ⚠️ 攔截到 9050 筆異常 (報價異常: 1, 真實停牌枯竭: 9049，已排除 Macro 指數)，已強制物理損毀交由下游 omitnan 濾除。
 💾 成功以 SPY 基準時間軸對齊大宇宙資料 (共 504 檔標的，8467 個真實交易日)。
-⏱️ [步驟 1 完成] 耗時: 23.10 秒
+⏱️ [步驟 1 完成] 耗時: 5.95 秒
 
 --- 步驟 2：預計算市場波動度與宏觀指標 ---
 ⏱️ [步驟 2 完成] 耗時: 0.00 秒
@@ -612,32 +679,32 @@ Connected to parallel pool with 8 workers.
     > 有效連續緩衝區間寬度                           : 0.0300
     > 統一調倉步進 (RebalanceStride)                : 每 20 個交易日定期換手 (對齊 Horizon=20)
  📊 [成本模型檢查] 平均日波動度: 0.9714% | 預期平均換手成本率: 0.1471%
-⏱️ [步驟 3 完成] 耗時: 0.00 秒
+⏱️ [步驟 3 完成] 耗時: 0.02 秒
 
 --- 步驟 4：啟動逐日推論與交易結算 (同構前向回測) ---
  📡 回測正式起點：03-Jan-2006
 [27-Apr-2006] SPY: -0.46% | MARI: +0.00% | 現金: 100.0% | 持股:  0 檔 | 換手成本: 0.000% | 累計淨值: 1.00
 [30-Apr-2007] SPY: +0.37% | MARI: +0.00% | 現金: 100.0% | 持股:  0 檔 | 換手成本: 0.000% | 累計淨值: 1.00
 [29-Apr-2008] SPY: -0.35% | MARI: +0.00% | 現金: 100.0% | 持股:  0 檔 | 換手成本: 0.000% | 累計淨值: 1.00
-[29-Apr-2009] SPY: +1.82% | MARI: +2.36% | 現金:  15.6% | 持股: 12 檔 | 換手成本: 0.002% | 累計淨值: 1.16
-[29-Apr-2010] SPY: +0.88% | MARI: +0.26% | 現金:   0.0% | 持股: 12 檔 | 換手成本: 0.000% | 累計淨值: 3.30
-[28-Apr-2011] SPY: +0.28% | MARI: +1.46% | 現金:   0.0% | 持股: 12 檔 | 換手成本: 0.000% | 累計淨值: 7.32
-[27-Apr-2012] SPY: +1.22% | MARI: +0.98% | 現金:   0.0% | 持股: 12 檔 | 換手成本: 0.000% | 累計淨值: 15.71
-[01-May-2013] SPY: +0.04% | MARI: +0.57% | 現金:   0.0% | 持股: 12 檔 | 換手成本: 0.000% | 累計淨值: 43.12
-[01-May-2014] SPY: +0.42% | MARI: +1.05% | 現金:   0.0% | 持股: 12 檔 | 換手成本: 0.000% | 累計淨值: 120.82
-[01-May-2015] SPY: -0.23% | MARI: -0.55% | 現金:   0.0% | 持股: 12 檔 | 換手成本: 0.000% | 累計淨值: 292.91
-[02-May-2016] SPY: +0.10% | MARI: +0.94% | 現金:   0.0% | 持股: 12 檔 | 換手成本: 0.000% | 累計淨值: 331.37
-[02-May-2017] SPY: +0.07% | MARI: +0.32% | 現金:   0.0% | 持股: 12 檔 | 換手成本: 0.000% | 累計淨值: 685.83
-[02-May-2018] SPY: +0.34% | MARI: +0.79% | 現金:   0.0% | 持股: 12 檔 | 換手成本: 0.000% | 累計淨值: 1606.01
-[03-May-2019] SPY: +0.39% | MARI: -0.55% | 現金:   0.0% | 持股: 12 檔 | 換手成本: 0.000% | 累計淨值: 4784.42
-[04-May-2020] SPY: -1.60% | MARI: -3.85% | 現金:  17.2% | 持股: 12 檔 | 換手成本: 0.000% | 累計淨值: 7082.48
-[04-May-2021] SPY: -0.80% | MARI: -0.35% | 現金:   0.0% | 持股: 12 檔 | 換手成本: 0.000% | 累計淨值: 15093.45
-[03-May-2022] SPY: +0.71% | MARI: +0.00% | 現金: 100.0% | 持股:  0 檔 | 換手成本: 0.000% | 累計淨值: 32700.26
-[04-May-2023] SPY: -1.08% | MARI: +0.81% | 現金:   0.0% | 持股: 12 檔 | 換手成本: 0.000% | 累計淨值: 32490.51
-[06-May-2024] SPY: +0.51% | MARI: +0.05% | 現金:  96.2% | 持股: 11 檔 | 換手成本: 0.000% | 累計淨值: 48343.25
-[08-May-2025] SPY: +0.91% | MARI: +0.00% | 現金: 100.0% | 持股:  0 檔 | 換手成本: 0.000% | 累計淨值: 41493.46
-[11-May-2026] SPY: +0.21% | MARI: +0.00% | 現金: 100.0% | 持股:  0 檔 | 換手成本: 0.000% | 累計淨值: 64260.12
-⏱️ [步驟 4 完成] 耗時: 0.36 秒 (0.01 分鐘)
+[29-Apr-2009] SPY: +1.82% | MARI: +1.58% | 現金:  15.6% | 持股: 22 檔 | 換手成本: 0.003% | 累計淨值: 1.07
+[29-Apr-2010] SPY: +0.88% | MARI: +1.13% | 現金:   0.0% | 持股: 22 檔 | 換手成本: 0.000% | 累計淨值: 2.72
+[28-Apr-2011] SPY: +0.28% | MARI: +0.73% | 現金:   0.0% | 持股: 22 檔 | 換手成本: 0.000% | 累計淨值: 4.85
+[27-Apr-2012] SPY: +1.22% | MARI: +1.17% | 現金:   0.0% | 持股: 22 檔 | 換手成本: 0.000% | 累計淨值: 7.75
+[01-May-2013] SPY: +0.04% | MARI: +0.45% | 現金:   0.0% | 持股: 22 檔 | 換手成本: 0.000% | 累計淨值: 16.80
+[01-May-2014] SPY: +0.42% | MARI: +0.52% | 現金:   0.0% | 持股: 22 檔 | 換手成本: 0.000% | 累計淨值: 33.41
+[01-May-2015] SPY: -0.23% | MARI: -1.24% | 現金:   0.0% | 持股: 22 檔 | 換手成本: 0.000% | 累計淨值: 60.10
+[02-May-2016] SPY: +0.10% | MARI: -0.32% | 現金:   0.0% | 持股: 22 檔 | 換手成本: 0.000% | 累計淨值: 58.83
+[02-May-2017] SPY: +0.07% | MARI: +0.23% | 現金:   0.0% | 持股: 22 檔 | 換手成本: 0.000% | 累計淨值: 107.74
+[02-May-2018] SPY: +0.34% | MARI: +0.97% | 現金:   0.0% | 持股: 22 檔 | 換手成本: 0.000% | 累計淨值: 205.46
+[03-May-2019] SPY: +0.39% | MARI: +0.41% | 現金:   0.0% | 持股: 22 檔 | 換手成本: 0.000% | 累計淨值: 443.53
+[04-May-2020] SPY: -1.60% | MARI: -3.27% | 現金:  17.2% | 持股: 22 檔 | 換手成本: 0.000% | 累計淨值: 525.51
+[04-May-2021] SPY: -0.80% | MARI: -0.69% | 現金:   0.0% | 持股: 28 檔 | 換手成本: 0.000% | 累計淨值: 968.53
+[03-May-2022] SPY: +0.71% | MARI: +0.05% | 現金:  97.8% | 持股: 11 檔 | 換手成本: 0.000% | 累計淨值: 1484.41
+[04-May-2023] SPY: -1.08% | MARI: +1.25% | 現金:   0.0% | 持股: 22 檔 | 換手成本: 0.000% | 累計淨值: 1538.04
+[06-May-2024] SPY: +0.51% | MARI: +0.01% | 現金:  98.9% | 持股:  4 檔 | 換手成本: 0.001% | 累計淨值: 2578.83
+[08-May-2025] SPY: +0.91% | MARI: +0.05% | 現金:  98.7% | 持股:  4 檔 | 換手成本: 0.000% | 累計淨值: 2394.73
+[11-May-2026] SPY: +0.21% | MARI: +0.01% | 現金:  97.6% | 持股: 10 檔 | 換手成本: 0.000% | 累計淨值: 3162.29
+⏱️ [步驟 4 完成] 耗時: 0.30 秒 (0.01 分鐘)
 
 --- 步驟 5：嚴格 IS / OOS 績效分離結算 ---
 
@@ -646,46 +713,37 @@ Connected to parallel pool with 8 workers.
 ====================================================================================================
  區間劃分        | 累積總報酬 | 年化報酬(CAGR) | 年化波動度 | 最大回撤(MDD) | 夏普比率 | 卡瑪比率 | 資訊比率(IR) | 日勝率
 ----------------------------------------------------------------------------------------------------
- IS 訓練期(MARI) |  +3290630.50% |     +91.70%   |   22.93%  |    -37.40%   |    2.96  |    2.45  |     +2.92    |  48.5%
+ IS 訓練期(MARI) |  +155991.00% |     +58.41%   |   20.15%  |    -43.09%   |    2.39  |    1.36  |     +2.18    |  48.1%
  IS 基準線(SPY)  |   +414.47% |     +10.79%   |   18.93%  |    -55.42%   |    0.64  |    0.19  |      N/A     |  55.5%
 ----------------------------------------------------------------------------------------------------
- OOS 盲測(MARI)  |   +111.20% |     +17.28%   |   21.41%  |    -19.41%   |    0.85  |    0.89  |     +0.27    |  41.3%
+ OOS 盲測(MARI)  |   +125.60% |     +18.94%   |   19.02%  |    -19.28%   |    1.01  |    0.98  |     +0.35    |  53.9%
  OOS 基準線(SPY) |    +70.29% |     +12.02%   |   17.54%  |    -26.29%   |    0.74  |    0.46  |      N/A     |  53.9%
 ----------------------------------------------------------------------------------------------------
- 全歷史累計(MARI)|  +6950040.50% |     +71.49%   |   22.63%  |    -37.40%   |    2.50  |    1.91  |     +2.30    |  46.9%
+ 全歷史累計(MARI)|  +352047.75% |     +48.45%   |   19.91%  |    -43.09%   |    2.09  |    1.12  |     +1.74    |  49.4%
 ====================================================================================================
 
-⏱️ [步驟 5 完成] 耗時: 0.00 秒
+⏱️ [步驟 5 完成] 耗時: 0.01 秒
 
 --- 步驟 6：生成機構級視覺化報表 (白底黑字 - OOS 獨立歸一化與回撤歸零版) ---
  📊 機構級前向回測報表 (白底黑字) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/models/Phase6_WalkForward_Backtest.png
-⏱️ [步驟 6 完成] 耗時: 2.46 秒
+⏱️ [步驟 6 完成] 耗時: 2.91 秒
 
 =================================================================
 📊 【Phase 6 各階段耗時明細與總時長審計報告】
 =================================================================
- 步驟 0：環境掛載與隨機串流鎖定   :     0.59 秒 (  2.2%)
- 步驟 1：快取與開盤價矩陣載入     :    23.10 秒 ( 87.1%)
+ 步驟 0：環境掛載與隨機串流鎖定   :     1.25 秒 ( 12.0%)
+ 步驟 1：快取與開盤價矩陣載入     :     5.95 秒 ( 57.0%)
  步驟 2：宏觀波動度與狀態空間預計算:     0.00 秒 (  0.0%)
- 步驟 3：時間邊界劃分與死區校準   :     0.00 秒 (  0.0%)
- 步驟 4：前向滾動推論與定期調倉撮合:     0.36 秒 (  1.4%)
- 步驟 5：IS/OOS 財務計量指標分離  :     0.00 秒 (  0.0%)
- 步驟 6：圖表繪製 (OOS 重設) 與存檔:     2.46 秒 (  9.3%)
+ 步驟 3：時間邊界劃分與死區校準   :     0.02 秒 (  0.2%)
+ 步驟 4：前向滾動推論與定期調倉撮合:     0.30 秒 (  2.9%)
+ 步驟 5：IS/OOS 財務計量指標分離  :     0.01 秒 (  0.1%)
+ 步驟 6：圖表繪製 (OOS 重設) 與存檔:     2.91 秒 ( 27.8%)
 -----------------------------------------------------------------
-⏱️ 【總執行時長】: 0 分 26.52 秒 (共 26.52 秒)
+⏱️ 【總執行時長】: 0 分 10.44 秒 (共 10.44 秒)
 =================================================================
 🎯 [Phase 15.5] 前向回測執行完畢！全管線同構閉環達成。
 =================================================================
 >> 
-
-
-
-
-
-
-
-
-
 
 
 
