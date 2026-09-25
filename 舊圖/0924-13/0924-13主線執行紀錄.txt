@@ -1,0 +1,1093 @@
+=================================================================
+🚀 [Phase 15.5] 啟動 MARI 數據湖對齊、特徵萃取與零洩漏降噪管線 (mrg32k3a 確定性子串流版)
+=================================================================
+--- 步驟 0：環境路徑掛載、Config 載入與平行隨機子串流鎖定 ---
+ 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
+ ⚡ [Config] 成功注入通過 DSR 顯著性檢定之 Phase 4 BO 最佳化參數：
+    - 崩盤護欄硬熔斷閾值 : 0.0969
+    - 時序專家權重 (Time_W): 1.0000 (空間專家已剪枝，強制鎖定 1.0)
+    - 集中度標的數 (Top_K) : 22
+🔒 已成功為所有並行 Worker 注入 mrg32k3a 獨立隨機子串流 (確定性可重現模式)。
+⏱️ [步驟 0 完成] 耗時: 1.35 秒
+
+--- 步驟 1：啟動外部 Python 爬蟲微服務 (美股大宇宙 + FRED 總經) ---
+⏳ 正在執行美股大宇宙與 K 線爬蟲 (hybrid_crawler.py)...
+✅ 美股大宇宙 K 線長表建立完成！
+⏳ 正在執行 FRED 總經領先指標爬蟲 (fred_crawler.py)...
+✅ FRED 宏觀總經數據抓取與 PiT 延遲校正完成！
+ 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
+⏱️ [步驟 1 完成] 耗時: 59.86 秒 (1.00 分鐘)
+
+--- 步驟 2：載入 Data Lake 並執行極速矩陣映射 ---
+--- 啟動 Data Lake 面板資料載入與極速矩陣映射 ---
+ -> 建立基準時間軸 (以 SPY 作為絕對交易日曆)...
+ -> 執行極速矩陣映射 (Bypassing Unstack 效能優化)...
+ -> 啟動多核心 parfor 執行極速矩陣映射 (記憶體防爆版)...
+--- 執行大宇宙數據邊界與品質斷言檢查 ---
+⚠️ 攔截到 9050 筆異常 (報價異常: 1, 真實停牌枯竭: 9049，已排除 Macro 指數)，已強制物理損毀交由下游 omitnan 濾除。
+💾 成功以 SPY 基準時間軸對齊大宇宙資料 (共 504 檔標的，8467 個真實交易日)。
+⏱️ [步驟 2 完成] 耗時: 6.22 秒
+
+--- 步驟 3：特徵工程與 DyGAT 時變圖譜萃取 (防禦 Look-ahead Bias) ---
+ ⚙️ [FeatureEngineer] 初始化。準備產出 3D 面板資料 [Days, 28, 504] (圖譜協整開關: 0)
+ 🚀 啟動機構級大宇宙特徵工程 (True PiT 橫截面無洩漏版)...
+ -> 構建 True PiT 流動性濾網 (排除 IPO前/停牌/非成分股/雞蛋水餃股)...
+ -> 載入 GICS 產業別映射表以支援產業內橫截面中性化...
+    🏷️ 成功識別 504 檔標的之 GICS 板塊標籤 (來源: /home/andy/Documents/MARI_Quant_System/data/crawlers/us_universe.csv)。
+    🏢 已建立 11 個有效 GICS 產業中性化遮罩: Communication Services, Consumer Discretionary, Consumer Staples, Energy, Financials, Health Care, Industrials, Information Technology, Materials, Real Estate, Utilities
+ -> 讀取並對齊 FRED 總經領先指標快取...
+    ✅ FRED 總經指標對齊完畢，信用利差 (HY Spread) 具備完整歷史覆蓋。
+ -> 計算 15 維微觀結構特徵 (純向量化極速模式)...
+ -> 計算 3 維相對大盤特徵 (純向量化極速模式)...
+ -> 計算 10 維宏觀總經特徵...
+ -> 組合特徵為 3D 面板資料...
+ -> 執行特徵標準化 (GICS 產業內橫截面 Z-Score + 退縮保護)...
+ ⏩ [FeatureEngineer] 依實驗結論，已剪枝空間圖譜 (DyGAT) 協整計算，自動配置對角自環圖譜矩陣。
+✅ 3D 特徵面板 (GICS 產業中性化) 提取完畢 (圖譜運算已旁路)！
+  📊 [特徵面板維度校驗] 天數: 8467 | 節點特徵數: 28 維 (預期 28 維) | 標的數: 504 檔
+⏱️ [步驟 3 完成] 耗時: 5.27 秒 (0.09 分鐘)
+
+--- 步驟 4：嚴格 In-Sample 預訓練 VQ-VAE 降噪器與字典凍結 ---
+ 🔒 物理隔絕啟動：VQ-VAE 僅允許在 In-Sample 區間 (4028 天) 進行降噪字典學習。
+--- 啟動 VQ-VAE 降噪器預訓練 (STE 梯度與 EMA 字典聯合更新) ---
+ -> 提取高頻動能特徵完畢。有效樣本數: 1788804 筆。
+ 🌟 [EMAQuantizer] 首次 Forward 攔截：執行真實資料依賴抽樣初始化...
+  -> Epoch  1/30 | Recon Loss: 0.1911 | Commit Loss: 0.0567
+  -> Epoch 10/30 | Recon Loss: 0.0478 | Commit Loss: 0.0413
+  -> Epoch 20/30 | Recon Loss: 0.0463 | Commit Loss: 0.0444
+  -> Epoch 30/30 | Recon Loss: 0.0460 | Commit Loss: 0.0451
+✅ VQ-VAE 降噪器訓練與 EMA 字典收斂完成。
+ 🔒 [EMAQuantizer] 字典已物理凍結。禁止任何記憶體狀態寫入。
+ 🧊 VQ-VAE 編碼簿字典已成功凍結 (Freeze)，徹底杜絕 OOS 洩漏！
+⏱️ [步驟 4 完成] 耗時: 191.33 秒 (3.19 分鐘)
+
+ 🔄 啟動全域盲測降噪 (Out-of-Sample Denoising)...
+--- 執行全域特徵解耦前向推論 (VRAM Safe Vectorized Inference) ---
+ -> 啟動記憶體分塊推論 (Chunk Size: 200000, 總筆數: 4267368)...
+✅ 高頻動能降噪與平滑趨勢拼裝完畢 (VRAM Safe & 零雜訊外洩)！
+⏱️ [步驟 5 完成] 耗時: 1.14 秒
+
+--- 步驟 6：降噪特徵 3D 張量快取與 VQ-VAE 大腦實體落地 ---
+💾 全域 3D 特徵快取已安全落地至: /home/andy/Documents/MARI_Quant_System/data/cache/features_denoised.mat
+💾 VQ-VAE 降噪大腦實體已存檔至: /home/andy/Documents/MARI_Quant_System/results/models/VQVAE_Agent.mat
+⏱️ [步驟 6 完成] 耗時: 15.06 秒
+
+=================================================================
+📊 【Phase 1 各階段耗時明細與總時長審計報告】
+=================================================================
+ 步驟 0：環境掛載與隨機串流注入 :     1.35 秒 (  0.5%)
+ 步驟 1：Python 爬蟲微服務調度  :    59.86 秒 ( 21.4%)
+ 步驟 2：Data Lake 矩陣映射對齊 :     6.22 秒 (  2.2%)
+ 步驟 3：特徵工程與時變圖譜萃取 :     5.27 秒 (  1.9%)
+ 步驟 4：In-Sample VQ-VAE 字典預訓練:   191.33 秒 ( 68.3%)
+ 步驟 5：全域盲測特徵向量降噪推論:     1.14 秒 (  0.4%)
+ 步驟 6：張量快取與大腦實體序列化:    15.06 秒 (  5.4%)
+-----------------------------------------------------------------
+⏱️ 【總執行時長】: 4 分 40.22 秒 (共 280.22 秒)
+🔒 【架構安全斷言】: 特徵資料庫保持絕對客觀物理數值，無常態性隨機遮蔽。
+🛡️ 【正則化解耦機制】: Feature/Attention/Variational Dropout 嚴格限制於 Phase 2 動態生成。
+=================================================================
+🎯 [Phase 1] 完美完成。特徵資料庫與降噪模型已 100% 確定性落地，請進入 Phase 2！
+=================================================================
+>> 
+
+=================================================================
+🚀 [Phase 15.5] 啟動 DL 特徵萃取器預訓練管線 (權重 EMA ＋ 200輪極限收斂版)
+=================================================================
+--- 步驟 0：環境路徑掛載、Config 載入與隨機串流鎖定 ---
+ 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
+ ⚡ [Config] 成功注入通過 DSR/PBO 顯著性檢定之 Phase 4 BO 最佳化參數：
+    - 崩盤護欄硬熔斷閾值 : 0.0977
+    - 時序專家權重 (Time_W): 1.0000 (空間專家已剪枝，強制鎖定 1.0)
+    - 集中度標的數 (Top_K) : 15
+🔒 已成功掛載 mrg32k3a 主隨機串流 (Substream=1)，鎖定預訓練確定性。
+⏱️ [步驟 0 完成] 耗時: 1.13 秒
+
+--- 步驟 1：載入淨化 3D 特徵面板與時間軸嚴格對齊 ---
+  -> 宇宙規模: 504 檔 | 交易天數: 8467 天 | 原始特徵維度: 28 維 | 預測視窗: 20 日
+⏱️ [步驟 1 完成] 耗時: 3.54 秒
+
+--- 步驟 1.5：特徵切片 (剝離 Macro)、1D/HAC-ICIR 健檢與特徵注意力加權 ---
+ ⚙️ [FeatureEvaluator] 初始化完成。已載入可配置 Horizon 橫截面 IC 與 HAC-ICIR 檢定引擎。
+--- 啟動極速多核心橫截面特徵信心評估 (Spearman IC, Horizon=1日) ---
+  -> 啟動 Parpool 平行運算，評估 18 維特徵的橫截面預測力 (動態門檻: 25 檔)...
+  -> 執行時間平移與滾動平滑 (生成無未來函數之 IC 強度)...
+  -> 執行能量守恆 Softmax 注意力縮放 (Energy-Preserving Normalization)...
+✅ 橫截面 Spearman IC 評估與能量守恆注意力權重生成完畢！
+
+====================================================================================================
+📊 【Phase 15.5 特徵訊號方向穩定性健檢：1D (Micro-Structure) Horizon HAC-ICIR 排行榜 (Task A 修復版)】
+====================================================================================================
+  [ 1] R1               | mean(IC)=-0.0228  std(IC)=0.1085  ICIR=-0.2098 | HAC t=-17.982  p=0.0000 (lag=10)  ⭐ p<0.05 (HAC)
+  [ 2] R5               | mean(IC)=-0.0214  std(IC)=0.1136  ICIR=-0.1883 | HAC t=-16.651  p=0.0000 (lag=10)  ⭐ p<0.05 (HAC)
+  [ 3] SMA20            | mean(IC)=+0.0206  std(IC)=0.1169  ICIR=+0.1764 | HAC t=+15.543  p=0.0000 (lag=10)  ⭐ p<0.05 (HAC)
+  [ 4] RelStrength      | mean(IC)=-0.0206  std(IC)=0.1173  ICIR=-0.1757 | HAC t=-15.477  p=0.0000 (lag=10)  ⭐ p<0.05 (HAC)
+  [ 5] RSI              | mean(IC)=-0.0170  std(IC)=0.1166  ICIR=-0.1455 | HAC t=-12.218  p=0.0000 (lag=10)  ⭐ p<0.05 (HAC)
+  [ 6] MACD_Hist        | mean(IC)=-0.0152  std(IC)=0.1096  ICIR=-0.1389 | HAC t=-12.994  p=0.0000 (lag=10)  ⭐ p<0.05 (HAC)
+  [ 7] Dist_H20         | mean(IC)=-0.0163  std(IC)=0.1252  ICIR=-0.1306 | HAC t=-11.699  p=0.0000 (lag=10)  ⭐ p<0.05 (HAC)
+  [ 8] R20              | mean(IC)=-0.0141  std(IC)=0.1156  ICIR=-0.1221 | HAC t=-11.100  p=0.0000 (lag=10)  ⭐ p<0.05 (HAC)
+  [ 9] SMA60            | mean(IC)=+0.0131  std(IC)=0.1233  ICIR=+0.1062 | HAC t= +9.439  p=0.0000 (lag=10)  ⭐ p<0.05 (HAC)
+  [10] VolRatio         | mean(IC)=+0.0052  std(IC)=0.0612  ICIR=+0.0856 | HAC t= +7.601  p=0.0000 (lag=10)  ⭐ p<0.05 (HAC)
+  [11] OBV20            | mean(IC)=-0.0075  std(IC)=0.0872  ICIR=-0.0855 | HAC t= -8.000  p=0.0000 (lag=10)  ⭐ p<0.05 (HAC)
+  [12] IdioVol20        | mean(IC)=-0.0045  std(IC)=0.1164  ICIR=-0.0386 | HAC t= -3.693  p=0.0002 (lag=10)  ⭐ p<0.05 (HAC)
+  [13] HL_Spread        | mean(IC)=-0.0044  std(IC)=0.1324  ICIR=-0.0335 | HAC t= -3.361  p=0.0008 (lag=10)  ⭐ p<0.05 (HAC)
+  [14] Vol20            | mean(IC)=-0.0045  std(IC)=0.1478  ICIR=-0.0304 | HAC t= -3.020  p=0.0025 (lag=10)  ⭐ p<0.05 (HAC)
+  [15] Dist_H252        | mean(IC)=-0.0043  std(IC)=0.1457  ICIR=-0.0294 | HAC t= -2.572  p=0.0101 (lag=10)  ⭐ p<0.05 (HAC)
+  [16] Amihud20         | mean(IC)=+0.0028  std(IC)=0.1020  ICIR=+0.0274 | HAC t= +2.740  p=0.0061 (lag=10)  ⭐ p<0.05 (HAC)
+  [17] Beta             | mean(IC)=-0.0013  std(IC)=0.1612  ICIR=-0.0082 | HAC t= -0.871  p=0.3836 (lag=10)  
+  [18] Corr             | mean(IC)=+0.0008  std(IC)=0.1109  ICIR=+0.0069 | HAC t= +0.722  p=0.4701 (lag=10)  
+----------------------------------------------------------------------------------------------------
+  ✅ 通過穩定性健檢：共 11 個特徵通過 HAC 顯著性檢定 (lag=1) 且 |ICIR| >= 0.0500。
+====================================================================================================
+
+
+=================================================================
+📊 【特徵閘門注意力強度：平均絕對 |IC| 排行榜】
+=================================================================
+  [ 1] Beta             | 滾動 mean(|IC|) = 0.1241
+  [ 2] Vol20            | 滾動 mean(|IC|) = 0.1151
+  [ 3] Dist_H252        | 滾動 mean(|IC|) = 0.1096
+  [ 4] HL_Spread        | 滾動 mean(|IC|) = 0.1020
+  [ 5] Dist_H20         | 滾動 mean(|IC|) = 0.0958
+  [ 6] SMA60            | 滾動 mean(|IC|) = 0.0944
+  [ 7] IdioVol20        | 滾動 mean(|IC|) = 0.0925
+  [ 8] RelStrength      | 滾動 mean(|IC|) = 0.0899
+  [ 9] SMA20            | 滾動 mean(|IC|) = 0.0897
+  [10] RSI              | 滾動 mean(|IC|) = 0.0897
+  [11] R20              | 滾動 mean(|IC|) = 0.0882
+  [12] R5               | 滾動 mean(|IC|) = 0.0871
+  [13] Corr             | 滾動 mean(|IC|) = 0.0842
+  [14] R1               | 滾動 mean(|IC|) = 0.0840
+  [15] MACD_Hist        | 滾動 mean(|IC|) = 0.0829
+  [16] Amihud20         | 滾動 mean(|IC|) = 0.0816
+  [17] OBV20            | 滾動 mean(|IC|) = 0.0675
+  [18] VolRatio         | 滾動 mean(|IC|) = 0.0492
+=================================================================
+
+--- 啟動極速多核心橫截面特徵信心評估 (Spearman IC, Horizon=20日) ---
+  -> 啟動 Parpool 平行運算，評估 18 維特徵的橫截面預測力 (動態門檻: 25 檔)...
+  -> 執行時間平移與滾動平滑 (生成無未來函數之 IC 強度)...
+  -> 執行能量守恆 Softmax 注意力縮放 (Energy-Preserving Normalization)...
+✅ 橫截面 Spearman IC 評估與能量守恆注意力權重生成完畢！
+
+====================================================================================================
+📊 【Phase 15.5 特徵訊號方向穩定性健檢：20D (Aligned with Extractor Target) Horizon HAC-ICIR 排行榜 (Task A 修復版)】
+====================================================================================================
+  [ 1] Amihud20         | mean(IC)=+0.0251  std(IC)=0.0928  ICIR=+0.2703 | HAC t= +7.006  p=0.0000 (lag=20)  ⭐ p<0.05 (HAC)
+  [ 2] Dist_H20         | mean(IC)=-0.0294  std(IC)=0.1183  ICIR=-0.2487 | HAC t= -6.760  p=0.0000 (lag=20)  ⭐ p<0.05 (HAC)
+  [ 3] RSI              | mean(IC)=-0.0262  std(IC)=0.1100  ICIR=-0.2383 | HAC t= -6.425  p=0.0000 (lag=20)  ⭐ p<0.05 (HAC)
+  [ 4] RelStrength      | mean(IC)=-0.0242  std(IC)=0.1074  ICIR=-0.2255 | HAC t= -6.668  p=0.0000 (lag=20)  ⭐ p<0.05 (HAC)
+  [ 5] SMA20            | mean(IC)=+0.0240  std(IC)=0.1070  ICIR=+0.2244 | HAC t= +6.642  p=0.0000 (lag=20)  ⭐ p<0.05 (HAC)
+  [ 6] R5               | mean(IC)=-0.0219  std(IC)=0.1001  ICIR=-0.2183 | HAC t= -8.805  p=0.0000 (lag=20)  ⭐ p<0.05 (HAC)
+  [ 7] SMA60            | mean(IC)=+0.0230  std(IC)=0.1205  ICIR=+0.1909 | HAC t= +4.984  p=0.0000 (lag=20)  ⭐ p<0.05 (HAC)
+  [ 8] R20              | mean(IC)=-0.0209  std(IC)=0.1102  ICIR=-0.1899 | HAC t= -5.318  p=0.0000 (lag=20)  ⭐ p<0.05 (HAC)
+  [ 9] R1               | mean(IC)=-0.0163  std(IC)=0.0936  ICIR=-0.1739 | HAC t=-12.938  p=0.0000 (lag=20)  ⭐ p<0.05 (HAC)
+  [10] Dist_H252        | mean(IC)=-0.0222  std(IC)=0.1546  ICIR=-0.1434 | HAC t= -3.592  p=0.0003 (lag=20)  ⭐ p<0.05 (HAC)
+  [11] OBV20            | mean(IC)=-0.0110  std(IC)=0.0815  ICIR=-0.1352 | HAC t= -3.813  p=0.0001 (lag=20)  ⭐ p<0.05 (HAC)
+  [12] MACD_Hist        | mean(IC)=-0.0128  std(IC)=0.0989  ICIR=-0.1292 | HAC t= -4.182  p=0.0000 (lag=20)  ⭐ p<0.05 (HAC)
+  [13] IdioVol20        | mean(IC)=+0.0129  std(IC)=0.1183  ICIR=+0.1094 | HAC t= +2.763  p=0.0057 (lag=20)  ⭐ p<0.05 (HAC)
+  [14] HL_Spread        | mean(IC)=+0.0130  std(IC)=0.1303  ICIR=+0.0996 | HAC t= +2.570  p=0.0102 (lag=20)  ⭐ p<0.05 (HAC)
+  [15] Vol20            | mean(IC)=+0.0136  std(IC)=0.1427  ICIR=+0.0954 | HAC t= +2.424  p=0.0153 (lag=20)  ⭐ p<0.05 (HAC)
+  [16] Corr             | mean(IC)=-0.0064  std(IC)=0.0971  ICIR=-0.0655 | HAC t= -1.759  p=0.0786 (lag=20)  
+  [17] Beta             | mean(IC)=+0.0067  std(IC)=0.1412  ICIR=+0.0472 | HAC t= +1.241  p=0.2148 (lag=20)  
+  [18] VolRatio         | mean(IC)=+0.0002  std(IC)=0.0600  ICIR=+0.0041 | HAC t= +0.164  p=0.8700 (lag=20)  
+----------------------------------------------------------------------------------------------------
+  ✅ 通過穩定性健檢：共 15 個特徵通過 HAC 顯著性檢定 (lag=20) 且 |ICIR| >= 0.0500。
+====================================================================================================
+
+ -> 執行特徵注意力遮罩融合 (Energy-Preserving Feature Gate)...
+  -> [萃取器通道健檢] 18 維特徵標準差範圍: [0.1108, 3.2452] (平均: 1.0903)
+⏱️ [步驟 1.5 完成] 耗時: 4.81 秒 (0.08 分鐘)
+
+--- 步驟 2：構建橫截面連續超額報酬標籤 (Direction 2: 20D Continuous Z-Score) ---
+⏱️ [步驟 2 完成] 耗時: 0.14 秒
+
+--- 步驟 3：切分時間軸 (嚴格 IS 內 Purged Embargo 跨體制驗證集) ---
+✅ Purged 多體制時間軸劃分成功！訓練樣本: 3020 筆 | 跨體制驗證樣本: 925 筆 (嚴格 Embargo: 20 天)
+⏱️ [步驟 3 完成] 耗時: 0.04 秒
+
+--- 步驟 4：初始化特徵萃取網路 (連續預測頭 - mrg32k3a 確定性初值) ---
+ ⚙️ [NetworkFactory] 啟動特徵萃取器構建工廠 (Pure-Time 剪枝與直通殘差加強版)...
+  -> 網路拓撲與容量配置組態：
+     [時序專家] 架構: TRANS_LSTM | 輸入: 18 維 | 視窗: 60 | 直通殘差 (Highway): 1
+     [時序正則] Dropout: 0.20 | AttnDrop: 0.10 | VarDrop: 0.15 | FeatDrop: 0.12 | Noise: 0.0150
+     [空間專家] 狀態: ⏩ 已依實驗結論全面剪枝 (Pure-Time 模式，徹底阻斷過度平滑雜訊)[cite: 1]
+✅ 時序專家網路拓撲構建完畢 (Trans-LSTM + Highway Residual 直通殘差 + 雙重 LayerNorm)[cite: 1]。
+⏩ 空間專家 (DyGAT) 已依組態剪枝跳過構建，節省顯存與前向運算開銷[cite: 1]。
+⏩ [Pure-Time 模式] 空間專家已剪枝，已略過空間線性頭初始化。
+🎮 成功捕獲圖形加速卡：【NVIDIA GeForce RTX 4060 Laptop GPU】，開啟深度學習加速。
+🪞 [EMA 引擎啟用] 影子權重已初始化完成 (基礎衰減率 Beta = 0.995，具備動態偏差校正)。
+⏱️ [步驟 4 完成] 耗時: 0.60 秒
+
+--- 步驟 5：執行萃取器預訓練 (Warmup保護 + 解耦餘弦退火排程 + 權重 EMA 平滑) ---
+🎯 [退火排程解耦] 餘弦退火週期固定為 120 輪 (總輪數: 200 輪 | 超期將鎖定於 min_lr=1.0e-05 平滑搜尋)。
+ -> Epoch   1/200 (LR: 2.08e-04 | FeatDrop: 0.06) | Train ContLoss (T: 0.5510) | Val_EMA Multi-Regime (T: 0.5602)
+    [診斷] GradNorm(T: 3.43e-01) | E_Var_EMA(T: 1.0210)
+    ⏳ [預熱保護期] Epoch   1 <= 5，暫不鎖定最佳快照與早停計數。
+ -> Epoch   2/200 (LR: 4.06e-04 | FeatDrop: 0.06) | Train ContLoss (T: 0.5392) | Val_EMA Multi-Regime (T: 0.5623)
+    [診斷] GradNorm(T: 4.49e-01) | E_Var_EMA(T: 1.0508)
+    ⏳ [預熱保護期] Epoch   2 <= 5，暫不鎖定最佳快照與早停計數。
+ -> Epoch   3/200 (LR: 6.04e-04 | FeatDrop: 0.06) | Train ContLoss (T: 0.5312) | Val_EMA Multi-Regime (T: 0.5576)
+    [診斷] GradNorm(T: 3.30e-01) | E_Var_EMA(T: 1.0795)
+    ⏳ [預熱保護期] Epoch   3 <= 5，暫不鎖定最佳快照與早停計數。
+ -> Epoch   4/200 (LR: 8.02e-04 | FeatDrop: 0.06) | Train ContLoss (T: 0.5249) | Val_EMA Multi-Regime (T: 0.5534)
+    [診斷] GradNorm(T: 5.22e-01) | E_Var_EMA(T: 1.1080)
+    ⏳ [預熱保護期] Epoch   4 <= 5，暫不鎖定最佳快照與早停計數。
+ -> Epoch   5/200 (LR: 1.00e-03 | FeatDrop: 0.06) | Train ContLoss (T: 0.5124) | Val_EMA Multi-Regime (T: 0.5616)
+    [診斷] GradNorm(T: 5.11e-01) | E_Var_EMA(T: 1.1275)
+    ⏳ [預熱保護期] Epoch   5 <= 5，暫不鎖定最佳快照與早停計數。
+ -> Epoch   6/200 (LR: 1.00e-03 | FeatDrop: 0.12) | Train ContLoss (T: 0.5184) | Val_EMA Multi-Regime (T: 0.5584)
+    [診斷] GradNorm(T: 5.49e-01) | E_Var_EMA(T: 1.1502)
+    🌟 [EMA 最佳快照更新] 於正式訓練期鎖定平滑新低點 Val Loss = 0.5584！
+ -> Epoch   7/200 (LR: 9.99e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.5111) | Val_EMA Multi-Regime (T: 0.5609)
+    [診斷] GradNorm(T: 6.31e-01) | E_Var_EMA(T: 1.1548)
+ -> Epoch   8/200 (LR: 9.98e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.5041) | Val_EMA Multi-Regime (T: 0.5561)
+    [診斷] GradNorm(T: 6.21e-01) | E_Var_EMA(T: 1.1679)
+    🌟 [EMA 最佳快照更新] 於正式訓練期鎖定平滑新低點 Val Loss = 0.5561！
+ -> Epoch   9/200 (LR: 9.97e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4970) | Val_EMA Multi-Regime (T: 0.5540)
+    [診斷] GradNorm(T: 7.04e-01) | E_Var_EMA(T: 1.1736)
+    🌟 [EMA 最佳快照更新] 於正式訓練期鎖定平滑新低點 Val Loss = 0.5540！
+ -> Epoch  10/200 (LR: 9.95e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4923) | Val_EMA Multi-Regime (T: 0.5572)
+    [診斷] GradNorm(T: 5.34e-01) | E_Var_EMA(T: 1.1879)
+ -> Epoch  11/200 (LR: 9.93e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4890) | Val_EMA Multi-Regime (T: 0.5587)
+    [診斷] GradNorm(T: 6.44e-01) | E_Var_EMA(T: 1.2107)
+ -> Epoch  12/200 (LR: 9.91e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4833) | Val_EMA Multi-Regime (T: 0.5517)
+    [診斷] GradNorm(T: 5.45e-01) | E_Var_EMA(T: 1.2349)
+    🌟 [EMA 最佳快照更新] 於正式訓練期鎖定平滑新低點 Val Loss = 0.5517！
+ -> Epoch  13/200 (LR: 9.88e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4780) | Val_EMA Multi-Regime (T: 0.5543)
+    [診斷] GradNorm(T: 7.45e-01) | E_Var_EMA(T: 1.2580)
+ -> Epoch  14/200 (LR: 9.85e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4714) | Val_EMA Multi-Regime (T: 0.5557)
+    [診斷] GradNorm(T: 6.52e-01) | E_Var_EMA(T: 1.2789)
+ -> Epoch  15/200 (LR: 9.82e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4695) | Val_EMA Multi-Regime (T: 0.5471)
+    [診斷] GradNorm(T: 6.31e-01) | E_Var_EMA(T: 1.2947)
+    🌟 [EMA 最佳快照更新] 於正式訓練期鎖定平滑新低點 Val Loss = 0.5471！
+ -> Epoch  16/200 (LR: 9.78e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4633) | Val_EMA Multi-Regime (T: 0.5603)
+    [診斷] GradNorm(T: 9.27e-01) | E_Var_EMA(T: 1.3074)
+ -> Epoch  17/200 (LR: 9.74e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4595) | Val_EMA Multi-Regime (T: 0.5530)
+    [診斷] GradNorm(T: 6.97e-01) | E_Var_EMA(T: 1.3166)
+ -> Epoch  18/200 (LR: 9.69e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4555) | Val_EMA Multi-Regime (T: 0.5545)
+    [診斷] GradNorm(T: 7.78e-01) | E_Var_EMA(T: 1.3288)
+ -> Epoch  19/200 (LR: 9.64e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4519) | Val_EMA Multi-Regime (T: 0.5625)
+    [診斷] GradNorm(T: 9.83e-01) | E_Var_EMA(T: 1.3366)
+ -> Epoch  20/200 (LR: 9.59e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4494) | Val_EMA Multi-Regime (T: 0.5619)
+    [診斷] GradNorm(T: 8.55e-01) | E_Var_EMA(T: 1.3471)
+ -> Epoch  21/200 (LR: 9.53e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4458) | Val_EMA Multi-Regime (T: 0.5531)
+    [診斷] GradNorm(T: 1.09e+00) | E_Var_EMA(T: 1.3595)
+ -> Epoch  22/200 (LR: 9.48e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4430) | Val_EMA Multi-Regime (T: 0.5591)
+    [診斷] GradNorm(T: 6.43e-01) | E_Var_EMA(T: 1.3688)
+ -> Epoch  23/200 (LR: 9.41e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4393) | Val_EMA Multi-Regime (T: 0.5641)
+    [診斷] GradNorm(T: 6.87e-01) | E_Var_EMA(T: 1.3762)
+ -> Epoch  24/200 (LR: 9.35e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4352) | Val_EMA Multi-Regime (T: 0.5556)
+    [診斷] GradNorm(T: 6.53e-01) | E_Var_EMA(T: 1.3928)
+ -> Epoch  25/200 (LR: 9.28e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4328) | Val_EMA Multi-Regime (T: 0.5553)
+    [診斷] GradNorm(T: 7.38e-01) | E_Var_EMA(T: 1.4034)
+ -> Epoch  26/200 (LR: 9.21e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4306) | Val_EMA Multi-Regime (T: 0.5547)
+    [診斷] GradNorm(T: 6.20e-01) | E_Var_EMA(T: 1.4145)
+ -> Epoch  27/200 (LR: 9.13e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4270) | Val_EMA Multi-Regime (T: 0.5584)
+    [診斷] GradNorm(T: 6.84e-01) | E_Var_EMA(T: 1.4230)
+ -> Epoch  28/200 (LR: 9.05e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4251) | Val_EMA Multi-Regime (T: 0.5595)
+    [診斷] GradNorm(T: 6.54e-01) | E_Var_EMA(T: 1.4344)
+ -> Epoch  29/200 (LR: 8.97e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4224) | Val_EMA Multi-Regime (T: 0.5593)
+    [診斷] GradNorm(T: 7.36e-01) | E_Var_EMA(T: 1.4444)
+ -> Epoch  30/200 (LR: 8.89e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4197) | Val_EMA Multi-Regime (T: 0.5547)
+    [診斷] GradNorm(T: 7.18e-01) | E_Var_EMA(T: 1.4499)
+ -> Epoch  31/200 (LR: 8.80e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4182) | Val_EMA Multi-Regime (T: 0.5631)
+    [診斷] GradNorm(T: 9.85e-01) | E_Var_EMA(T: 1.4581)
+ -> Epoch  32/200 (LR: 8.71e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4156) | Val_EMA Multi-Regime (T: 0.5560)
+    [診斷] GradNorm(T: 7.37e-01) | E_Var_EMA(T: 1.4678)
+ -> Epoch  33/200 (LR: 8.62e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4130) | Val_EMA Multi-Regime (T: 0.5503)
+    [診斷] GradNorm(T: 7.27e-01) | E_Var_EMA(T: 1.4738)
+ -> Epoch  34/200 (LR: 8.53e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4104) | Val_EMA Multi-Regime (T: 0.5576)
+    [診斷] GradNorm(T: 7.32e-01) | E_Var_EMA(T: 1.4843)
+ -> Epoch  35/200 (LR: 8.43e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4093) | Val_EMA Multi-Regime (T: 0.5527)
+    [診斷] GradNorm(T: 6.01e-01) | E_Var_EMA(T: 1.4900)
+ -> Epoch  36/200 (LR: 8.33e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4063) | Val_EMA Multi-Regime (T: 0.5528)
+    [診斷] GradNorm(T: 1.59e+00) | E_Var_EMA(T: 1.4988)
+ -> Epoch  37/200 (LR: 8.23e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4064) | Val_EMA Multi-Regime (T: 0.5554)
+    [診斷] GradNorm(T: 7.05e-01) | E_Var_EMA(T: 1.5046)
+ -> Epoch  38/200 (LR: 8.12e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4032) | Val_EMA Multi-Regime (T: 0.5583)
+    [診斷] GradNorm(T: 7.85e-01) | E_Var_EMA(T: 1.5149)
+ -> Epoch  39/200 (LR: 8.01e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.4020) | Val_EMA Multi-Regime (T: 0.5617)
+    [診斷] GradNorm(T: 6.96e-01) | E_Var_EMA(T: 1.5237)
+ -> Epoch  40/200 (LR: 7.90e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3998) | Val_EMA Multi-Regime (T: 0.5531)
+    [診斷] GradNorm(T: 8.61e-01) | E_Var_EMA(T: 1.5312)
+ -> Epoch  41/200 (LR: 7.79e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3988) | Val_EMA Multi-Regime (T: 0.5562)
+    [診斷] GradNorm(T: 8.03e-01) | E_Var_EMA(T: 1.5379)
+ -> Epoch  42/200 (LR: 7.68e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3960) | Val_EMA Multi-Regime (T: 0.5575)
+    [診斷] GradNorm(T: 6.79e-01) | E_Var_EMA(T: 1.5460)
+ -> Epoch  43/200 (LR: 7.56e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3939) | Val_EMA Multi-Regime (T: 0.5644)
+    [診斷] GradNorm(T: 8.47e-01) | E_Var_EMA(T: 1.5510)
+ -> Epoch  44/200 (LR: 7.45e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3929) | Val_EMA Multi-Regime (T: 0.5645)
+    [診斷] GradNorm(T: 9.98e-01) | E_Var_EMA(T: 1.5575)
+ -> Epoch  45/200 (LR: 7.33e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3915) | Val_EMA Multi-Regime (T: 0.5600)
+    [診斷] GradNorm(T: 8.68e-01) | E_Var_EMA(T: 1.5645)
+ -> Epoch  46/200 (LR: 7.21e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3906) | Val_EMA Multi-Regime (T: 0.5606)
+    [診斷] GradNorm(T: 7.32e-01) | E_Var_EMA(T: 1.5696)
+ -> Epoch  47/200 (LR: 7.08e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3878) | Val_EMA Multi-Regime (T: 0.5579)
+    [診斷] GradNorm(T: 7.24e-01) | E_Var_EMA(T: 1.5756)
+ -> Epoch  48/200 (LR: 6.96e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3872) | Val_EMA Multi-Regime (T: 0.5571)
+    [診斷] GradNorm(T: 7.12e-01) | E_Var_EMA(T: 1.5832)
+ -> Epoch  49/200 (LR: 6.83e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3857) | Val_EMA Multi-Regime (T: 0.5487)
+    [診斷] GradNorm(T: 6.16e-01) | E_Var_EMA(T: 1.5856)
+ -> Epoch  50/200 (LR: 6.71e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3860) | Val_EMA Multi-Regime (T: 0.5545)
+    [診斷] GradNorm(T: 6.56e-01) | E_Var_EMA(T: 1.5932)
+ -> Epoch  51/200 (LR: 6.58e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3835) | Val_EMA Multi-Regime (T: 0.5567)
+    [診斷] GradNorm(T: 7.55e-01) | E_Var_EMA(T: 1.5983)
+ -> Epoch  52/200 (LR: 6.45e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3829) | Val_EMA Multi-Regime (T: 0.5565)
+    [診斷] GradNorm(T: 7.71e-01) | E_Var_EMA(T: 1.6025)
+ -> Epoch  53/200 (LR: 6.32e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3802) | Val_EMA Multi-Regime (T: 0.5566)
+    [診斷] GradNorm(T: 7.04e-01) | E_Var_EMA(T: 1.6072)
+ -> Epoch  54/200 (LR: 6.19e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3803) | Val_EMA Multi-Regime (T: 0.5571)
+    [診斷] GradNorm(T: 7.64e-01) | E_Var_EMA(T: 1.6104)
+ -> Epoch  55/200 (LR: 6.06e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3790) | Val_EMA Multi-Regime (T: 0.5552)
+    [診斷] GradNorm(T: 9.87e-01) | E_Var_EMA(T: 1.6123)
+ -> Epoch  56/200 (LR: 5.92e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3771) | Val_EMA Multi-Regime (T: 0.5567)
+    [診斷] GradNorm(T: 8.50e-01) | E_Var_EMA(T: 1.6158)
+ -> Epoch  57/200 (LR: 5.79e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3758) | Val_EMA Multi-Regime (T: 0.5560)
+    [診斷] GradNorm(T: 6.42e-01) | E_Var_EMA(T: 1.6192)
+ -> Epoch  58/200 (LR: 5.66e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3748) | Val_EMA Multi-Regime (T: 0.5570)
+    [診斷] GradNorm(T: 7.90e-01) | E_Var_EMA(T: 1.6229)
+ -> Epoch  59/200 (LR: 5.52e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3744) | Val_EMA Multi-Regime (T: 0.5603)
+    [診斷] GradNorm(T: 8.65e-01) | E_Var_EMA(T: 1.6245)
+ -> Epoch  60/200 (LR: 5.39e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3734) | Val_EMA Multi-Regime (T: 0.5560)
+    [診斷] GradNorm(T: 6.63e-01) | E_Var_EMA(T: 1.6270)
+ -> Epoch  61/200 (LR: 5.25e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3734) | Val_EMA Multi-Regime (T: 0.5611)
+    [診斷] GradNorm(T: 9.39e-01) | E_Var_EMA(T: 1.6295)
+ -> Epoch  62/200 (LR: 5.12e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3710) | Val_EMA Multi-Regime (T: 0.5502)
+    [診斷] GradNorm(T: 6.43e-01) | E_Var_EMA(T: 1.6306)
+ -> Epoch  63/200 (LR: 4.98e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3710) | Val_EMA Multi-Regime (T: 0.5508)
+    [診斷] GradNorm(T: 8.08e-01) | E_Var_EMA(T: 1.6341)
+ -> Epoch  64/200 (LR: 4.85e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3688) | Val_EMA Multi-Regime (T: 0.5576)
+    [診斷] GradNorm(T: 9.72e-01) | E_Var_EMA(T: 1.6382)
+ -> Epoch  65/200 (LR: 4.71e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3685) | Val_EMA Multi-Regime (T: 0.5560)
+    [診斷] GradNorm(T: 7.73e-01) | E_Var_EMA(T: 1.6401)
+ -> Epoch  66/200 (LR: 4.58e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3682) | Val_EMA Multi-Regime (T: 0.5573)
+    [診斷] GradNorm(T: 8.44e-01) | E_Var_EMA(T: 1.6434)
+ -> Epoch  67/200 (LR: 4.44e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3680) | Val_EMA Multi-Regime (T: 0.5554)
+    [診斷] GradNorm(T: 9.39e-01) | E_Var_EMA(T: 1.6458)
+ -> Epoch  68/200 (LR: 4.31e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3663) | Val_EMA Multi-Regime (T: 0.5577)
+    [診斷] GradNorm(T: 7.05e-01) | E_Var_EMA(T: 1.6489)
+ -> Epoch  69/200 (LR: 4.18e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3654) | Val_EMA Multi-Regime (T: 0.5634)
+    [診斷] GradNorm(T: 7.53e-01) | E_Var_EMA(T: 1.6520)
+ -> Epoch  70/200 (LR: 4.04e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3642) | Val_EMA Multi-Regime (T: 0.5596)
+    [診斷] GradNorm(T: 8.64e-01) | E_Var_EMA(T: 1.6525)
+ -> Epoch  71/200 (LR: 3.91e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3640) | Val_EMA Multi-Regime (T: 0.5562)
+    [診斷] GradNorm(T: 1.04e+00) | E_Var_EMA(T: 1.6547)
+ -> Epoch  72/200 (LR: 3.78e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3636) | Val_EMA Multi-Regime (T: 0.5575)
+    [診斷] GradNorm(T: 8.84e-01) | E_Var_EMA(T: 1.6570)
+ -> Epoch  73/200 (LR: 3.65e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3623) | Val_EMA Multi-Regime (T: 0.5606)
+    [診斷] GradNorm(T: 8.03e-01) | E_Var_EMA(T: 1.6575)
+ -> Epoch  74/200 (LR: 3.52e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3627) | Val_EMA Multi-Regime (T: 0.5567)
+    [診斷] GradNorm(T: 6.69e-01) | E_Var_EMA(T: 1.6586)
+ -> Epoch  75/200 (LR: 3.39e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3615) | Val_EMA Multi-Regime (T: 0.5587)
+    [診斷] GradNorm(T: 7.52e-01) | E_Var_EMA(T: 1.6620)
+ -> Epoch  76/200 (LR: 3.27e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3613) | Val_EMA Multi-Regime (T: 0.5552)
+    [診斷] GradNorm(T: 8.64e-01) | E_Var_EMA(T: 1.6599)
+ -> Epoch  77/200 (LR: 3.14e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3612) | Val_EMA Multi-Regime (T: 0.5586)
+    [診斷] GradNorm(T: 7.19e-01) | E_Var_EMA(T: 1.6616)
+ -> Epoch  78/200 (LR: 3.02e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3599) | Val_EMA Multi-Regime (T: 0.5664)
+    [診斷] GradNorm(T: 6.64e-01) | E_Var_EMA(T: 1.6635)
+ -> Epoch  79/200 (LR: 2.89e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3583) | Val_EMA Multi-Regime (T: 0.5548)
+    [診斷] GradNorm(T: 9.42e-01) | E_Var_EMA(T: 1.6663)
+ -> Epoch  80/200 (LR: 2.77e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3580) | Val_EMA Multi-Regime (T: 0.5631)
+    [診斷] GradNorm(T: 7.13e-01) | E_Var_EMA(T: 1.6667)
+ -> Epoch  81/200 (LR: 2.65e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3571) | Val_EMA Multi-Regime (T: 0.5581)
+    [診斷] GradNorm(T: 8.83e-01) | E_Var_EMA(T: 1.6695)
+ -> Epoch  82/200 (LR: 2.54e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3573) | Val_EMA Multi-Regime (T: 0.5538)
+    [診斷] GradNorm(T: 7.21e-01) | E_Var_EMA(T: 1.6667)
+ -> Epoch  83/200 (LR: 2.42e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3570) | Val_EMA Multi-Regime (T: 0.5587)
+    [診斷] GradNorm(T: 8.68e-01) | E_Var_EMA(T: 1.6704)
+ -> Epoch  84/200 (LR: 2.31e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3563) | Val_EMA Multi-Regime (T: 0.5609)
+    [診斷] GradNorm(T: 6.99e-01) | E_Var_EMA(T: 1.6693)
+ -> Epoch  85/200 (LR: 2.20e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3564) | Val_EMA Multi-Regime (T: 0.5609)
+    [診斷] GradNorm(T: 7.75e-01) | E_Var_EMA(T: 1.6695)
+ -> Epoch  86/200 (LR: 2.09e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3542) | Val_EMA Multi-Regime (T: 0.5573)
+    [診斷] GradNorm(T: 7.74e-01) | E_Var_EMA(T: 1.6705)
+ -> Epoch  87/200 (LR: 1.98e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3547) | Val_EMA Multi-Regime (T: 0.5623)
+    [診斷] GradNorm(T: 8.34e-01) | E_Var_EMA(T: 1.6709)
+ -> Epoch  88/200 (LR: 1.87e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3541) | Val_EMA Multi-Regime (T: 0.5620)
+    [診斷] GradNorm(T: 7.90e-01) | E_Var_EMA(T: 1.6704)
+ -> Epoch  89/200 (LR: 1.77e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3551) | Val_EMA Multi-Regime (T: 0.5574)
+    [診斷] GradNorm(T: 7.08e-01) | E_Var_EMA(T: 1.6717)
+ -> Epoch  90/200 (LR: 1.67e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3540) | Val_EMA Multi-Regime (T: 0.5558)
+    [診斷] GradNorm(T: 1.00e+00) | E_Var_EMA(T: 1.6726)
+ -> Epoch  91/200 (LR: 1.57e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3538) | Val_EMA Multi-Regime (T: 0.5658)
+    [診斷] GradNorm(T: 7.87e-01) | E_Var_EMA(T: 1.6714)
+ -> Epoch  92/200 (LR: 1.48e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3533) | Val_EMA Multi-Regime (T: 0.5633)
+    [診斷] GradNorm(T: 7.92e-01) | E_Var_EMA(T: 1.6738)
+ -> Epoch  93/200 (LR: 1.39e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3531) | Val_EMA Multi-Regime (T: 0.5623)
+    [診斷] GradNorm(T: 7.38e-01) | E_Var_EMA(T: 1.6743)
+ -> Epoch  94/200 (LR: 1.30e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3536) | Val_EMA Multi-Regime (T: 0.5631)
+    [診斷] GradNorm(T: 8.19e-01) | E_Var_EMA(T: 1.6750)
+ -> Epoch  95/200 (LR: 1.21e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3517) | Val_EMA Multi-Regime (T: 0.5639)
+    [診斷] GradNorm(T: 8.07e-01) | E_Var_EMA(T: 1.6753)
+ -> Epoch  96/200 (LR: 1.13e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3518) | Val_EMA Multi-Regime (T: 0.5637)
+    [診斷] GradNorm(T: 1.03e+00) | E_Var_EMA(T: 1.6748)
+ -> Epoch  97/200 (LR: 1.05e-04 | FeatDrop: 0.12) | Train ContLoss (T: 0.3514) | Val_EMA Multi-Regime (T: 0.5674)
+    [診斷] GradNorm(T: 8.58e-01) | E_Var_EMA(T: 1.6738)
+ -> Epoch  98/200 (LR: 9.67e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3516) | Val_EMA Multi-Regime (T: 0.5646)
+    [診斷] GradNorm(T: 7.94e-01) | E_Var_EMA(T: 1.6761)
+ -> Epoch  99/200 (LR: 8.92e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3516) | Val_EMA Multi-Regime (T: 0.5599)
+    [診斷] GradNorm(T: 8.97e-01) | E_Var_EMA(T: 1.6740)
+ -> Epoch 100/200 (LR: 8.21e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3518) | Val_EMA Multi-Regime (T: 0.5628)
+    [診斷] GradNorm(T: 9.02e-01) | E_Var_EMA(T: 1.6771)
+ -> Epoch 101/200 (LR: 7.52e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3501) | Val_EMA Multi-Regime (T: 0.5656)
+    [診斷] GradNorm(T: 7.81e-01) | E_Var_EMA(T: 1.6757)
+ -> Epoch 102/200 (LR: 6.86e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3499) | Val_EMA Multi-Regime (T: 0.5606)
+    [診斷] GradNorm(T: 8.44e-01) | E_Var_EMA(T: 1.6780)
+ -> Epoch 103/200 (LR: 6.24e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3503) | Val_EMA Multi-Regime (T: 0.5574)
+    [診斷] GradNorm(T: 8.12e-01) | E_Var_EMA(T: 1.6749)
+ -> Epoch 104/200 (LR: 5.65e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3498) | Val_EMA Multi-Regime (T: 0.5604)
+    [診斷] GradNorm(T: 7.11e-01) | E_Var_EMA(T: 1.6780)
+ -> Epoch 105/200 (LR: 5.10e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3502) | Val_EMA Multi-Regime (T: 0.5585)
+    [診斷] GradNorm(T: 8.43e-01) | E_Var_EMA(T: 1.6766)
+ -> Epoch 106/200 (LR: 4.58e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3502) | Val_EMA Multi-Regime (T: 0.5652)
+    [診斷] GradNorm(T: 8.24e-01) | E_Var_EMA(T: 1.6792)
+ -> Epoch 107/200 (LR: 4.09e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3499) | Val_EMA Multi-Regime (T: 0.5608)
+    [診斷] GradNorm(T: 7.92e-01) | E_Var_EMA(T: 1.6759)
+ -> Epoch 108/200 (LR: 3.64e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3495) | Val_EMA Multi-Regime (T: 0.5577)
+    [診斷] GradNorm(T: 9.76e-01) | E_Var_EMA(T: 1.6762)
+ -> Epoch 109/200 (LR: 3.22e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3496) | Val_EMA Multi-Regime (T: 0.5626)
+    [診斷] GradNorm(T: 8.82e-01) | E_Var_EMA(T: 1.6769)
+ -> Epoch 110/200 (LR: 2.84e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3492) | Val_EMA Multi-Regime (T: 0.5618)
+    [診斷] GradNorm(T: 1.44e+00) | E_Var_EMA(T: 1.6775)
+ -> Epoch 111/200 (LR: 2.49e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3495) | Val_EMA Multi-Regime (T: 0.5581)
+    [診斷] GradNorm(T: 7.28e-01) | E_Var_EMA(T: 1.6777)
+ -> Epoch 112/200 (LR: 2.18e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3491) | Val_EMA Multi-Regime (T: 0.5617)
+    [診斷] GradNorm(T: 8.85e-01) | E_Var_EMA(T: 1.6788)
+ -> Epoch 113/200 (LR: 1.90e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3488) | Val_EMA Multi-Regime (T: 0.5599)
+    [診斷] GradNorm(T: 8.97e-01) | E_Var_EMA(T: 1.6764)
+ -> Epoch 114/200 (LR: 1.66e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3500) | Val_EMA Multi-Regime (T: 0.5576)
+    [診斷] GradNorm(T: 7.71e-01) | E_Var_EMA(T: 1.6792)
+ -> Epoch 115/200 (LR: 1.46e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3491) | Val_EMA Multi-Regime (T: 0.5618)
+    [診斷] GradNorm(T: 6.37e-01) | E_Var_EMA(T: 1.6748)
+ -> Epoch 116/200 (LR: 1.30e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3481) | Val_EMA Multi-Regime (T: 0.5654)
+    [診斷] GradNorm(T: 6.70e-01) | E_Var_EMA(T: 1.6762)
+ -> Epoch 117/200 (LR: 1.17e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3487) | Val_EMA Multi-Regime (T: 0.5600)
+    [診斷] GradNorm(T: 7.58e-01) | E_Var_EMA(T: 1.6788)
+ -> Epoch 118/200 (LR: 1.07e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3495) | Val_EMA Multi-Regime (T: 0.5644)
+    [診斷] GradNorm(T: 7.06e-01) | E_Var_EMA(T: 1.6770)
+ -> Epoch 119/200 (LR: 1.02e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3489) | Val_EMA Multi-Regime (T: 0.5612)
+    [診斷] GradNorm(T: 1.06e+00) | E_Var_EMA(T: 1.6761)
+ -> Epoch 120/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3486) | Val_EMA Multi-Regime (T: 0.5652)
+    [診斷] GradNorm(T: 8.47e-01) | E_Var_EMA(T: 1.6803)
+ -> Epoch 121/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3492) | Val_EMA Multi-Regime (T: 0.5693)
+    [診斷] GradNorm(T: 1.02e+00) | E_Var_EMA(T: 1.6801)
+ -> Epoch 122/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3480) | Val_EMA Multi-Regime (T: 0.5567)
+    [診斷] GradNorm(T: 9.73e-01) | E_Var_EMA(T: 1.6743)
+ -> Epoch 123/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3488) | Val_EMA Multi-Regime (T: 0.5649)
+    [診斷] GradNorm(T: 6.83e-01) | E_Var_EMA(T: 1.6771)
+ -> Epoch 124/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3481) | Val_EMA Multi-Regime (T: 0.5593)
+    [診斷] GradNorm(T: 7.07e-01) | E_Var_EMA(T: 1.6793)
+ -> Epoch 125/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3490) | Val_EMA Multi-Regime (T: 0.5586)
+    [診斷] GradNorm(T: 8.64e-01) | E_Var_EMA(T: 1.6786)
+ -> Epoch 126/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3488) | Val_EMA Multi-Regime (T: 0.5591)
+    [診斷] GradNorm(T: 7.06e-01) | E_Var_EMA(T: 1.6793)
+ -> Epoch 127/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3482) | Val_EMA Multi-Regime (T: 0.5566)
+    [診斷] GradNorm(T: 1.05e+00) | E_Var_EMA(T: 1.6756)
+ -> Epoch 128/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3489) | Val_EMA Multi-Regime (T: 0.5572)
+    [診斷] GradNorm(T: 7.49e-01) | E_Var_EMA(T: 1.6771)
+ -> Epoch 129/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3489) | Val_EMA Multi-Regime (T: 0.5592)
+    [診斷] GradNorm(T: 7.56e-01) | E_Var_EMA(T: 1.6771)
+ -> Epoch 130/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3497) | Val_EMA Multi-Regime (T: 0.5565)
+    [診斷] GradNorm(T: 8.16e-01) | E_Var_EMA(T: 1.6782)
+ -> Epoch 131/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3483) | Val_EMA Multi-Regime (T: 0.5606)
+    [診斷] GradNorm(T: 1.36e+00) | E_Var_EMA(T: 1.6799)
+ -> Epoch 132/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3482) | Val_EMA Multi-Regime (T: 0.5556)
+    [診斷] GradNorm(T: 7.00e-01) | E_Var_EMA(T: 1.6796)
+ -> Epoch 133/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3474) | Val_EMA Multi-Regime (T: 0.5598)
+    [診斷] GradNorm(T: 8.08e-01) | E_Var_EMA(T: 1.6810)
+ -> Epoch 134/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3479) | Val_EMA Multi-Regime (T: 0.5599)
+    [診斷] GradNorm(T: 7.13e-01) | E_Var_EMA(T: 1.6801)
+ -> Epoch 135/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3498) | Val_EMA Multi-Regime (T: 0.5665)
+    [診斷] GradNorm(T: 8.52e-01) | E_Var_EMA(T: 1.6821)
+ -> Epoch 136/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3491) | Val_EMA Multi-Regime (T: 0.5611)
+    [診斷] GradNorm(T: 6.68e-01) | E_Var_EMA(T: 1.6801)
+ -> Epoch 137/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3487) | Val_EMA Multi-Regime (T: 0.5590)
+    [診斷] GradNorm(T: 7.41e-01) | E_Var_EMA(T: 1.6809)
+ -> Epoch 138/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3482) | Val_EMA Multi-Regime (T: 0.5595)
+    [診斷] GradNorm(T: 8.36e-01) | E_Var_EMA(T: 1.6767)
+ -> Epoch 139/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3492) | Val_EMA Multi-Regime (T: 0.5596)
+    [診斷] GradNorm(T: 7.94e-01) | E_Var_EMA(T: 1.6752)
+ -> Epoch 140/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3495) | Val_EMA Multi-Regime (T: 0.5557)
+    [診斷] GradNorm(T: 1.14e+00) | E_Var_EMA(T: 1.6809)
+ -> Epoch 141/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3492) | Val_EMA Multi-Regime (T: 0.5615)
+    [診斷] GradNorm(T: 7.97e-01) | E_Var_EMA(T: 1.6804)
+ -> Epoch 142/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3478) | Val_EMA Multi-Regime (T: 0.5676)
+    [診斷] GradNorm(T: 7.79e-01) | E_Var_EMA(T: 1.6799)
+ -> Epoch 143/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3479) | Val_EMA Multi-Regime (T: 0.5680)
+    [診斷] GradNorm(T: 9.52e-01) | E_Var_EMA(T: 1.6774)
+ -> Epoch 144/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3488) | Val_EMA Multi-Regime (T: 0.5631)
+    [診斷] GradNorm(T: 7.47e-01) | E_Var_EMA(T: 1.6832)
+ -> Epoch 145/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3480) | Val_EMA Multi-Regime (T: 0.5580)
+    [診斷] GradNorm(T: 6.54e-01) | E_Var_EMA(T: 1.6797)
+ -> Epoch 146/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3479) | Val_EMA Multi-Regime (T: 0.5543)
+    [診斷] GradNorm(T: 7.13e-01) | E_Var_EMA(T: 1.6771)
+ -> Epoch 147/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3492) | Val_EMA Multi-Regime (T: 0.5562)
+    [診斷] GradNorm(T: 8.65e-01) | E_Var_EMA(T: 1.6805)
+ -> Epoch 148/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3484) | Val_EMA Multi-Regime (T: 0.5564)
+    [診斷] GradNorm(T: 6.57e-01) | E_Var_EMA(T: 1.6809)
+ -> Epoch 149/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3495) | Val_EMA Multi-Regime (T: 0.5597)
+    [診斷] GradNorm(T: 9.13e-01) | E_Var_EMA(T: 1.6784)
+ -> Epoch 150/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3480) | Val_EMA Multi-Regime (T: 0.5595)
+    [診斷] GradNorm(T: 8.89e-01) | E_Var_EMA(T: 1.6830)
+ -> Epoch 151/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3487) | Val_EMA Multi-Regime (T: 0.5594)
+    [診斷] GradNorm(T: 7.08e-01) | E_Var_EMA(T: 1.6806)
+ -> Epoch 152/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3486) | Val_EMA Multi-Regime (T: 0.5597)
+    [診斷] GradNorm(T: 8.34e-01) | E_Var_EMA(T: 1.6815)
+ -> Epoch 153/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3483) | Val_EMA Multi-Regime (T: 0.5525)
+    [診斷] GradNorm(T: 6.79e-01) | E_Var_EMA(T: 1.6806)
+ -> Epoch 154/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3472) | Val_EMA Multi-Regime (T: 0.5575)
+    [診斷] GradNorm(T: 7.39e-01) | E_Var_EMA(T: 1.6797)
+ -> Epoch 155/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3480) | Val_EMA Multi-Regime (T: 0.5652)
+    [診斷] GradNorm(T: 1.16e+00) | E_Var_EMA(T: 1.6793)
+ -> Epoch 156/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3483) | Val_EMA Multi-Regime (T: 0.5602)
+    [診斷] GradNorm(T: 9.91e-01) | E_Var_EMA(T: 1.6808)
+ -> Epoch 157/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3476) | Val_EMA Multi-Regime (T: 0.5614)
+    [診斷] GradNorm(T: 8.16e-01) | E_Var_EMA(T: 1.6807)
+ -> Epoch 158/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3485) | Val_EMA Multi-Regime (T: 0.5592)
+    [診斷] GradNorm(T: 7.10e-01) | E_Var_EMA(T: 1.6785)
+ -> Epoch 159/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3475) | Val_EMA Multi-Regime (T: 0.5595)
+    [診斷] GradNorm(T: 8.04e-01) | E_Var_EMA(T: 1.6811)
+ -> Epoch 160/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3486) | Val_EMA Multi-Regime (T: 0.5546)
+    [診斷] GradNorm(T: 1.09e+00) | E_Var_EMA(T: 1.6787)
+ -> Epoch 161/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3483) | Val_EMA Multi-Regime (T: 0.5582)
+    [診斷] GradNorm(T: 7.52e-01) | E_Var_EMA(T: 1.6801)
+ -> Epoch 162/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3478) | Val_EMA Multi-Regime (T: 0.5636)
+    [診斷] GradNorm(T: 7.15e-01) | E_Var_EMA(T: 1.6809)
+ -> Epoch 163/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3473) | Val_EMA Multi-Regime (T: 0.5627)
+    [診斷] GradNorm(T: 8.53e-01) | E_Var_EMA(T: 1.6790)
+ -> Epoch 164/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3488) | Val_EMA Multi-Regime (T: 0.5570)
+    [診斷] GradNorm(T: 9.21e-01) | E_Var_EMA(T: 1.6778)
+ -> Epoch 165/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3481) | Val_EMA Multi-Regime (T: 0.5559)
+    [診斷] GradNorm(T: 6.97e-01) | E_Var_EMA(T: 1.6780)
+ -> Epoch 166/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3482) | Val_EMA Multi-Regime (T: 0.5644)
+    [診斷] GradNorm(T: 7.40e-01) | E_Var_EMA(T: 1.6824)
+ -> Epoch 167/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3481) | Val_EMA Multi-Regime (T: 0.5613)
+    [診斷] GradNorm(T: 8.90e-01) | E_Var_EMA(T: 1.6804)
+ -> Epoch 168/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3481) | Val_EMA Multi-Regime (T: 0.5612)
+    [診斷] GradNorm(T: 1.05e+00) | E_Var_EMA(T: 1.6809)
+ -> Epoch 169/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3477) | Val_EMA Multi-Regime (T: 0.5595)
+    [診斷] GradNorm(T: 7.37e-01) | E_Var_EMA(T: 1.6805)
+ -> Epoch 170/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3473) | Val_EMA Multi-Regime (T: 0.5597)
+    [診斷] GradNorm(T: 8.41e-01) | E_Var_EMA(T: 1.6825)
+ -> Epoch 171/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3474) | Val_EMA Multi-Regime (T: 0.5536)
+    [診斷] GradNorm(T: 7.24e-01) | E_Var_EMA(T: 1.6817)
+ -> Epoch 172/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3484) | Val_EMA Multi-Regime (T: 0.5615)
+    [診斷] GradNorm(T: 6.90e-01) | E_Var_EMA(T: 1.6818)
+ -> Epoch 173/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3481) | Val_EMA Multi-Regime (T: 0.5645)
+    [診斷] GradNorm(T: 7.53e-01) | E_Var_EMA(T: 1.6804)
+ -> Epoch 174/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3473) | Val_EMA Multi-Regime (T: 0.5590)
+    [診斷] GradNorm(T: 6.68e-01) | E_Var_EMA(T: 1.6811)
+ -> Epoch 175/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3477) | Val_EMA Multi-Regime (T: 0.5605)
+    [診斷] GradNorm(T: 7.49e-01) | E_Var_EMA(T: 1.6792)
+ -> Epoch 176/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3478) | Val_EMA Multi-Regime (T: 0.5642)
+    [診斷] GradNorm(T: 7.08e-01) | E_Var_EMA(T: 1.6817)
+ -> Epoch 177/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3476) | Val_EMA Multi-Regime (T: 0.5589)
+    [診斷] GradNorm(T: 1.09e+00) | E_Var_EMA(T: 1.6831)
+ -> Epoch 178/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3475) | Val_EMA Multi-Regime (T: 0.5614)
+    [診斷] GradNorm(T: 8.37e-01) | E_Var_EMA(T: 1.6838)
+ -> Epoch 179/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3474) | Val_EMA Multi-Regime (T: 0.5607)
+    [診斷] GradNorm(T: 8.59e-01) | E_Var_EMA(T: 1.6809)
+ -> Epoch 180/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3480) | Val_EMA Multi-Regime (T: 0.5552)
+    [診斷] GradNorm(T: 8.62e-01) | E_Var_EMA(T: 1.6824)
+ -> Epoch 181/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3480) | Val_EMA Multi-Regime (T: 0.5616)
+    [診斷] GradNorm(T: 7.31e-01) | E_Var_EMA(T: 1.6820)
+ -> Epoch 182/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3471) | Val_EMA Multi-Regime (T: 0.5633)
+    [診斷] GradNorm(T: 8.79e-01) | E_Var_EMA(T: 1.6812)
+ -> Epoch 183/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3481) | Val_EMA Multi-Regime (T: 0.5596)
+    [診斷] GradNorm(T: 7.62e-01) | E_Var_EMA(T: 1.6810)
+ -> Epoch 184/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3473) | Val_EMA Multi-Regime (T: 0.5530)
+    [診斷] GradNorm(T: 7.71e-01) | E_Var_EMA(T: 1.6837)
+ -> Epoch 185/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3482) | Val_EMA Multi-Regime (T: 0.5622)
+    [診斷] GradNorm(T: 7.55e-01) | E_Var_EMA(T: 1.6825)
+ -> Epoch 186/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3477) | Val_EMA Multi-Regime (T: 0.5583)
+    [診斷] GradNorm(T: 9.98e-01) | E_Var_EMA(T: 1.6823)
+ -> Epoch 187/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3482) | Val_EMA Multi-Regime (T: 0.5587)
+    [診斷] GradNorm(T: 1.13e+00) | E_Var_EMA(T: 1.6821)
+ -> Epoch 188/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3477) | Val_EMA Multi-Regime (T: 0.5526)
+    [診斷] GradNorm(T: 6.13e-01) | E_Var_EMA(T: 1.6808)
+ -> Epoch 189/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3478) | Val_EMA Multi-Regime (T: 0.5602)
+    [診斷] GradNorm(T: 8.21e-01) | E_Var_EMA(T: 1.6827)
+ -> Epoch 190/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3478) | Val_EMA Multi-Regime (T: 0.5607)
+    [診斷] GradNorm(T: 9.95e-01) | E_Var_EMA(T: 1.6836)
+ -> Epoch 191/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3479) | Val_EMA Multi-Regime (T: 0.5602)
+    [診斷] GradNorm(T: 6.74e-01) | E_Var_EMA(T: 1.6788)
+ -> Epoch 192/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3484) | Val_EMA Multi-Regime (T: 0.5577)
+    [診斷] GradNorm(T: 8.19e-01) | E_Var_EMA(T: 1.6835)
+ -> Epoch 193/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3474) | Val_EMA Multi-Regime (T: 0.5570)
+    [診斷] GradNorm(T: 8.33e-01) | E_Var_EMA(T: 1.6807)
+ -> Epoch 194/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3484) | Val_EMA Multi-Regime (T: 0.5639)
+    [診斷] GradNorm(T: 7.38e-01) | E_Var_EMA(T: 1.6802)
+ -> Epoch 195/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3484) | Val_EMA Multi-Regime (T: 0.5614)
+    [診斷] GradNorm(T: 8.85e-01) | E_Var_EMA(T: 1.6828)
+ -> Epoch 196/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3478) | Val_EMA Multi-Regime (T: 0.5578)
+    [診斷] GradNorm(T: 7.31e-01) | E_Var_EMA(T: 1.6823)
+ -> Epoch 197/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3472) | Val_EMA Multi-Regime (T: 0.5610)
+    [診斷] GradNorm(T: 9.58e-01) | E_Var_EMA(T: 1.6829)
+ -> Epoch 198/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3472) | Val_EMA Multi-Regime (T: 0.5668)
+    [診斷] GradNorm(T: 6.46e-01) | E_Var_EMA(T: 1.6796)
+ -> Epoch 199/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3474) | Val_EMA Multi-Regime (T: 0.5600)
+    [診斷] GradNorm(T: 7.80e-01) | E_Var_EMA(T: 1.6818)
+ -> Epoch 200/200 (LR: 1.00e-05 | FeatDrop: 0.12) | Train ContLoss (T: 0.3478) | Val_EMA Multi-Regime (T: 0.5572)
+    [診斷] GradNorm(T: 6.64e-01) | E_Var_EMA(T: 1.6790)
+
+💾 正在將全域模型權重切換至歷史最佳 EMA 快照 (Val Loss = 0.5471)...
+
+📊 萃取器收斂診斷 (跨體制 EMA 驗證基準):
+  > 時序專家 (T) 最終 Val_EMA Continuous Loss: 0.5572
+  > 時序專家 (T) 歷史最佳快照 Val Loss      : 0.5471
+  > 空間專家 (S) 狀態: ⏩ 已依實驗結論成功剪枝 (Pure-Time 模式)
+✅ 萃取器連續目標訓練完畢，成功建立抗過擬合連續超額報酬特徵表徵！
+⏱️ [步驟 5 完成] 耗時: 15511.25 秒 (258.52 分鐘)
+
+--- 步驟 6：全歷史強固特徵表徵提煉與落地 (使用 EMA 最佳權重提取 3D 張量) ---
+  -> 正在提煉全歷史節點級別表徵 (共 8388 筆有效天數，批次步長: 16)...
+⏱️ [步驟 6 完成] 耗時: 54.55 秒 (0.91 分鐘)
+
+--- 步驟 7：產出 Loss 曲線視覺化報表與模型檔案存檔 ---
+IdleTimeout has been reached.
+Parallel pool using the 'Processes' profile is shutting down.
+ 📊 Loss 曲線 (白底黑字，已截斷真實輪次) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/models/Phase2_Loss_Curve.png
+💾 DL 萃取器預訓練完畢！[Days, 64, Tickers] 節點表徵已存至: /home/andy/Documents/MARI_Quant_System/results/models/DL_Extractors.mat
+⏱️ [步驟 7 完成] 耗時: 21.99 秒
+
+=================================================================
+📊 【Phase 2 各階段耗時明細與總時長審計報告】
+=================================================================
+ 步驟 0：環境掛載與隨機串流鎖定   :     1.13 秒 (  0.0%)
+ 步驟 1：3D 特徵快取載入與對齊   :     3.54 秒 (  0.0%)
+ 步驟 1.5：HAC-ICIR 健檢與閘門融合:     4.81 秒 (  0.0%)
+ 步驟 2：連續超額報酬 Z-Score 構建:     0.14 秒 (  0.0%)
+ 步驟 3：Purged 多體制時間軸劃分  :     0.04 秒 (  0.0%)
+ 步驟 4：網路拓撲與線性預測頭初始化:     0.60 秒 (  0.0%)
+ 步驟 5：萃取器預訓練與跨體制早停 : 15511.25 秒 ( 99.4%)
+ 步驟 6：全歷史 64D 表徵提煉落地 :    54.55 秒 (  0.3%)
+ 步驟 7：曲線繪製與模型權重存檔   :    21.99 秒 (  0.1%)
+-----------------------------------------------------------------
+⏱️ 【總執行時長】: 4 小時 19 分 58.06 秒 (共 15598.06 秒)
+=================================================================
+🎯 [Phase 2] 連續迴歸萃取器預訓練完成！請推進至 Phase 3。
+=================================================================
+>> 
+
+=================================================================
+🚀 [Phase 15.5] 啟動 特徵標籤工程 ＋ GBDT 守衛訓練整合管線 (All-in-One)
+=================================================================
+--- 步驟 0：環境路徑掛載、Config 載入與隨機串流鎖定 ---
+ 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
+ ⚡ [Config] 成功注入通過 DSR/PBO 顯著性檢定之 Phase 4 BO 最佳化參數：
+    - 崩盤護欄硬熔斷閾值 : 0.0977
+    - 時序專家權重 (Time_W): 1.0000 (空間專家已剪枝，強制鎖定 1.0)
+    - 集中度標的數 (Top_K) : 15
+🔒 已成功掛載 mrg32k3a 主隨機串流 (Substream=1)，鎖定 GBDT 訓練、抽樣與 SHAP 確定性。
+⏱️ [步驟 0 完成] 耗時: 0.64 秒
+
+--- 步驟 1：載入全域降噪特徵與 Phase 2 最佳快照 DL 表徵 ---
+  -> 空間專家狀態: 【⏩ 已剪枝】(Pure-Time 純時序架構，杜絕圖卷積過度平滑噪聲)
+⏱️ [步驟 1 完成] 耗時: 9.39 秒
+
+--- 步驟 2：特徵切片、通道解構與總經資料品質審計 ---
+  -> 特徵維度配置: 個股微觀 18 維 | 宏觀總經 10 維 | DL 表徵 64 維
+  -> [總經品質審計] 信用利差特徵零值佔比: 20.31% (標準差: 1.2922)
+⏱️ [步驟 2 完成] 耗時: 0.09 秒
+
+--- 步驟 3：構建 20 日連續橫截面超額報酬 Z-Score 與 10 日崩盤標籤 ---
+💾 [資料集落盤] GBDT 訓練特徵與標籤資料集已成功快取至: /home/andy/Documents/MARI_Quant_System/data/cache/GBDT_Dataset.mat
+⏱️ [步驟 3 完成] 耗時: 27.15 秒
+
+--- 步驟 4：切分樣本時間軸 (Train IS 2006-2021 vs. Blind OOS 2022-2026) ---
+✅ 時間軸劃分完畢！IS 訓練區間: 4028 天 | OOS 盲測推論區間: 1162 天
+⏱️ [步驟 4 完成] 耗時: 0.45 秒
+
+--- 步驟 5：實例化 GBDT 專家並執行 Expanding-Window 迴歸交叉驗證 ---
+ 💡 [時序交叉驗證機制]：Fold 1 作為初始訓練基準，折外驗證自 Fold 2 依序展開。
+ ⚙️ [GBDTExpertAgent] 實例化完成。已配置 LSBoost 連續選股 (Horizon=20D, Embargo=20D, HAC_Lag=20, 空間專家: 0)。
+--- 啟動 GBDT 橫截面專家訓練 (LSBoost 連續迴歸與 OOF Rank IC 即時監控) ---
+  ⏩ [Pure-Time 剪枝] 空間專家已停用，將自動略過空間 GBDT 之 Fold 訓練與推論。
+  -> 總有效橫截面樣本數: 1788804 筆 | 宏觀特徵維度: 10 維
+  -> 啟動手動 5-Fold 區塊時序 (Purged Expanding Window, Embargo=20天) 連續迴歸交叉驗證...
+     - 正在訓練時間區塊 Fold 2/5 (LSBoost 嚴格防洩漏) ... 完成！(Fold 2 OOF Rank IC -> Raw: +0.0306 | Time: +0.1469)
+     - 正在訓練時間區塊 Fold 3/5 (LSBoost 嚴格防洩漏) ... 完成！(Fold 3 OOF Rank IC -> Raw: +0.0297 | Time: +0.1481)
+     - 正在訓練時間區塊 Fold 4/5 (LSBoost 嚴格防洩漏) ... 完成！(Fold 4 OOF Rank IC -> Raw: +0.0306 | Time: +0.1225)
+     - 正在訓練時間區塊 Fold 5/5 (LSBoost 嚴格防洩漏) ... 完成！(Fold 5 OOF Rank IC -> Raw: +0.0250 | Time: +0.1369)
+
+ 📊 [GBDT 連續迴歸交叉驗證總評] 全域 OOF Spearman Rank IC (HAC p-val, lag=20):
+    > 原始 18D 基準線 : +0.0290 (p = 0.0000)
+    > 時序專家 (Time) : +0.1386 (p = 0.0000)
+  -> 訓練最終全域橫截面模型 (LSBoost 時間衰減加權抽樣版)...
+✅ 個股橫截面 GBDT 訓練與 OOF 百分位排序得分重組完畢！
+--- 啟動崩盤護欄 GBDT 訓練 (正樣本分層時序 OOF、Bootstrap 95% CI 與 Platt 校準) ---
+     - 正在訓練崩盤護欄 Fold 2/5 (驗證崩盤樣本: 37 天) ... 完成！(Fold 2 OOF Crash AUC: 0.5401 [95% CI: 0.4307, 0.6543])
+     - 正在訓練崩盤護欄 Fold 3/5 (驗證崩盤樣本: 37 天) ... 完成！(Fold 3 OOF Crash AUC: 0.4651 [95% CI: 0.3898, 0.5402])
+     - 正在訓練崩盤護欄 Fold 4/5 (驗證崩盤樣本: 37 天) ... 完成！(Fold 4 OOF Crash AUC: 0.5756 [95% CI: 0.4762, 0.6755])
+     - 正在訓練崩盤護欄 Fold 5/5 (驗證崩盤樣本: 38 天) ... 完成！(Fold 5 OOF Crash AUC: 0.7630 [95% CI: 0.7158, 0.8068])
+  -> 執行 Platt Scaling 事後機率校準 (Logistic Regression)...
+
+=================================================================
+📊 【Phase 15.5 崩盤護欄總評與 Platt Scaling 校準報告】
+=================================================================
+ > 校準前 Brier Score   : 0.3075
+ > 校準後 Brier Score   : 0.0425 (改善: +86.17%)
+-----------------------------------------------------------------
+
+✅ 崩盤護欄 GBDT 訓練與 OOF Platt 校準機率產出完畢！
+⏱️ [步驟 5 完成] 耗時: 253.10 秒 (4.22 分鐘)
+
+--- 步驟 6：執行 OOS 盲測期無洩漏推論 (LSBoost 排序推論 + Platt 崩盤校準) ---
+⏱️ [步驟 6 完成] 耗時: 4.46 秒
+
+--- 步驟 7：組裝全歷史選股排序得分與崩盤機率矩陣 ---
+⏱️ [步驟 7 完成] 耗時: 0.01 秒
+
+--- 步驟 8：產出 SHAP 特徵邊際貢獻度視覺化 (確定性無漂移版) ---
+--- 啟動 TIME 專家 SHAP 歸因分析 (K-Means 加速) ---
+  -> 執行 K-Means 壓縮背景樣本至 100 個質心...
+✅ SHAP 圖表已生成！
+ 📊 SHAP 特徵歸因圖 (白底黑字) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/models/Phase3_SHAP_TimeExpert.png
+⏱️ [步驟 8 完成] 耗時: 1.07 秒
+
+--- 步驟 9：儲存 GBDT 模型實體與全域選股得分矩陣 ---
+💾 顯性風險與連續排序得分已安全落地至: /home/andy/Documents/MARI_Quant_System/results/models/GBDT_Guards.mat
+⏱️ [步驟 9 完成] 耗時: 3.45 秒
+
+=================================================================
+📊 【Phase 3 各階段耗時明細與總時長審計報告】
+=================================================================
+ 步驟 0：環境掛載與隨機串流鎖定   :     0.64 秒 (  0.2%)
+ 步驟 1：降噪特徵與 DL 表徵載入   :     9.39 秒 (  3.1%)
+ 步驟 2：動態特徵解構與總經品質健檢:     0.09 秒 (  0.0%)
+ 步驟 3：選股標籤構建與資料集快取 :    27.15 秒 (  9.1%)
+ 步驟 4：時間軸解耦切分 (IS vs OOS):     0.45 秒 (  0.2%)
+ 步驟 5：GBDT 交叉驗證與護欄校準  :   253.10 秒 ( 84.4%)
+ 步驟 6：OOS 盲測期真實前向推論   :     4.46 秒 (  1.5%)
+ 步驟 7：全歷史得分與崩盤矩陣縫合 :     0.01 秒 (  0.0%)
+ 步驟 8：SHAP 特徵貢獻歸因分析    :     1.07 秒 (  0.4%)
+ 步驟 9：GBDT 模型與全域得分矩陣存檔:     3.45 秒 (  1.2%)
+-----------------------------------------------------------------
+⏱️ 【總執行時長】: 4 分 59.82 秒 (共 299.82 秒)
+=================================================================
+🎯 [Phase 3] 特徵標籤生成、GBDT 訓練與 SHAP 歸因一鍵執行完畢！請推進至 Phase 4。
+=================================================================
+>> 
+
+=================================================================
+🧠 [Phase 15.5] 啟動 CIO 總管動態路由貝氏超參數尋優 (DSR + PBO 雙重防禦版)
+=================================================================
+--- 步驟 0：環境路徑掛載、Config 載入與隨機串流鎖定 ---
+ 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
+ ⚡ [Config] 成功注入通過 DSR/PBO 顯著性檢定之 Phase 4 BO 最佳化參數：
+    - 崩盤護欄硬熔斷閾值 : 0.0977
+    - 時序專家權重 (Time_W): 1.0000 (空間專家已剪枝，強制鎖定 1.0)
+    - 集中度標的數 (Top_K) : 15
+⏱️ [步驟 0 完成] 耗時: 0.50 秒
+
+--- 步驟 1：載入快取與時間軸嚴格對齊 (引入 Opens 矩陣) ---
+--- 啟動 Data Lake 面板資料載入與極速矩陣映射 ---
+ -> 建立基準時間軸 (以 SPY 作為絕對交易日曆)...
+ -> 執行極速矩陣映射 (Bypassing Unstack 效能優化)...
+ -> 啟動多核心 parfor 執行極速矩陣映射 (記憶體防爆版)...
+Starting parallel pool (parpool) using the 'Processes' profile ...
+Parallel pool using the 'Processes' profile is shutting down.
+
+Warning: Failed to automatically create a parallel pool with the default parallel environment. Running serially on the client instead. Fallback to serial
+execution will be removed in a future release. Error details:
+
+Error using parallel.internal.parpool.getOrCreateCurrentPool (line 16)
+Parallel pool failed to start with the following error. For more detailed information, validate the profile 'Processes' in the Cluster Profile Manager.
+
+Error in pctTryCreatePoolIfNecessary (line 20)
+    pool = parallel.internal.parpool.getOrCreateCurrentPool();
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Error in parallel_function (line 389)
+    [isPoolRunning, pool] = pctTryCreatePoolIfNecessary();
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Error in DataFetcher/fetch_data (line 109)
+            parfor i = 1:numTickers
+            ^
+Error in Run_BO_Hyperparameter_Tuning (line 75)
+dataStruct = fetcher.fetch_data();
+             ^^^^^^^^^^^^^^^^^^^^
+Caused by:
+    Error using parallel.internal.pool.JobStateChecker>iThrowIfBadParallelJobStatus (line 95)
+    The parallel pool job errored with the following message: MATLAB worker shut down unexpectedly with status 1 during task execution. 
+--- 執行大宇宙數據邊界與品質斷言檢查 ---
+⚠️ 攔截到 9050 筆異常 (報價異常: 1, 真實停牌枯竭: 9049，已排除 Macro 指數)，已強制物理損毀交由下游 omitnan 濾除。
+💾 成功以 SPY 基準時間軸對齊大宇宙資料 (共 504 檔標的，8467 個真實交易日)。
+  -> 空間專家狀態: 【⏩ 已剪枝】(Pure-Time 模式：鎖定 Time_W=1.0，尋優空間自動降維)
+⏱️ [步驟 1 完成] 耗時: 34.65 秒
+
+--- 步驟 2：切分 In-Sample 訓練區間與校準背景雜訊底線 ---
+  -> IS 期間 P(Crash) 75% 背景雜訊分位數 (tau_noise): 0.0449
+⏱️ [步驟 2 完成] 耗時: 0.01 秒
+
+--- 步驟 3：定義貝氏最佳化超參數空間 (自適應維度降階) ---
+  -> 護欄動態邊界鎖定：[0.0478 (下界), 0.0978 (上界)]
+  ⚙️ 搜尋維度: 2 維 [Guardrail_CrashProb, Top_K_Assets] (Time_W 鎖定 1.0000)
+⏱️ [步驟 3 完成] 耗時: 0.00 秒
+
+--- 步驟 4：啟動 BayesOpt 尋優引擎 (4 子窗口穩健目標函數 - 多核平行) ---
+⚡ 正在喚醒 CPU 多核心 (parpool)...
+Starting parallel pool (parpool) using the 'Processes' profile ...
+Connected to parallel pool with 8 workers.
+🔒 已成功為平行池所有 Worker 注入 mrg32k3a 獨立隨機子串流。
+Copying objective function to workers...
+Done copying objective function to workers.
+|===============================================================================================================|
+| Iter | Active  | Eval   | Objective   | Objective   | BestSoFar   | BestSoFar   | Guardrail_Cr-| Top_K_Assets |
+|      | workers | result |             | runtime     | (observed)  | (estim.)    | ashProb      |              |
+|===============================================================================================================|
+|    1 |       8 | Best   |     -1.2215 |     0.43524 |     -1.2215 |     -1.2215 |      0.05079 |           12 |
+Warning: PlotFcn 1 failed. 
+> In bayesoptim.warn (line 6)
+In BayesianOptimization/callPlotFcn (line 16)
+In BayesianOptimization/updateTimingPlotsAndOutput (line 27)
+In BayesianOptimization/runParallel (line 86)
+In BayesianOptimization/run (line 7)
+In BayesianOptimization (line 193)
+In bayesopt (line 323)
+In Run_BO_Hyperparameter_Tuning (line 182) 
+The error message follows:
+Specify the coordinates as vectors or matrices of the same size, or as a vector and a matrix that share the same length in at least one dimension.
+|    2 |       2 | Accept |     -1.0674 |     0.43138 |     -2.7736 |     -2.7726 |     0.053769 |           21 |
+|    3 |       2 | Accept |     -2.4605 |     0.69977 |     -2.7736 |     -2.7726 |     0.088176 |           24 |
+|    4 |       2 | Best   |     -2.7736 |     0.62958 |     -2.7736 |     -2.7726 |     0.090253 |           11 |
+|    5 |       2 | Accept |     -1.4177 |     0.32993 |     -2.7736 |     -2.7726 |     0.063056 |           11 |
+|    6 |       2 | Accept |     -2.2496 |     0.40709 |     -2.7736 |     -2.7726 |     0.082119 |           11 |
+|    7 |       2 | Accept |     -1.4195 |     0.55737 |     -2.7736 |     -2.7726 |     0.065849 |           15 |
+|    8 |       2 | Accept |     -2.7369 |     0.51536 |     -2.7736 |     -2.7726 |     0.095172 |           24 |
+|    9 |       8 | Accept |     -2.6589 |     0.14722 |     -2.7736 |     -2.7555 |     0.089169 |            9 |
+|   10 |       3 | Accept |     -2.6075 |     0.37313 |     -2.7736 |     -2.7724 |     0.097769 |            5 |
+|   11 |       3 | Accept |     -2.6715 |     0.17551 |     -2.7736 |     -2.7724 |     0.089461 |            9 |
+|   12 |       3 | Accept |      -2.099 |     0.18372 |     -2.7736 |     -2.7724 |     0.080842 |            8 |
+|   13 |       3 | Accept |     -1.2808 |     0.20806 |     -2.7736 |     -2.7724 |      0.05736 |            7 |
+|   14 |       3 | Accept |     -2.1901 |     0.30993 |     -2.7736 |     -2.7724 |     0.081723 |            9 |
+|   15 |       3 | Accept |     -1.2147 |     0.32885 |     -2.7736 |     -2.7724 |     0.050569 |           13 |
+|   16 |       7 | Accept |     -1.7586 |     0.39116 |     -2.7882 |     -2.7872 |     0.077948 |           20 |
+|   17 |       7 | Best   |     -2.7882 |     0.18581 |     -2.7882 |     -2.7872 |     0.097754 |           24 |
+|   18 |       2 | Best   |     -2.9145 |     0.19364 |     -2.9145 |     -2.9144 |     0.097749 |           16 |
+|   19 |       2 | Accept |     -2.8271 |     0.16643 |     -2.9145 |     -2.9144 |     0.093468 |           16 |
+|   20 |       2 | Accept |     -1.6819 |     0.19836 |     -2.9145 |     -2.9144 |     0.075436 |            6 |
+|===============================================================================================================|
+| Iter | Active  | Eval   | Objective   | Objective   | BestSoFar   | BestSoFar   | Guardrail_Cr-| Top_K_Assets |
+|      | workers | result |             | runtime     | (observed)  | (estim.)    | ashProb      |              |
+|===============================================================================================================|
+|   21 |       2 | Accept |      -1.199 |     0.27926 |     -2.9145 |     -2.9144 |     0.053639 |           15 |
+|   22 |       2 | Accept |     -1.1999 |     0.32022 |     -2.9145 |     -2.9144 |     0.056827 |           16 |
+|   23 |       2 | Accept |     -2.5712 |     0.29428 |     -2.9145 |     -2.9144 |     0.089591 |            7 |
+|   24 |       8 | Best   |     -2.9235 |     0.20596 |     -2.9235 |     -2.9234 |     0.096017 |           11 |
+|   25 |       3 | Best   |     -2.9477 |     0.31481 |     -2.9477 |     -2.9473 |     0.097741 |           13 |
+|   26 |       3 | Accept |     -2.7162 |     0.24428 |     -2.9477 |     -2.9473 |     0.091222 |           20 |
+|   27 |       3 | Accept |     -2.5197 |     0.22643 |     -2.9477 |     -2.9473 |      0.08831 |            7 |
+|   28 |       3 | Accept |     -1.5337 |     0.22548 |     -2.9477 |     -2.9473 |     0.067432 |           10 |
+|   29 |       3 | Accept |     -1.1218 |     0.25635 |     -2.9477 |     -2.9473 |     0.053466 |           17 |
+|   30 |       3 | Accept |     -1.0829 |     0.17832 |     -2.9477 |     -2.9473 |     0.057646 |           23 |
+
+__________________________________________________________
+Optimization completed.
+MaxObjectiveEvaluations of 25 reached.
+Total function evaluations: 30
+Total elapsed time: 4.7614 seconds
+Total objective function evaluation time: 9.413
+
+Best observed feasible point:
+    Guardrail_CrashProb    Top_K_Assets
+    ___________________    ____________
+
+         0.097741               13     
+
+Observed objective function value = -2.9477
+Estimated objective function value = -2.9473
+Function evaluation time = 0.31481
+
+Best estimated feasible point (according to models):
+    Guardrail_CrashProb    Top_K_Assets
+    ___________________    ____________
+
+         0.097741               13     
+
+Estimated objective function value = -2.9473
+Estimated function evaluation time = 0.31481
+
+⏱️ [步驟 4 完成] 耗時: 18.56 秒 (0.31 分鐘)
+
+--- 步驟 5：提取最佳參數、DSR 與 PBO 統計檢驗與斷路器裁決 ---
+
+🏆 【Phase 15.5 貝氏最佳化候選結果 (Horizon=20D)】 🏆
+  > 候選 崩盤護欄閥值 (Guardrail) : 0.0977
+  > 候選 時序專家權重 (Time_W)   : 1.0000
+  > 候選 集中度標的數 (Top_K)    : 13
+  > 穩健綜合指標 (Robust Score) : 2.9477
+  > 護欄觸發比例 (IS 期間)       : 0.2% 的交易日啟用完全避險
+
+=================================================================
+📊 【Phase 15.5 Deflated Sharpe Ratio (DSR) 選擇偏誤校正報告】
+=================================================================
+  > BayesOpt 試驗次數 N         : 30 次
+  > 試驗噪聲基準 (Sharpe0 Floor): 1.4488 (高於此值才具統計顯著性)
+  > 最佳參數觀測年化 Sharpe     : 3.9478
+  > Deflated Sharpe Ratio (DSR) : 1.0000
+-----------------------------------------------------------------
+  ✅ 在 95% 信心水準下，尋優結果統計上顯著超越多重試驗運氣！
+=================================================================
+
+  ⏳ 正在啟動 CSCV 引擎計算 PBO (窮舉 12,870 條時序組合路徑)...
+=================================================================
+📊 【Phase 15.5 Probability of Backtest Overfitting (PBO) 審計報告】
+=================================================================
+  > CSCV 切片數 (S)               : 16 個時序區塊 (各約 1 年)
+  > 組合路徑總數 (C = C(16,8))    : 12870 條時序路徑
+  > 候選策略試驗數 (N)            : 30 組超參數
+  > PBO (OOS Sharpe <= 0 機率)   : 0.0000 (0.00%)
+  > PBO (劣於中位數 Rank <= 0.5)  : 0.0052 (0.52%)
+  > OOS 最佳策略期望年化 Sharpe   : 3.9438
+-----------------------------------------------------------------
+  ✅ PBO <= 10% 門檻：策略在全體時序重組路徑中具備極高泛化韌性！
+=================================================================
+
+✅ 尋優成功！通過 DSR 與 PBO 雙重顯著性檢驗 (DSR >= 0.95, PBO <= 10% 且 Robust Score > 0)，落地為正式生產參數。
+💾 生產環境 BO 參數檔已成功寫入: /home/andy/Documents/MARI_Quant_System/results/models/BO_Hyperparameters.mat
+⏱️ [步驟 5 完成] 耗時: 2.05 秒
+
+--- 步驟 6：產出 BayesOpt 尋優收斂、PBO 分佈與超額收益報表 (白底黑字) ---
+Warning: Error in state of SceneNode.
+String scalar or character vector must have valid interpreter syntax:
+PBO (SR\\le0): 0.00% | Median Rank: 0.01 | N=30 Trials
+ 
+ 📊 尋優收斂、PBO 分佈與超額收益圖 (白底黑字 3-Panel) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/models/Phase4_BayesOpt_Convergence.png
+⏱️ [步驟 6 完成] 耗时: 1.34 秒
+
+=================================================================
+📊 【Phase 4 各階段耗時明細與總時長審計報告】
+=================================================================
+ 步驟 0：環境掛載與隨機串流鎖定   :     0.50 秒 (  0.9%)
+ 步驟 1：快取與時間軸對齊 (Opens) :    34.65 秒 ( 60.7%)
+ 步驟 2：IS 切分與雜訊底線校準    :     0.01 秒 (  0.0%)
+ 步驟 3：超參數空間自適應邊界定義 :     0.00 秒 (  0.0%)
+ 步驟 4：BayesOpt 尋優平行引擎運行:    18.56 秒 ( 32.5%)
+ 步驟 5：DSR 與 PBO 統計審計裁決  :     2.05 秒 (  3.6%)
+ 步驟 6：收斂軌跡與 PBO 圖表繪製  :     1.34 秒 (  2.3%)
+-----------------------------------------------------------------
+⏱️ 【總執行時長】: 0 分 57.12 秒 (共 57.12 秒)
+=================================================================
+🎯 [Phase 4] 執行完畢！DSR + PBO 雙重檢定已鎖定。請推進至 Phase 5 或 Phase 6。
+=================================================================
+>> 
+
+
+=================================================================
+🚀 [Phase 15.5] 啟動 MARI 嚴格前向滾動回測管線 (規則優化與無RL極速版)
+=================================================================
+--- 步驟 0：環境路徑掛載、Config 載入與隨機串流鎖定 ---
+ 🔄 [Config] 動態載入 True PiT 宇宙清單 (共 504 檔純 Equity 標的)
+ ⚡ [Config] 成功注入通過 DSR/PBO 顯著性檢定之 Phase 4 BO 最佳化參數：
+    - 崩盤護欄硬熔斷閾值 : 0.0977
+    - 時序專家權重 (Time_W): 1.0000 (空間專家已剪枝，強制鎖定 1.0)
+    - 集中度標的數 (Top_K) : 13
+🔒 已掛載 mrg32k3a 主隨機串流 (Substream=1)，鎖定前向回測環境。
+⏱️ [步驟 0 完成] 耗時: 1.27 秒
+
+--- 步驟 1：載入全域快取、DataFetcher 開盤價與模型參數 ---
+  -> 空間專家狀態: 【⏩ 已剪枝】(Pure-Time 模式：強制時序權重=1.0，杜絕排序稀釋)
+  🎯 [Phase 4 參數載入] 成功繼承通過 DSR 檢定 (DSR=1.0000) 之 BO 最佳參數：
+     > 崩盤護欄閾值: 0.0977 | 時序專家權重: 1.0000 | 集中度 Top-K: 13
+  🏛️ [決策架構] 已徹底剔除 PPO 強化學習，全面採用 Phase 4 貝氏最佳化規則與連續死區護欄。
+--- 啟動 Data Lake 面板資料載入與極速矩陣映射 ---
+ -> 建立基準時間軸 (以 SPY 作為絕對交易日曆)...
+ -> 執行極速矩陣映射 (Bypassing Unstack 效能優化)...
+ -> 啟動多核心 parfor 執行極速矩陣映射 (記憶體防爆版)...
+--- 執行大宇宙數據邊界與品質斷言檢查 ---
+⚠️ 攔截到 9050 筆異常 (報價異常: 1, 真實停牌枯竭: 9049，已排除 Macro 指數)，已強制物理損毀交由下游 omitnan 濾除。
+💾 成功以 SPY 基準時間軸對齊大宇宙資料 (共 504 檔標的，8467 個真實交易日)。
+⏱️ [步驟 1 完成] 耗時: 6.04 秒
+
+--- 步驟 2：預計算市場波動度與宏觀指標 ---
+⏱️ [步驟 2 完成] 耗時: 0.00 秒
+
+--- 步驟 3：時間邊界劃分與校準崩盤護欄死區 ---
+ 🔍 [護欄與調倉參數校準]
+    > IS 非危機期 P(Crash) 75% 雜訊分位數 (tau_noise) : 0.0448
+    > 硬熔斷上限 (Guard_High)                      : 0.0977
+    > 死區縮放下限 (Guard_Low)                       : 0.0677
+    > 有效連續緩衝區間寬度                           : 0.0300
+    > 統一調倉步進 (RebalanceStride)                : 每 20 個交易日定期換手 (對齊 Horizon=20)
+ 📊 [成本模型檢查] 平均日波動度: 0.9714% | 預期平均換手成本率: 0.1471%
+⏱️ [步驟 3 完成] 耗時: 0.01 秒
+
+--- 步驟 4：啟動逐日推論與交易結算 (同構前向回測) ---
+ 📡 回測正式起點：03-Jan-2006
+[27-Apr-2006] SPY: -0.46% | MARI: +0.00% | 現金: 100.0% | 持股:  0 檔 | 換手成本: 0.000% | 累計淨值: 1.00
+[30-Apr-2007] SPY: +0.37% | MARI: +0.00% | 現金: 100.0% | 持股:  0 檔 | 換手成本: 0.000% | 累計淨值: 1.00
+[29-Apr-2008] SPY: -0.35% | MARI: +0.00% | 現金: 100.0% | 持股:  0 檔 | 換手成本: 0.000% | 累計淨值: 1.00
+[29-Apr-2009] SPY: +1.82% | MARI: +3.03% | 現金:  15.7% | 持股: 13 檔 | 換手成本: 0.002% | 累計淨值: 1.18
+[29-Apr-2010] SPY: +0.88% | MARI: +0.16% | 現金:   0.0% | 持股: 13 檔 | 換手成本: 0.000% | 累計淨值: 3.96
+[28-Apr-2011] SPY: +0.28% | MARI: +0.22% | 現金:   0.0% | 持股: 13 檔 | 換手成本: 0.000% | 累計淨值: 9.68
+[27-Apr-2012] SPY: +1.22% | MARI: +1.96% | 現金:   0.0% | 持股: 13 檔 | 換手成本: 0.000% | 累計淨值: 21.19
+[01-May-2013] SPY: +0.04% | MARI: +1.11% | 現金:   0.0% | 持股: 13 檔 | 換手成本: 0.000% | 累計淨值: 60.91
+[01-May-2014] SPY: +0.42% | MARI: +1.29% | 現金:   0.0% | 持股: 13 檔 | 換手成本: 0.000% | 累計淨值: 199.04
+[01-May-2015] SPY: -0.23% | MARI: -1.70% | 現金:   0.0% | 持股: 13 檔 | 換手成本: 0.000% | 累計淨值: 498.69
+[02-May-2016] SPY: +0.10% | MARI: -0.36% | 現金:   0.0% | 持股: 13 檔 | 換手成本: 0.000% | 累計淨值: 456.63
+[02-May-2017] SPY: +0.07% | MARI: +0.73% | 現金:   0.0% | 持股: 13 檔 | 換手成本: 0.000% | 累計淨值: 984.65
+[02-May-2018] SPY: +0.34% | MARI: +1.56% | 現金:   0.0% | 持股: 13 檔 | 換手成本: 0.000% | 累計淨值: 2305.67
+[03-May-2019] SPY: +0.39% | MARI: +0.91% | 現金:   0.0% | 持股: 13 檔 | 換手成本: 0.000% | 累計淨值: 7275.91
+[04-May-2020] SPY: -1.60% | MARI: -5.82% | 現金:  17.2% | 持股: 13 檔 | 換手成本: 0.000% | 累計淨值: 9274.00
+[04-May-2021] SPY: -0.80% | MARI: -0.91% | 現金:   0.0% | 持股: 13 檔 | 換手成本: 0.000% | 累計淨值: 19129.02
+[03-May-2022] SPY: +0.71% | MARI: +0.05% | 現金:  98.6% | 持股:  7 檔 | 換手成本: 0.000% | 累計淨值: 38257.10
+[04-May-2023] SPY: -1.08% | MARI: +0.57% | 現金:   0.0% | 持股: 13 檔 | 換手成本: 0.000% | 累計淨值: 35209.15
+[06-May-2024] SPY: +0.51% | MARI: -0.01% | 現金:  96.1% | 持股: 12 檔 | 換手成本: 0.000% | 累計淨值: 55965.90
+[08-May-2025] SPY: +0.91% | MARI: +0.00% | 現金:  99.9% | 持股:  0 檔 | 換手成本: 0.000% | 累計淨值: 49900.62
+[11-May-2026] SPY: +0.21% | MARI: -0.03% | 現金:  99.6% | 持股:  1 檔 | 換手成本: 0.000% | 累計淨值: 72584.26
+⏱️ [步驟 4 完成] 耗時: 0.28 秒 (0.00 分鐘)
+
+--- 步驟 5：嚴格 IS / OOS 績效分離結算 ---
+
+====================================================================================================
+📊 【MARI Quant System 機構級前向回測綜合報告 (Phase 15.5 生產基準版)】
+====================================================================================================
+ 區間劃分        | 累積總報酬 | 年化報酬(CAGR) | 年化波動度 | 最大回撤(MDD) | 夏普比率 | 卡瑪比率 | 資訊比率(IR) | 日勝率
+----------------------------------------------------------------------------------------------------
+ IS 訓練期(MARI) |  +3929264.00% |     +93.83%   |   21.84%  |    -32.95%   |    3.14  |    2.85  |     +3.06    |  49.1%
+ IS 基準線(SPY)  |   +414.47% |     +10.79%   |   18.93%  |    -55.42%   |    0.64  |    0.19  |      N/A     |  55.5%
+----------------------------------------------------------------------------------------------------
+ OOS 盲測(MARI)  |    +82.18% |     +13.64%   |   19.48%  |    -19.58%   |    0.75  |    0.70  |     +0.10    |  47.9%
+ OOS 基準線(SPY) |    +70.29% |     +12.02%   |   17.54%  |    -26.29%   |    0.74  |    0.46  |      N/A     |  53.9%
+----------------------------------------------------------------------------------------------------
+ 全歷史累計(MARI)|  +7158319.00% |     +71.74%   |   21.37%  |    -32.95%   |    2.64  |    2.18  |     +2.39    |  48.8%
+====================================================================================================
+
+⏱️ [步驟 5 完成] 耗時: 0.01 秒
+
+--- 步驟 6：生成機構級視覺化報表 (白底黑字 - OOS 獨立歸一化與回撤歸零版) ---
+ 📊 機構級前向回測報表 (白底黑字) 已儲存至: /home/andy/Documents/MARI_Quant_System/results/models/Phase6_WalkForward_Backtest.png
+⏱️ [步驟 6 完成] 耗時: 2.25 秒
+
+=================================================================
+📊 【Phase 6 各階段耗時明細與總時長審計報告】
+=================================================================
+ 步驟 0：環境掛載與隨機串流鎖定   :     1.27 秒 ( 12.9%)
+ 步驟 1：快取與開盤價矩陣載入     :     6.04 秒 ( 61.3%)
+ 步驟 2：宏觀波動度與狀態空間預計算:     0.00 秒 (  0.0%)
+ 步驟 3：時間邊界劃分與死區校準   :     0.01 秒 (  0.1%)
+ 步驟 4：前向滾動推論與定期調倉撮合:     0.28 秒 (  2.9%)
+ 步驟 5：IS/OOS 財務計量指標分離  :     0.01 秒 (  0.1%)
+ 步驟 6：圖表繪製 (OOS 重設) 與存檔:     2.25 秒 ( 22.8%)
+-----------------------------------------------------------------
+⏱️ 【總執行時長】: 0 分 9.86 秒 (共 9.86 秒)
+=================================================================
+🎯 [Phase 15.5] 前向回測執行完畢！全管線同構閉環達成。
+=================================================================
+>> 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
