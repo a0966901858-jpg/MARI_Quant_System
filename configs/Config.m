@@ -78,13 +78,15 @@ classdef Config < handle
         % --- 深度學習模型容量與表徵增強 ---
         EnableHighwayResidual    = true;  % ★ 啟用特徵直通殘差連接 (打破深層平滑瓶頸)[cite: 1]
         
-        % --- 深度學習訓練動力學與解耦排程 (★ 200 輪走平收斂配置) ---
-        DL_MaxEpochs             = 2000;   % ★ 總訓練輪數 (由 35/50 擴增至 200，提供充裕走平展示期)
-        DL_EarlyStoppingPatience = 2000;   % ★ 早停耐受度 (設為 200，實質關閉中途 break，保留快照回滾)
-        DL_DecoupledDecayEpochs  = 2000;   % ★ 解耦退火週期 (前 120 輪餘弦衰減，第 121~200 輪鎖死 min_lr)
+        % --- 深度學習訓練動力學與解耦排程  ---
+        DL_MaxEpochs             = 4000;   % ★ 總訓練輪數 
+        DL_EarlyStoppingPatience = 4000;   % ★ 早停耐受度 
+        DL_DecoupledDecayEpochs  = 2400;   % ★ 解耦退火週期
+        DL_RegDecayEndEpoch      = 3200;   % ★ 正則化縮減提前結束輪數 
         DL_BaseLR                = 1e-3;  % 基礎最高學習率 (線性預熱目標)
-        DL_MinLR                 = 1e-4;  % ★ 餘弦退火底線學習率 (由 1e-4 微調降至 1e-5，保證末端徹底躺平)
-        DL_EMA_Decay             = 0.995; % ★ 權重指數移動平均衰減率 (撫平波谷反彈鋸齒，鎖定平坦極小值)
+        DL_MinLR                 = 1e-5;  % ★ 餘弦退火底線學習率 
+        DL_EMA_Decay             = 0.998; % ★ 權重指數移動平均衰減率 (撫平波谷反彈鋸齒，鎖定平坦極小值)
+        DL_MinRegScale           = 0.10;  % 超過退火週期後，Dropout 與噪聲平滑縮減至原本的%
         
         % --- 深度學習正則化超參數 ---
         DL_DropoutRate           = 0.20;  % 密集層/全連接層標準 Dropout 比率
