@@ -241,11 +241,11 @@ fprintf('🪞 [EMA 引擎啟用] 影子權重已初始化完成 (基礎衰減率
 time_step4 = toc(t_step4);
 fprintf('⏱️ [步驟 4 完成] 耗時: %.2f 秒\n\n', time_step4);
 
-%% 5. 啟動萃取器預訓練 (Warmup保護 + 解耦餘弦退火 + 權重 EMA 平滑)
+%% 5. 啟動萃取器預訓練 (Warmup保護 + 解耦餘弦退火 + 權重 EMA 平滑 + 壓縮動態正則衰減)
 t_step5 = tic;
-disp('--- 步驟 5：執行萃取器預訓練 (Warmup保護 + 解耦餘弦退火排程 + 權重 EMA 平滑) ---');
+disp('--- 步驟 5：執行萃取器預訓練 (Warmup保護 + 解耦餘弦退火排程 + 權重 EMA 平滑 + 壓縮動態正則衰減) ---');
 
-% 動態讀取訓練輪數與早停耐心值 (SSOT 統一對齊 200 輪)
+% 動態讀取訓練輪數與早停耐心值 (SSOT 統一對齊)
 if isprop(configObj, 'DL_MaxEpochs') && ~isempty(configObj.DL_MaxEpochs)
     epochs = configObj.DL_MaxEpochs;
 else
@@ -255,21 +255,20 @@ end
 if isprop(configObj, 'DL_EarlyStoppingPatience') && ~isempty(configObj.DL_EarlyStoppingPatience)
     patience_limit = configObj.DL_EarlyStoppingPatience;
 else
-    patience_limit = 200;
+    patience_limit = epochs; 
 end
 
-% =========================================================================
-% ★ 核心改進：解耦退火週期參數 (Decoupled Annealing Schedule)
-% 始終以 fixed_decay_epochs 作為餘弦衰減基數 (SSOT 統一為 120 輪)。
-% 保證前段 (1 ~ 120 輪) 的學習率與數值完全一致，第 121~200 輪鎖定 min_lr (1e-5)。
-% =========================================================================
+% ★ 關鍵修復：優先定義預熱保護期輪數 (提前至最上方，供後續排程與日誌調用)
+warmup_epochs = 15; 
+
+% 解耦退火週期參數
 if isprop(configObj, 'DL_DecoupledDecayEpochs') && ~isempty(configObj.DL_DecoupledDecayEpochs)
     fixed_decay_epochs = configObj.DL_DecoupledDecayEpochs;
 else
     fixed_decay_epochs = 120; 
 end
 
-% 讀取學習率基礎排程 (SSOT 統一)
+% 讀取學習率基礎排程
 if isprop(configObj, 'DL_BaseLR') && ~isempty(configObj.DL_BaseLR)
     base_lr = configObj.DL_BaseLR;
 else
@@ -279,11 +278,35 @@ end
 if isprop(configObj, 'DL_MinLR') && ~isempty(configObj.DL_MinLR)
     min_lr = configObj.DL_MinLR;
 else
-    min_lr = 1e-5; % 調降至 1e-5，保證尾段徹底走出水平收斂漸近線
+    min_lr = 1e-5; 
 end
 
+% 讀取後期正則化縮減保底比例
+if isprop(configObj, 'DL_MinRegScale') && ~isempty(configObj.DL_MinRegScale)
+    min_reg_scale = configObj.DL_MinRegScale;
+else
+    min_reg_scale = 0.10; 
+end
+
+% 讀取正則化縮減提前結束輪數
+if isprop(configObj, 'DL_RegDecayEndEpoch') && ~isempty(configObj.DL_RegDecayEndEpoch)
+    reg_decay_end_epoch = configObj.DL_RegDecayEndEpoch;
+else
+    reg_decay_end_epoch = min(epochs, fixed_decay_epochs + round((epochs - fixed_decay_epochs) * 0.5));
+end
+
+% 讀取 EMA 衰減率
+if isprop(configObj, 'DL_EMA_Decay') && ~isempty(configObj.DL_EMA_Decay)
+    base_beta_ema = configObj.DL_EMA_Decay;
+else
+    base_beta_ema = 0.998;
+end
+
+% --- 此時所有排程變數皆已賦值，日誌可安全印出 ---
 fprintf('🎯 [退火排程解耦] 餘弦退火週期固定為 %d 輪 (總輪數: %d 輪 | 超期將鎖定於 min_lr=%.1e 平滑搜尋)。\n', ...
     fixed_decay_epochs, epochs, min_lr);
+fprintf('🛡️ [方案 B 動態正則] 預熱期: 1~%d 輪 | 主力期: %d~%d 輪 (100%%) | 壓縮衰減: %d~%d 輪 | 走平鎖底: %d~%d 輪 (%.0f%%)\n', ...
+    warmup_epochs, warmup_epochs+1, fixed_decay_epochs, fixed_decay_epochs+1, reg_decay_end_epoch, reg_decay_end_epoch+1, epochs, min_reg_scale * 100);
 
 physicalBatchSize = 8;    
 accumulationSteps = 4;    
@@ -316,35 +339,56 @@ best_net_space = net_space_ema;
 min_healthy_var_t = 0.05;
 min_healthy_var_s = 0.10;
 actual_completed_epochs = 0;
-warmup_epochs = 5; % 預熱保護期 5 輪
+warmup_epochs = 15; % 預熱保護期 5 輪
 
 for epoch = 1:epochs
     actual_completed_epochs = epoch;
     
-    % --- ★ 學習率平滑預熱與解耦餘弦退火排程 (前 5 輪預熱 + 120 輪退火 + 尾段鎖底) ---
+    % --- ★ 學習率平滑預熱與解耦餘弦退火排程 (前 5 輪預熱 + 退火 + 尾段鎖底) ---
     warmup_lr_epochs = 5;
     if epoch <= warmup_lr_epochs
         % 前 5 輪線性預熱
         current_lr = min_lr + (base_lr - min_lr) * (epoch / warmup_lr_epochs);
     elseif epoch <= fixed_decay_epochs
-        % 第 6 輪至固定退火週期 (第 120 輪)：平滑餘弦衰減至 min_lr (1e-5)
+        % 第 6 輪至固定退火週期：平滑餘弦衰減至 min_lr
         decay_ratio = (epoch - warmup_lr_epochs) / (fixed_decay_epochs - warmup_lr_epochs);
         current_lr = min_lr + 0.5 * (base_lr - min_lr) * (1 + cos(pi * decay_ratio));
     else
-        % 第 121 輪至第 200 輪：強制鎖定於最低學習率 min_lr (1e-5)，以微步長爬行展示走平
+        % 超過解耦退火週期後：維持最低學習率 min_lr，以微步長爬行展示走平
         current_lr = min_lr;
     end
     
-    % --- 階梯式動態正則化排程 ---
+    % =====================================================================
+    % ★ 方案 B：壓縮餘弦退火窗口正則化排程 (Curriculum Regularization)
+    % 階段一 (前 5 輪): 弱正則化預熱保護
+    % 階段二 (6 ~ fixed_decay_epochs 輪): 100% 全強度正則化塑造泛化表徵
+    % 階段三 (fixed_decay_epochs+1 ~ reg_decay_end_epoch 輪): 壓縮餘弦平滑縮減至保底
+    % 階段四 (reg_decay_end_epoch+1 ~ epochs 輪): 剛性鎖死保底 20%，徹底走平
+    % =====================================================================
     if epoch <= warmup_epochs
-        feat_drop_rate = cfg_feat_drop * 0.50; 
-        noise_std      = cfg_noise_std * 0.33; 
-        var_drop_rate  = cfg_var_drop * 0.50;
+        % --- 階段一：預熱期 (50% 阻尼) ---
+        reg_scale   = 0.50;
+        noise_scale = 0.33;
+    elseif epoch <= fixed_decay_epochs
+        % --- 階段二：退火主力期 (100% 全強度) ---
+        reg_scale   = 1.00;
+        noise_scale = 1.00;
+    elseif epoch <= reg_decay_end_epoch
+        % --- 階段三：壓縮窗口餘弦平滑衰減 ---
+        post_decay_ratio = (epoch - fixed_decay_epochs) / (reg_decay_end_epoch - fixed_decay_epochs);
+        smooth_decay = 0.5 * (1 + cos(pi * post_decay_ratio)); 
+        reg_scale   = min_reg_scale + (1.0 - min_reg_scale) * smooth_decay;
+        noise_scale = min_reg_scale + (1.0 - min_reg_scale) * smooth_decay;
     else
-        feat_drop_rate = cfg_feat_drop;
-        noise_std      = cfg_noise_std;
-        var_drop_rate  = cfg_var_drop;
+        % --- 階段四：超期極限走平期 (固定鎖定保底 20%，消滅剩餘斜率) ---
+        reg_scale   = min_reg_scale;
+        noise_scale = min_reg_scale;
     end
+    
+    % 動態賦值當前輪次的正則化強度
+    feat_drop_rate = cfg_feat_drop * reg_scale;   % 特徵隨機遮蔽
+    noise_std      = cfg_noise_std * noise_scale; % 輸入高斯噪聲
+    var_drop_rate  = cfg_var_drop * reg_scale;    % 時序循環 Dropout
     
     idx_shuffle = randperm(stream, num_train);
     epoch_loss_time = 0;
@@ -505,16 +549,16 @@ for epoch = 1:epochs
         e_s_sample = extractdata(reshape(predict(net_space_ema, X_batch_space, A_batch_space), 64, []));
         var_e_s = var(e_s_sample(:), 'omitnan');
         
-        fprintf(' -> Epoch %3d/%d (LR: %.2e | FeatDrop: %.2f) | Train (T: %.4f, S: %.4f) | Val_EMA (T: %.4f, S: %.4f)\n', ...
-            epoch, epochs, current_lr, feat_drop_rate, historical_loss_time(epoch), historical_loss_space(epoch), val_loss_time(epoch), val_loss_space(epoch));
+        fprintf(' -> Epoch %4d/%d (LR: %.2e | FeatDrop: %.3f | Noise: %.4f) | Train (T: %.4f, S: %.4f) | Val_EMA (T: %.4f, S: %.4f)\n', ...
+            epoch, epochs, current_lr, feat_drop_rate, noise_std, historical_loss_time(epoch), historical_loss_space(epoch), val_loss_time(epoch), val_loss_space(epoch));
         fprintf('    [診斷] GradNorm(T: %.2e, S: %.2e) | E_Var_EMA(T: %.4f, S: %.4f)\n', ...
             last_gnorm_t, last_gnorm_s, var_e_t, var_e_s);
         
         combined_val = val_loss_time(epoch) + val_loss_space(epoch);
         is_healthy = (var_e_t >= min_healthy_var_t) && (var_e_s >= min_healthy_var_s);
     else
-        fprintf(' -> Epoch %3d/%d (LR: %.2e | FeatDrop: %.2f) | Train ContLoss (T: %.4f) | Val_EMA Multi-Regime (T: %.4f)\n', ...
-            epoch, epochs, current_lr, feat_drop_rate, historical_loss_time(epoch), val_loss_time(epoch));
+        fprintf(' -> Epoch %4d/%d (LR: %.2e | FeatDrop: %.3f | Noise: %.4f) | Train ContLoss (T: %.4f) | Val_EMA Multi-Regime (T: %.4f)\n', ...
+            epoch, epochs, current_lr, feat_drop_rate, noise_std, historical_loss_time(epoch), val_loss_time(epoch));
         fprintf('    [診斷] GradNorm(T: %.2e) | E_Var_EMA(T: %.4f)\n', last_gnorm_t, var_e_t);
         
         combined_val = val_loss_time(epoch);
@@ -541,10 +585,10 @@ for epoch = 1:epochs
             end
         end
     else
-        fprintf('    ⏳ [預熱保護期] Epoch %3d <= %d，暫不鎖定最佳快照與早停計數。\n', epoch, warmup_epochs);
+        fprintf('    ⏳ [預熱保護期] Epoch %4d <= %d，暫不鎖定最佳快照與早停計數。\n', epoch, warmup_epochs);
     end
     
-    % 早停中斷裁決 (Patience 設定為 200 時，迴圈將完整跑完)
+    % 早停中斷裁決 (Patience 設定為總輪數時，迴圈將完整跑完)
     if patience >= patience_limit && epoch >= 10
         fprintf('🛑 [Early Stopping] EMA 驗證損失連續 %d 輪未改善，提前於 Epoch %d 終止訓練並回滾最佳快照！\n', patience_limit, epoch);
         break;
@@ -610,50 +654,85 @@ end
 time_step6 = toc(t_step6);
 fprintf('⏱️ [步驟 6 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step6, time_step6 / 60);
 
-%% 7. 繪製與儲存訓練曲線 (標準白底黑字格式，去除密集節點圖示)
+%% 7. 繪製與儲存訓練曲線 (標準白底黑字格式，上下垂直雙子圖對齊)
 t_step7 = tic;
 disp('--- 步驟 7：產出 Loss 曲線視覺化報表與模型檔案存檔 ---');
 if ~exist(configObj.ModelDir, 'dir')
     mkdir(configObj.ModelDir); 
 end
+
 actual_epochs = 1:actual_completed_epochs;
+
 if enable_space
+    % --- 時空雙專家模式 (2 x 2 矩陣：左時序上下、右空間上下) ---
     fig_loss = figure('Name', 'Phase 2: Extractor Pretrain Continuous Loss', ...
-        'Position', [100, 100, 1200, 500], 'Color', 'w', 'Visible', 'off'); 
+        'Position', [100, 100, 1300, 800], 'Color', 'w', 'Visible', 'off'); 
     set(fig_loss, 'InvertHardcopy', 'off');
     
-    subplot(1, 2, 1);
-    plot(actual_epochs, historical_loss_time(actual_epochs), '-', 'LineWidth', 1.8, 'Color', '#D95319', 'DisplayName', 'Train Continuous Loss'); hold on;
-    plot(actual_epochs, val_loss_time(actual_epochs), '-', 'LineWidth', 1.8, 'Color', '#0072BD', 'DisplayName', 'Val (Multi-Regime EMA) Loss');
-    title(sprintf('Time Expert (%dD Continuous Soft-IC + Huber)', horizon), 'FontSize', 12, 'FontWeight', 'bold', 'Color', 'k');
+    % [左上] 時序專家 - Train Loss
+    subplot(2, 2, 1);
+    plot(actual_epochs, historical_loss_time(actual_epochs), '-', 'LineWidth', 1.8, 'Color', '#D95319');
+    title(sprintf('Time Expert: Train Continuous Loss (%dD Horizon)', horizon), 'FontSize', 11, 'FontWeight', 'bold', 'Color', 'k');
     xlabel('Epochs', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k');
-    ylabel('Continuous Loss', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k');
-    legend('Location', 'northeast', 'TextColor', 'k', 'Color', 'w', 'EdgeColor', [0.8 0.8 0.8]);
+    ylabel('Train Loss', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k');
     set(gca, 'Color', 'w', 'XColor', 'k', 'YColor', 'k', 'LineWidth', 1.0, ...
         'GridColor', [0.85 0.85 0.85], 'GridAlpha', 0.8, 'FontName', 'Helvetica', 'FontSize', 10);
     grid on; box on;
     
-    subplot(1, 2, 2);
-    plot(actual_epochs, historical_loss_space(actual_epochs), '-', 'LineWidth', 1.8, 'Color', '#D95319', 'DisplayName', 'Train Continuous Loss'); hold on;
-    plot(actual_epochs, val_loss_space(actual_epochs), '-', 'LineWidth', 1.8, 'Color', '#0072BD', 'DisplayName', 'Val (Multi-Regime EMA) Loss');
-    title(sprintf('Space Expert (%dD Continuous Soft-IC + Huber)', horizon), 'FontSize', 12, 'FontWeight', 'bold', 'Color', 'k');
+    % [右上] 空間專家 - Train Loss
+    subplot(2, 2, 2);
+    plot(actual_epochs, historical_loss_space(actual_epochs), '-', 'LineWidth', 1.8, 'Color', '#D95319');
+    title(sprintf('Space Expert: Train Continuous Loss (%dD Horizon)', horizon), 'FontSize', 11, 'FontWeight', 'bold', 'Color', 'k');
     xlabel('Epochs', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k');
-    ylabel('Continuous Loss', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k');
-    legend('Location', 'northeast', 'TextColor', 'k', 'Color', 'w', 'EdgeColor', [0.8 0.8 0.8]);
+    ylabel('Train Loss', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k');
     set(gca, 'Color', 'w', 'XColor', 'k', 'YColor', 'k', 'LineWidth', 1.0, ...
         'GridColor', [0.85 0.85 0.85], 'GridAlpha', 0.8, 'FontName', 'Helvetica', 'FontSize', 10);
     grid on; box on;
+    
+    % [左下] 時序專家 - Val Loss
+    subplot(2, 2, 3);
+    plot(actual_epochs, val_loss_time(actual_epochs), '-', 'LineWidth', 1.8, 'Color', '#0072BD');
+    title(sprintf('Time Expert: Val Multi-Regime EMA Loss (Best: %.4f)', best_val_loss), 'FontSize', 11, 'FontWeight', 'bold', 'Color', 'k');
+    xlabel('Epochs', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k');
+    ylabel('Val EMA Loss', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k');
+    set(gca, 'Color', 'w', 'XColor', 'k', 'YColor', 'k', 'LineWidth', 1.0, ...
+        'GridColor', [0.85 0.85 0.85], 'GridAlpha', 0.8, 'FontName', 'Helvetica', 'FontSize', 10);
+    grid on; box on;
+    
+    % [右下] 空間專家 - Val Loss
+    subplot(2, 2, 4);
+    plot(actual_epochs, val_loss_space(actual_epochs), '-', 'LineWidth', 1.8, 'Color', '#0072BD');
+    title(sprintf('Space Expert: Val Multi-Regime EMA Loss'), 'FontSize', 11, 'FontWeight', 'bold', 'Color', 'k');
+    xlabel('Epochs', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k');
+    ylabel('Val EMA Loss', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k');
+    set(gca, 'Color', 'w', 'XColor', 'k', 'YColor', 'k', 'LineWidth', 1.0, ...
+        'GridColor', [0.85 0.85 0.85], 'GridAlpha', 0.8, 'FontName', 'Helvetica', 'FontSize', 10);
+    grid on; box on;
+    
 else
+    % --- Pure-Time 模式 (標準 2 x 1 上下垂直對齊堆疊) ---
     fig_loss = figure('Name', 'Phase 2: Pure-Time Extractor Continuous Loss', ...
-        'Position', [100, 100, 700, 500], 'Color', 'w', 'Visible', 'off'); 
+        'Position', [100, 100, 950, 750], 'Color', 'w', 'Visible', 'off'); 
     set(fig_loss, 'InvertHardcopy', 'off');
     
-    plot(actual_epochs, historical_loss_time(actual_epochs), '-', 'LineWidth', 1.8, 'Color', '#D95319', 'DisplayName', 'Train Continuous Loss'); hold on;
-    plot(actual_epochs, val_loss_time(actual_epochs), '-', 'LineWidth', 1.8, 'Color', '#0072BD', 'DisplayName', 'Val (Multi-Regime EMA) Loss');
-    title(sprintf('Pure-Time Expert (%dD Continuous Soft-IC + Huber)', horizon), 'FontSize', 12, 'FontWeight', 'bold', 'Color', 'k');
+    % [上方子圖] Train Continuous Loss (展現兩階段收斂與長尾水平漸近線)
+    subplot(2, 1, 1);
+    plot(actual_epochs, historical_loss_time(actual_epochs), '-', 'LineWidth', 2.0, 'Color', '#D95319');
+    title(sprintf('Pure-Time Expert: Train Continuous Loss (Huber + Soft-IC | Horizon=%dD)', horizon), ...
+        'FontSize', 12, 'FontWeight', 'bold', 'Color', 'k');
     xlabel('Epochs', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k');
-    ylabel('Continuous Loss', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k');
-    legend('Location', 'northeast', 'TextColor', 'k', 'Color', 'w', 'EdgeColor', [0.8 0.8 0.8]);
+    ylabel('Train Loss', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k');
+    set(gca, 'Color', 'w', 'XColor', 'k', 'YColor', 'k', 'LineWidth', 1.0, ...
+        'GridColor', [0.85 0.85 0.85], 'GridAlpha', 0.8, 'FontName', 'Helvetica', 'FontSize', 10);
+    grid on; box on;
+    
+    % [下方子圖] Val Multi-Regime EMA Loss (獨立尺度放大展示防過擬合平臺)
+    subplot(2, 1, 2);
+    plot(actual_epochs, val_loss_time(actual_epochs), '-', 'LineWidth', 2.0, 'Color', '#0072BD');
+    title(sprintf('Pure-Time Expert: Val Multi-Regime EMA Loss (Best Snapshot Loss = %.4f)', best_val_loss), ...
+        'FontSize', 12, 'FontWeight', 'bold', 'Color', 'k');
+    xlabel('Epochs', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k');
+    ylabel('Val EMA Loss', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k');
     set(gca, 'Color', 'w', 'XColor', 'k', 'YColor', 'k', 'LineWidth', 1.0, ...
         'GridColor', [0.85 0.85 0.85], 'GridAlpha', 0.8, 'FontName', 'Helvetica', 'FontSize', 10);
     grid on; box on;
@@ -661,7 +740,7 @@ end
 
 lossFigPath = fullfile(configObj.ModelDir, 'Phase2_Loss_Curve.png');
 exportgraphics(fig_loss, lossFigPath, 'Resolution', 300, 'BackgroundColor', 'white');
-fprintf(' 📊 Loss 曲線 (白底黑字，已截斷真實輪次) 已儲存至: %s\n', lossFigPath);
+fprintf(' 📊 Loss 曲線 (上下獨立子圖排版，已儲存) 至: %s\n', lossFigPath);
 close(fig_loss);
 
 % 儲存最佳 EMA 模型實體與 Embedding 矩陣 (相容下游 GBDT 與回測讀取介面)
@@ -670,7 +749,6 @@ save(modelPath, 'net_time', 'net_space', 'E_time_all', 'E_space_all', '-v7.3');
 fprintf('💾 DL 萃取器預訓練完畢！[Days, 64, Tickers] 節點表徵已存至: %s\n', modelPath);
 time_step7 = toc(t_step7);
 fprintf('⏱️ [步驟 7 完成] 耗時: %.2f 秒\n\n', time_step7);
-
 %% =========================================================================
 % 結算全流程執行時長審計報告
 % =========================================================================
