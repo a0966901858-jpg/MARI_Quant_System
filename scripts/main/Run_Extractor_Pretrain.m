@@ -1,30 +1,31 @@
 % =========================================================================
 % 腳本：2_Run_Extractor_Pretrain.m (階段 2：DL 特徵萃取器預訓練管線)
-% 升級：Phase 15.5 深度表徵容量增強 ＋ 200 輪極限平坦收斂與解耦退火生產基準版
+% 升級：Phase 15.5 深度表徵容量增強 ＋ 極限平坦收斂與日誌即時落地生產基準版
 % 核心升級：
-%   1. 【解耦退火週期 (Decoupled Cosine Decay)】：餘弦退火基數固定為 120 輪，
-%      不隨總訓練輪數縮放，保證前 1～120 輪學習率、梯度與損失數值絕對一致 (前綴不變性)；
-%      超期 (第 121～200 輪) 鎖定 min_lr (1e-5)，以微步長爬行展示絕對水平漸近線[cite: 8, 9]。
-%   2. 【權重指數移動平均 (EMA Shadow Weights)】：維護平滑影子權重 (Beta=0.995)，
-%      驗證評估與歷史快照全面採用 EMA 網絡，徹底撫平 Adam 動量超調引發的鋸齒回彈[cite: 6]。
-%   3. 【預熱保護期 (Warmup Immunity)】：前 5 輪禁止鎖定快照與累積早停，杜絕未成熟隨機初值誤殺[cite: 1, 3]。
-%   4. 【多體制驗證取樣擴增】：驗證抽樣擴大至 256 筆 (覆蓋率 > 27%)，消除小樣本方差雜訊[cite: 1]。
-%   5. 【物理批次吞吐優化】：physicalBatchSize 提升至 8、累積步數縮至 4，提升 GPU 利用率[cite: 1, 3]。
-%   6. 【特徵直通殘差與剪枝相容】：配合 BuildDecoupledExtractors Highway 通路強化容量，
-%      並以實際完成輪次精準截斷 Loss 圖表，杜絕斷崖暴跌繪圖 Bug[cite: 1, 2]。
+%   1. 【指令日誌即時寫入 (Diary Stream)】：步驟 0 自動開啟日誌串流，步驟 7 結束後安全關閉，
+%      完整收錄 2,000~4,000 輪全部文字資料至 ModelDir/Phase2_Pretrain_Execution_Log.txt。
+%   2. 【解耦退火週期 (Decoupled Cosine Decay)】：餘弦退火基數獨立於總輪數，
+%      超期輪次鎖定 min_lr (1e-5)，以微步長爬行展示絕對水平漸近線。
+%   3. 【壓縮餘弦窗口動態正則 (方案 B)】：正則化提前著陸至 10% 保底，提供數百輪走平展示區間。
+%   4. 【權重指數移動平均 (EMA Shadow Weights)】：維護平滑影子權重 (Beta=0.998)，
+%      驗證評估與歷史快照全面採用 EMA 網絡，徹底撫平鋸齒回彈。
+%   5. 【預熱保護與快照隔離】：前 warmup_epochs 輪禁止鎖定快照與早停，保護未成熟權重。
+%   6. 【上下垂直獨立子圖】：Loss 曲線圖分置上下獨立縮放，X 軸精準垂直對齊。
 % 職責：使用 18 維個股微觀/相對特徵提煉 64 維 Embedding，學習橫截面連續排序表徵
 % =========================================================================
 clear; clc; close all;
 
 % 啟動全域總計時器
 t_total_start = tic;
+
 disp('=================================================================');
-disp('🚀 [Phase 15.5] 啟動 DL 特徵萃取器預訓練管線 (權重 EMA ＋ 200輪極限收斂版)');
+disp('🚀 [Phase 15.5] 啟動 DL 特徵萃取器預訓練管線 (權重 EMA ＋ 極限收斂版)');
 disp('=================================================================');
 
-%% 0. 環境路徑掛載 (規範化階層回溯解析與路徑重新整理)
+%% 0. 環境路徑掛載、Config 載入與即時日誌系統啟動
 t_step0 = tic;
-disp('--- 步驟 0：環境路徑掛載、Config 載入與隨機串流鎖定 ---');
+disp('--- 步驟 0：環境路徑掛載、Config 載入、隨機串流鎖定與即時日誌啟動 ---');
+
 currentFile = mfilename('fullpath');
 if isempty(currentFile)
     currentPath = pwd;
@@ -55,22 +56,41 @@ if exist('Config', 'class') ~= 8
 end
 configObj = Config();
 
+% 確保輸出模型與圖表目錄存在
+if ~exist(configObj.ModelDir, 'dir')
+    mkdir(configObj.ModelDir); 
+end
+
+% =========================================================================
+% ★ 啟動命令視窗即時串流儲存至日誌檔 (防範 2000~4000 輪終端緩衝區溢出)
+% =========================================================================
+logFilePath = fullfile(configObj.ModelDir, 'Phase2_Pretrain_Execution_Log.txt');
+diary off;
+if exist(logFilePath, 'file')
+    delete(logFilePath);
+end
+diary(logFilePath);
+diary on;
+fprintf('📝 [系統日誌] 已啟動 Command Window 即時錄製，檔案將同步儲存至:\n    %s\n\n', logFilePath);
+
 % 由 Config 統一生產 mrg32k3a 隨機數引擎，並設為全域主串流 (Substream = 1)
 stream = configObj.getRandStream(1);
 RandStream.setGlobalStream(stream);
 disp('🔒 已成功掛載 mrg32k3a 主隨機串流 (Substream=1)，鎖定預訓練確定性。');
+
 time_step0 = toc(t_step0);
 fprintf('⏱️ [步驟 0 完成] 耗時: %.2f 秒\n\n', time_step0);
 
 %% 1. 載入 3D 特徵面板資料
 t_step1 = tic;
 disp('--- 步驟 1：載入淨化 3D 特徵面板與時間軸嚴格對齊 ---');
+
 cachePath = fullfile(configObj.CacheDir, 'features_denoised.mat');
 if ~exist(cachePath, 'file')
     error('❌ 找不到特徵快取檔案，請先執行 1_Run_Data_and_Features.m');
 end
-
 load(cachePath, 'X_norm_3D', 'Prices_Active', 'Expert_Active', 'Dates_Active', 'AdjMatrix_3D');
+
 Dates_Active.TimeZone = ''; 
 numDaysRaw   = length(Dates_Active);
 numT         = configObj.NumTickers;
@@ -83,18 +103,22 @@ if isprop(configObj, 'Horizon') && ~isempty(configObj.Horizon)
 else
     horizon = 20;
 end
+
 valid_idx = seqLen : (numDaysRaw - horizon); 
 num_valid = length(valid_idx);
 fprintf('  -> 宇宙規模: %d 檔 | 交易天數: %d 天 | 原始特徵維度: %d 維 | 預測視窗: %d 日\n', ...
     numT, numDaysRaw, numFeats_All, horizon);
+
 time_step1 = toc(t_step1);
 fprintf('⏱️ [步驟 1 完成] 耗時: %.2f 秒\n\n', time_step1);
 
 %% 1.5 核心串接：18 維特徵切片、1D/Horizon 雙軌 HAC-ICIR 健檢與特徵注意力閘門
 t_step1_5 = tic;
 disp('--- 步驟 1.5：特徵切片 (剝離 Macro)、1D/HAC-ICIR 健檢與特徵注意力加權 ---');
+
 numExtractorFeats = 3 + configObj.NumMicroFeatures; % 18 維 (Rel 3 + Micro 15)
 X_norm_3D_extractor_raw = X_norm_3D(:, 1:numExtractorFeats, :);
+
 evaluator = FeatureEvaluator(configObj);
 feat_names_18d = [{'Beta', 'Corr', 'RelStrength'}, ...
     {'R1', 'R5', 'R20', 'Vol20', 'IdioVol20', 'VolRatio', 'Amihud20', 'SMA20', 'SMA60', ...
@@ -112,19 +136,23 @@ evaluator.report_icir_ranking(Daily_IC_Target, feat_names_18d, 0.05, sprintf('%d
 disp(' -> 執行特徵注意力遮罩融合 (Energy-Preserving Feature Gate)...');
 IC_Weights_3D = reshape(IC_Weights_2D, numDaysRaw, numExtractorFeats, 1);
 X_norm_3D_extractor = X_norm_3D_extractor_raw .* IC_Weights_3D;
+
 ch_stds = squeeze(std(X_norm_3D_extractor, 0, [1, 3], 'omitnan'));
 fprintf('  -> [萃取器通道健檢] 18 維特徵標準差範圍: [%.4f, %.4f] (平均: %.4f)\n', ...
     min(ch_stds), max(ch_stds), mean(ch_stds));
+
 time_step1_5 = toc(t_step1_5);
 fprintf('⏱️ [步驟 1.5 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step1_5, time_step1_5 / 60);
 
 %% 2. 構建橫截面連續預測目標 (動態 Horizon 連續報酬 Z-Score)
 t_step2 = tic;
 fprintf('--- 步驟 2：構建橫截面連續超額報酬標籤 (Direction 2: %dD Continuous Z-Score) ---\n', horizon);
+
 R_fwd = NaN(numDaysRaw, numT, 'single');
 R_fwd(1:end-horizon, :) = (Prices_Active(1+horizon:end, :) - Prices_Active(1:end-horizon, :)) ...
                           ./ (Prices_Active(1:end-horizon, :) + 1e-8);
 R_fwd(isnan(R_fwd) | isinf(R_fwd)) = NaN;
+
 Y_Labels_3D = zeros(numDaysRaw, numT, 'single');
 for t = 1:numDaysRaw-horizon
     active_mask = Expert_Active(t, :) & ~isnan(R_fwd(t, :)) & ~isinf(R_fwd(t, :));
@@ -137,12 +165,14 @@ for t = 1:numDaysRaw-horizon
     end
 end
 Y_Labels_3D(isnan(Y_Labels_3D) | isinf(Y_Labels_3D)) = 0;
+
 time_step2 = toc(t_step2);
 fprintf('⏱️ [步驟 2 完成] 耗時: %.2f 秒\n\n', time_step2);
 
 %% 3. 切分時間軸 (嚴格 IS 內 Purged Embargo 跨體制驗證集)
 t_step3 = tic;
 disp('--- 步驟 3：切分時間軸 (嚴格 IS 內 Purged Embargo 跨體制驗證集) ---');
+
 Train_Start_Date = datetime('2006-01-01');
 OOS_Start_Date   = datetime('2022-01-01');
 idx_train_raw = find(Dates_Active >= Train_Start_Date & Dates_Active < OOS_Start_Date);
@@ -153,9 +183,9 @@ regime_windows = { ...
     struct('name','2015-16 盤整修正', 'start', datetime('2015-06-01'), 'end', datetime('2016-06-01')), ...
     struct('name','2020 COVID崩盤', 'start', datetime('2020-01-01'), 'end', datetime('2020-12-01')) ...
 };
+
 val_idx_valid = [];
 embargo_val_idx = [];
-
 if isprop(configObj, 'PurgeEmbargo') && ~isempty(configObj.PurgeEmbargo)
     embargo = configObj.PurgeEmbargo;
 else
@@ -170,26 +200,30 @@ for i = 1:length(regime_windows)
     idx_embargo = find(Dates_Active >= (w.start - caldays(embargo)) & Dates_Active <= (w.end + caldays(embargo)));
     embargo_val_idx = [embargo_val_idx; intersect(valid_idx, idx_embargo)];
 end
+
 val_idx_valid = unique(val_idx_valid);
 embargo_val_idx = unique(embargo_val_idx);
 train_idx_valid = setdiff(is_idx_valid, embargo_val_idx);
+
 num_train = length(train_idx_valid);
 num_val   = length(val_idx_valid);
 fprintf('✅ Purged 多體制時間軸劃分成功！訓練樣本: %d 筆 | 跨體制驗證樣本: %d 筆 (嚴格 Embargo: %d 天)\n', ...
     num_train, num_val, embargo);
+
 time_step3 = toc(t_step3);
 fprintf('⏱️ [步驟 3 完成] 耗時: %.2f 秒\n\n', time_step3);
 
 %% 4. 初始化 DL 萃取器與連續迴歸線性預測頭
 t_step4 = tic;
 disp('--- 步驟 4：初始化特徵萃取網路 (連續預測頭 - mrg32k3a 確定性初值) ---');
+
 factory = BuildDecoupledExtractors(configObj, numExtractorFeats);
 [net_time, net_space] = factory.buildNetworks();
-
 enable_space = ~isempty(net_space);
 
 W_aux_time = dlarray(randn(stream, 1, 64, 'single') * 0.01); 
 b_aux_time = dlarray(zeros(1, 1, 'single'));         
+
 if enable_space
     W_aux_space = dlarray(randn(stream, 1, 64, 'single') * 0.01);
     b_aux_space = dlarray(zeros(1, 1, 'single'));
@@ -230,16 +264,16 @@ else
     b_aux_space_ema = [];
 end
 
-% EMA 衰減率基礎參數 (優先讀取 Config.m，SSOT 統一預設為 0.995)
+% EMA 衰減率基礎參數 (優先自 Config.m 讀取，基準預設為 0.998)
 if isprop(configObj, 'DL_EMA_Decay') && ~isempty(configObj.DL_EMA_Decay)
     base_beta_ema = configObj.DL_EMA_Decay;
 else
-    base_beta_ema = 0.995;
+    base_beta_ema = 0.998;
 end
-fprintf('🪞 [EMA 引擎啟用] 影子權重已初始化完成 (基礎衰減率 Beta = %.3f，具備動態偏差校正)。\n', base_beta_ema);
+fprintf('🪞 [EMA 引擎啟用] 影子權重已初始化完成 (基礎衰減率 Beta = %.4f，具備動態偏差校正)。\n', base_beta_ema);
 
 time_step4 = toc(t_step4);
-fprintf('⏱️ [步驟 4 完成] 耗時: %.2f 秒\n\n', time_step4);
+fprintf('⏱️️ [步驟 4 完成] 耗時: %.2f 秒\n\n', time_step4);
 
 %% 5. 啟動萃取器預訓練 (Warmup保護 + 解耦餘弦退火 + 權重 EMA 平滑 + 壓縮動態正則衰減)
 t_step5 = tic;
@@ -258,8 +292,13 @@ else
     patience_limit = epochs; 
 end
 
-% ★ 關鍵修復：優先定義預熱保護期輪數 (提前至最上方，供後續排程與日誌調用)
-warmup_epochs = 15; 
+% ★ 關鍵修復：優先定義預熱保護期輪數 (前置宣告，杜絕未定義變數錯誤)
+if isprop(configObj, 'DL_WarmupEpochs') && ~isempty(configObj.DL_WarmupEpochs)
+    warmup_epochs = configObj.DL_WarmupEpochs;
+else
+    warmup_epochs = 15; % 預設 15 輪
+end
+warmup_lr_epochs = warmup_epochs; % 確保學習率預熱與正則保護期時序嚴格同構
 
 % 解耦退火週期參數
 if isprop(configObj, 'DL_DecoupledDecayEpochs') && ~isempty(configObj.DL_DecoupledDecayEpochs)
@@ -278,14 +317,14 @@ end
 if isprop(configObj, 'DL_MinLR') && ~isempty(configObj.DL_MinLR)
     min_lr = configObj.DL_MinLR;
 else
-    min_lr = 1e-5; 
+    min_lr = 1e-5; % 調降至 1e-5，消滅末端下降動能
 end
 
 % 讀取後期正則化縮減保底比例
 if isprop(configObj, 'DL_MinRegScale') && ~isempty(configObj.DL_MinRegScale)
     min_reg_scale = configObj.DL_MinRegScale;
 else
-    min_reg_scale = 0.10; 
+    min_reg_scale = 0.10; % 預設縮減至 10%
 end
 
 % 讀取正則化縮減提前結束輪數
@@ -295,14 +334,7 @@ else
     reg_decay_end_epoch = min(epochs, fixed_decay_epochs + round((epochs - fixed_decay_epochs) * 0.5));
 end
 
-% 讀取 EMA 衰減率
-if isprop(configObj, 'DL_EMA_Decay') && ~isempty(configObj.DL_EMA_Decay)
-    base_beta_ema = configObj.DL_EMA_Decay;
-else
-    base_beta_ema = 0.998;
-end
-
-% --- 此時所有排程變數皆已賦值，日誌可安全印出 ---
+% 此時所有排程變數皆已賦值，日誌可安全印出
 fprintf('🎯 [退火排程解耦] 餘弦退火週期固定為 %d 輪 (總輪數: %d 輪 | 超期將鎖定於 min_lr=%.1e 平滑搜尋)。\n', ...
     fixed_decay_epochs, epochs, min_lr);
 fprintf('🛡️ [方案 B 動態正則] 預熱期: 1~%d 輪 | 主力期: %d~%d 輪 (100%%) | 壓縮衰減: %d~%d 輪 | 走平鎖底: %d~%d 輪 (%.0f%%)\n', ...
@@ -313,15 +345,47 @@ accumulationSteps = 4;
 numIterationsPerEpoch = floor(num_train / physicalBatchSize);
 clipThreshold = 1.0;
 
-% 讀取正則化超參數
-l2_lambda      = configObj.DL_L2_Regularization;      
-var_lambda     = configObj.DL_VarianceFloorLambda;    
-var_target     = configObj.DL_VarianceFloorTarget;    
-cfg_feat_drop  = configObj.FeatureDropoutRate;       
-cfg_noise_std  = configObj.InputNoiseStd;            
-cfg_var_drop   = configObj.VariationalDropRate;      
-huber_delta    = configObj.DL_HuberDelta;            
-ic_loss_weight = configObj.DL_ICLossWeight;          
+% 讀取正則化超參數 (安全回退防護)
+if isprop(configObj, 'DL_L2_Regularization') && ~isempty(configObj.DL_L2_Regularization)
+    l2_lambda = configObj.DL_L2_Regularization;
+else
+    l2_lambda = 1e-4;
+end
+if isprop(configObj, 'DL_VarianceFloorLambda') && ~isempty(configObj.DL_VarianceFloorLambda)
+    var_lambda = configObj.DL_VarianceFloorLambda;
+else
+    var_lambda = 0.05;
+end
+if isprop(configObj, 'DL_VarianceFloorTarget') && ~isempty(configObj.DL_VarianceFloorTarget)
+    var_target = configObj.DL_VarianceFloorTarget;
+else
+    var_target = 1.0;
+end
+if isprop(configObj, 'FeatureDropoutRate') && ~isempty(configObj.FeatureDropoutRate)
+    cfg_feat_drop = configObj.FeatureDropoutRate;
+else
+    cfg_feat_drop = 0.12;
+end
+if isprop(configObj, 'InputNoiseStd') && ~isempty(configObj.InputNoiseStd)
+    cfg_noise_std = configObj.InputNoiseStd;
+else
+    cfg_noise_std = 0.015;
+end
+if isprop(configObj, 'VariationalDropRate') && ~isempty(configObj.VariationalDropRate)
+    cfg_var_drop = configObj.VariationalDropRate;
+else
+    cfg_var_drop = 0.15;
+end
+if isprop(configObj, 'DL_HuberDelta') && ~isempty(configObj.DL_HuberDelta)
+    huber_delta = configObj.DL_HuberDelta;
+else
+    huber_delta = 0.10;
+end
+if isprop(configObj, 'DL_ICLossWeight') && ~isempty(configObj.DL_ICLossWeight)
+    ic_loss_weight = configObj.DL_ICLossWeight;
+else
+    ic_loss_weight = 0.50;
+end
 
 avgG_t = []; avgSG_t = []; avgG_Wt = []; avgSG_Wt = []; avgG_bt = []; avgSG_bt = [];
 avgG_s = []; avgSG_s = []; avgG_Ws = []; avgSG_Ws = []; avgG_bs = []; avgSG_bs = [];
@@ -339,18 +403,16 @@ best_net_space = net_space_ema;
 min_healthy_var_t = 0.05;
 min_healthy_var_s = 0.10;
 actual_completed_epochs = 0;
-warmup_epochs = 15; % 預熱保護期 5 輪
 
 for epoch = 1:epochs
     actual_completed_epochs = epoch;
     
-    % --- ★ 學習率平滑預熱與解耦餘弦退火排程 (前 5 輪預熱 + 退火 + 尾段鎖底) ---
-    warmup_lr_epochs = 5;
+    % --- ★ 學習率平滑預熱與解耦餘弦退火排程 (同構預熱 + 退火 + 尾段鎖底) ---
     if epoch <= warmup_lr_epochs
-        % 前 5 輪線性預熱
+        % 前段線性預熱
         current_lr = min_lr + (base_lr - min_lr) * (epoch / warmup_lr_epochs);
     elseif epoch <= fixed_decay_epochs
-        % 第 6 輪至固定退火週期：平滑餘弦衰減至 min_lr
+        % 中段至固定退火週期：平滑餘弦衰減至 min_lr
         decay_ratio = (epoch - warmup_lr_epochs) / (fixed_decay_epochs - warmup_lr_epochs);
         current_lr = min_lr + 0.5 * (base_lr - min_lr) * (1 + cos(pi * decay_ratio));
     else
@@ -360,10 +422,10 @@ for epoch = 1:epochs
     
     % =====================================================================
     % ★ 方案 B：壓縮餘弦退火窗口正則化排程 (Curriculum Regularization)
-    % 階段一 (前 5 輪): 弱正則化預熱保護
-    % 階段二 (6 ~ fixed_decay_epochs 輪): 100% 全強度正則化塑造泛化表徵
+    % 階段一 (前 warmup_epochs 輪): 弱正則化預熱保護 (50% 阻尼)
+    % 階段二 (warmup_epochs+1 ~ fixed_decay_epochs 輪): 100% 全強度正則化塑造泛化表徵
     % 階段三 (fixed_decay_epochs+1 ~ reg_decay_end_epoch 輪): 壓縮餘弦平滑縮減至保底
-    % 階段四 (reg_decay_end_epoch+1 ~ epochs 輪): 剛性鎖死保底 20%，徹底走平
+    % 階段四 (reg_decay_end_epoch+1 ~ epochs 輪): 剛性鎖死保底 (10%)，徹底走平
     % =====================================================================
     if epoch <= warmup_epochs
         % --- 階段一：預熱期 (50% 阻尼) ---
@@ -380,7 +442,7 @@ for epoch = 1:epochs
         reg_scale   = min_reg_scale + (1.0 - min_reg_scale) * smooth_decay;
         noise_scale = min_reg_scale + (1.0 - min_reg_scale) * smooth_decay;
     else
-        % --- 階段四：超期極限走平期 (固定鎖定保底 20%，消滅剩餘斜率) ---
+        % --- 階段四：超期極限走平期 (固定鎖定保底 10%，消滅剩餘斜率) ---
         reg_scale   = min_reg_scale;
         noise_scale = min_reg_scale;
     end
@@ -620,15 +682,18 @@ if isnan(loss_t_end) || isinf(loss_t_end)
 else
     disp('✅ 萃取器連續目標訓練完畢，成功建立抗過擬合連續超額報酬特徵表徵！');
 end
+
 time_step5 = toc(t_step5);
 fprintf('⏱️ [步驟 5 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step5, time_step5 / 60);
 
 %% 6. 最終全歷史 Embedding 提煉與存檔 (推論階段：純淨無隨機擾動)
 t_step6 = tic;
 disp('--- 步驟 6：全歷史強固特徵表徵提煉與落地 (使用 EMA 最佳權重提取 3D 張量) ---');
+
 E_time_all  = zeros(numDaysRaw, 64, numT, 'single');
 E_space_all = zeros(numDaysRaw, 64, numT, 'single');
 inferBatchSize = 16; 
+
 fprintf('  -> 正在提煉全歷史節點級別表徵 (共 %d 筆有效天數，批次步長: %d)...\n', num_valid, inferBatchSize);
 
 for start_idx = 1:inferBatchSize:num_valid
@@ -651,15 +716,13 @@ for start_idx = 1:inferBatchSize:num_valid
         E_space_all(actual_t_indices, :, :) = gather(e_s_reshaped);
     end
 end
+
 time_step6 = toc(t_step6);
 fprintf('⏱️ [步驟 6 完成] 耗時: %.2f 秒 (%.2f 分鐘)\n\n', time_step6, time_step6 / 60);
 
 %% 7. 繪製與儲存訓練曲線 (標準白底黑字格式，上下垂直雙子圖對齊)
 t_step7 = tic;
 disp('--- 步驟 7：產出 Loss 曲線視覺化報表與模型檔案存檔 ---');
-if ~exist(configObj.ModelDir, 'dir')
-    mkdir(configObj.ModelDir); 
-end
 
 actual_epochs = 1:actual_completed_epochs;
 
@@ -702,7 +765,7 @@ if enable_space
     % [右下] 空間專家 - Val Loss
     subplot(2, 2, 4);
     plot(actual_epochs, val_loss_space(actual_epochs), '-', 'LineWidth', 1.8, 'Color', '#0072BD');
-    title(sprintf('Space Expert: Val Multi-Regime EMA Loss'), 'FontSize', 11, 'FontWeight', 'bold', 'Color', 'k');
+    title('Space Expert: Val Multi-Regime EMA Loss', 'FontSize', 11, 'FontWeight', 'bold', 'Color', 'k');
     xlabel('Epochs', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k');
     ylabel('Val EMA Loss', 'FontSize', 10, 'FontWeight', 'bold', 'Color', 'k');
     set(gca, 'Color', 'w', 'XColor', 'k', 'YColor', 'k', 'LineWidth', 1.0, ...
@@ -747,10 +810,12 @@ close(fig_loss);
 modelPath = fullfile(configObj.ModelDir, 'DL_Extractors.mat');
 save(modelPath, 'net_time', 'net_space', 'E_time_all', 'E_space_all', '-v7.3');
 fprintf('💾 DL 萃取器預訓練完畢！[Days, 64, Tickers] 節點表徵已存至: %s\n', modelPath);
+
 time_step7 = toc(t_step7);
 fprintf('⏱️ [步驟 7 完成] 耗時: %.2f 秒\n\n', time_step7);
+
 %% =========================================================================
-% 結算全流程執行時長審計報告
+% 結算全流程執行時長審計報告與日誌流安全關閉
 % =========================================================================
 total_elapsed_sec = toc(t_total_start);
 tot_hours = floor(total_elapsed_sec / 3600);
@@ -778,6 +843,10 @@ end
 fprintf('=================================================================\n');
 disp('🎯 [Phase 2] 連續迴歸萃取器預訓練完成！請推進至 Phase 3。');
 disp('=================================================================');
+
+% 安全關閉日誌寫入
+fprintf('\n📝 [系統日誌] 訓練全面結束，完整執行紀錄已安全落地至:\n    %s\n', logFilePath);
+diary off;
 
 %% =====================================================================
 % 輔助函數區 (批次切片、正則化迴歸損失、VICReg 保底與梯度裁剪)
